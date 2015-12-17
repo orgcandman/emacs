@@ -14,8 +14,8 @@ addons:
       name: "emacs"
       description: "A popular text editor used mainly on Unix-based systems by programmers"
     notification_email: johnw@gnu.org
-    build_command_prepend: "./autogen.sh && ./configure --prefix=/tmp/prefix && make bootstrap"
-    build_command:   "make"
+    build_command_prepend: "./autogen.sh && ./configure --prefix=/tmp/prefix"
+    build_command:   "make bootstrap"
     branch_pattern: TravisIntegration
   apt:
    packages:
