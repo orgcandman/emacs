@@ -1,9 +1,8 @@
-;;; finalizer-tests.el --- Finalizer tests -*- lexical-binding: t -*-
+;;; ps-print-tests.el --- Test suite for ps-print.el  -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2015 Free Software Foundation, Inc.
 
-;; Author: Daniel Colascione <dancol@dancol.org>
-;; Keywords:
+;; Author: Phillip Lord <phillip.lord@russet.org.uk>
 
 ;; This file is part of GNU Emacs.
 
@@ -22,12 +21,16 @@
 
 ;;; Commentary:
 
-;;
-
 ;;; Code:
-
+(require 'ps-print)
 (require 'ert)
-(require 'cl-lib)
 
-(ert-deftest finalizer-object-type ()
-  (should (equal (type-of (make-finalizer nil)) 'finalizer)))
+;;; Autoload tests
+(ert-deftest ps-mule-autoload ()
+  "Tests to see whether ps-mule has been autoloaded"
+  (should
+   (fboundp 'ps-mule-initialize))
+  (should
+   (autoloadp
+    (symbol-function
+     'ps-mule-initialize))))

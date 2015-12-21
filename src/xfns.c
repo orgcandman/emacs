@@ -450,10 +450,11 @@ x_real_pos_and_offsets (struct frame *f,
           if (prop)
             {
               if (prop->type == target_type
-                  && xcb_get_property_value_length (prop) == 4
-                  && prop->format == 32)
+                  && prop->format == 32
+                  && (xcb_get_property_value_length (prop)
+		      == 4 * sizeof (int32_t)))
                 {
-                  long *fe = xcb_get_property_value (prop);
+                  int32_t *fe = xcb_get_property_value (prop);
 
                   outer_x = -fe[0];
                   outer_y = -fe[2];
@@ -6559,11 +6560,12 @@ present and mapped to the usual X keysyms.  */)
 
 #ifdef USE_CAIRO
 DEFUN ("x-export-frames", Fx_export_frames, Sx_export_frames, 0, 2, 0,
-       doc: /* XXX Experimental.  Return image data of FRAMES in TYPE format.
+       doc: /* Return image data of FRAMES in TYPE format.
 FRAMES should be nil (the selected frame), a frame, or a list of
 frames (each of which corresponds to one page).  Optional arg TYPE
-should be either `pdf' (default), `png', `ps', or `svg'.  Supported
-types are determined by the compile-time configuration of cairo.  */)
+should be either `pdf' (default), `png', `postscript', or `svg'.
+Supported types are determined by the compile-time configuration of
+cairo.  */)
      (Lisp_Object frames, Lisp_Object type)
 {
   Lisp_Object result, rest, tmp;
@@ -6590,12 +6592,12 @@ types are determined by the compile-time configuration of cairo.  */)
   frames = Fnreverse (tmp);
 
 #ifdef CAIRO_HAS_PDF_SURFACE
-  if (NILP (type) || EQ (type, intern ("pdf"))) /* XXX: Qpdf */
+  if (NILP (type) || EQ (type, Qpdf))
     surface_type = CAIRO_SURFACE_TYPE_PDF;
   else
 #endif
 #ifdef CAIRO_HAS_PNG_FUNCTIONS
-  if (EQ (type, intern ("png")))
+  if (EQ (type, Qpng))
     {
       if (!NILP (XCDR (frames)))
 	error ("PNG export cannot handle multiple frames.");
@@ -6604,12 +6606,12 @@ types are determined by the compile-time configuration of cairo.  */)
   else
 #endif
 #ifdef CAIRO_HAS_PS_SURFACE
-  if (EQ (type, intern ("ps")))
+  if (EQ (type, Qpostscript))
     surface_type = CAIRO_SURFACE_TYPE_PS;
   else
 #endif
 #ifdef CAIRO_HAS_SVG_SURFACE
-  if (EQ (type, intern ("svg")))
+  if (EQ (type, Qsvg))
     {
       /* For now, we stick to SVG 1.1.  */
       if (!NILP (XCDR (frames)))
@@ -6763,6 +6765,8 @@ syms_of_xfns (void)
   DEFSYM (Qmono, "mono");
 
 #ifdef USE_CAIRO
+  DEFSYM (Qpdf, "pdf");
+
   DEFSYM (Qorientation, "orientation");
   DEFSYM (Qtop_margin, "top-margin");
   DEFSYM (Qbottom_margin, "bottom-margin");

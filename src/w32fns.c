@@ -8756,7 +8756,7 @@ Internal use only.  */)
   return menubar_in_use ? Qt : Qnil;
 }
 
-#ifndef __CYGWIN__
+#if defined WINDOWSNT && !defined HAVE_DBUS
 
 /***********************************************************************
 			  Tray notifications
@@ -9111,13 +9111,6 @@ The following parameters are supported:
                     parameter (see below) is also specified and is a
                     string.
 
-:timeout TIMEOUT -- TIMEOUT is the time in seconds after which the
-                    notification disappears.  The value can be integer
-                    or floating-point.  This is ignored on Vista and
-                    later systems, where the duration is fixed at 9 sec
-                    and can only be customized via system-wide
-                    Accessibility settings.
-
 :title TITLE     -- The title of the notification.  If TITLE is a string,
                     it is displayed in a larger font immediately above
                     the body text.  The title text can be up to 63
@@ -9179,13 +9172,6 @@ usage: (w32-notification-notify &rest PARAMS)  */)
   else
     severity = Ni_Info;
 
-  /* Timeout.  */
-  lres = Fplist_get (arg_plist, QCtimeout);
-  if (NUMBERP (lres))
-    timeout = 1000 * (INTEGERP (lres) ? XINT (lres) : XFLOAT_DATA (lres));
-  else
-    timeout = 0;
-
   /* Title.  */
   lres = Fplist_get (arg_plist, QCtitle);
   if (STRINGP (lres))
@@ -9219,7 +9205,7 @@ DEFUN ("w32-notification-close",
   return Qnil;
 }
 
-#endif	/* !__CYGWIN__ */
+#endif	/* WINDOWSNT && !HAVE_DBUS */
 
 
 /***********************************************************************
@@ -9294,14 +9280,15 @@ syms_of_w32fns (void)
   DEFSYM (Qframes, "frames");
   DEFSYM (Qtip_frame, "tip-frame");
   DEFSYM (Qunicode_sip, "unicode-sip");
+#if defined WINDOWSNT && !defined HAVE_DBUS
   DEFSYM (QCicon, ":icon");
   DEFSYM (QCtip, ":tip");
   DEFSYM (QClevel, ":level");
   DEFSYM (Qinfo, "info");
   DEFSYM (Qwarning, "warning");
-  DEFSYM (QCtimeout, ":timeout");
   DEFSYM (QCtitle, ":title");
   DEFSYM (QCbody, ":body");
+#endif
 
   /* Symbols used elsewhere, but only in MS-Windows-specific code.  */
   DEFSYM (Qgnutls_dll, "gnutls");
@@ -9635,8 +9622,10 @@ This variable has effect only on Windows Vista and later.  */);
   defsubr (&Sw32_window_exists_p);
   defsubr (&Sw32_battery_status);
   defsubr (&Sw32__menu_bar_in_use);
+#if defined WINDOWSNT && !defined HAVE_DBUS
   defsubr (&Sw32_notification_notify);
   defsubr (&Sw32_notification_close);
+#endif
 
 #ifdef WINDOWSNT
   defsubr (&Sfile_system_info);

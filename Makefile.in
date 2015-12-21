@@ -921,13 +921,16 @@ extraclean: $(extraclean_dirs:=_extraclean)
 TAGS tags: lib lib-src src
 	$(MAKE) -C src tags
 
-check: all
-	@if test ! -d test/automated; then \
+.PHONY: have-tests
+have-tests:
+	@if test ! -d test; then \
 	  echo "You do not seem to have the test/ directory."; \
 	  echo "Maybe you are using a release tarfile, rather than a repository checkout."; \
-	else \
-	  $(MAKE) -C test/automated check; \
+	 exit 1; \
 	fi
+
+check check-maybe: have-tests all
+	$(MAKE) -C test $@
 
 dist:
 	cd ${srcdir}; ./make-dist
@@ -943,7 +946,7 @@ $(DOCS):
 	$(MAKE) -C doc/$(subst -, ,$@)
 
 .PHONY: $(DOCS) docs pdf ps
-.PHONY: info dvi dist check html info-real info-dir check-info
+.PHONY: info dvi dist check check-maybe html info-real info-dir check-info
 
 ## TODO add etc/refcards.
 docs: $(DOCS)

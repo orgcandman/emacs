@@ -1230,9 +1230,6 @@ static int read_key_sequence (Lisp_Object *, int, Lisp_Object,
                               bool, bool, bool, bool);
 static void adjust_point_for_property (ptrdiff_t, bool);
 
-/* The last boundary auto-added to buffer-undo-list.  */
-Lisp_Object last_undo_boundary;
-
 Lisp_Object
 command_loop_1 (void)
 {
@@ -1448,13 +1445,10 @@ command_loop_1 (void)
               }
 #endif
 
-	    {
-	      Lisp_Object undo = BVAR (current_buffer, undo_list);
-	      Fundo_boundary ();
-	      last_undo_boundary
-		= (EQ (undo, BVAR (current_buffer, undo_list))
-		   ? Qnil : BVAR (current_buffer, undo_list));
-	    }
+            /* Ensure that we have added appropriate undo-boundaries as a
+               result of changes from the last command. */
+            call0 (Qundo_auto__add_boundary);
+
             call1 (Qcommand_execute, Vthis_command);
 
 #ifdef HAVE_WINDOW_SYSTEM
@@ -5951,12 +5945,12 @@ make_lispy_event (struct input_event *event)
       }
 #endif /* HAVE_DBUS */
 
-#if defined HAVE_GFILENOTIFY || defined HAVE_INOTIFY
+#if defined HAVE_INOTIFY || defined HAVE_KQUEUE || defined HAVE_GFILENOTIFY
     case FILE_NOTIFY_EVENT:
       {
         return Fcons (Qfile_notify, event->arg);
       }
-#endif /* defined HAVE_GFILENOTIFY || defined HAVE_INOTIFY */
+#endif /* HAVE_INOTIFY || HAVE_KQUEUE || HAVE_GFILENOTIFY */
 
     case CONFIG_CHANGED_EVENT:
 	return list3 (Qconfig_changed_event,
@@ -10908,6 +10902,8 @@ syms_of_keyboard (void)
   /* Hooks to run before and after each command.  */
   DEFSYM (Qpre_command_hook, "pre-command-hook");
   DEFSYM (Qpost_command_hook, "post-command-hook");
+
+  DEFSYM (Qundo_auto__add_boundary, "undo-auto--add-boundary");
 
   DEFSYM (Qdeferred_action_function, "deferred-action-function");
   DEFSYM (Qdelayed_warnings_hook, "delayed-warnings-hook");
