@@ -1471,6 +1471,10 @@ Defaults to the server buffer."
 (defconst erc-default-port 6667
   "IRC port to use if it cannot be detected otherwise.")
 
+(defconst erc-default-port-tls 6697
+  "IRC port to use for encrypted connections if it cannot be
+  detected otherwise.")
+
 (defcustom erc-join-buffer 'buffer
   "Determines how to display a newly created IRC buffer.
 
@@ -2194,7 +2198,8 @@ be invoked for the values of the other parameters."
 (defun erc-tls (&rest r)
   "Interactively select TLS connection parameters and run ERC.
 Arguments are the same as for `erc'."
-  (interactive (erc-select-read-args))
+  (interactive (let ((erc-default-port erc-default-port-tls))
+		 (erc-select-read-args)))
   (let ((erc-server-connect-function 'erc-open-tls-stream))
     (apply #'erc r)))
 
@@ -4483,6 +4488,7 @@ Set user modes and run `erc-after-connect' hook."
             (nick (car (erc-response.command-args parsed)))
             (buffer (process-buffer proc)))
         (setq erc-server-connected t)
+	(setq erc-server-reconnect-count 0)
         (erc-update-mode-line)
         (erc-set-initial-user-mode nick buffer)
         (erc-server-setup-periodical-ping buffer)
@@ -4821,6 +4827,11 @@ channel."
 			(_ (error "Unknown prefix char `%S'" ch) voice))
 		      'on)))
           (when updatep
+	    ;; If we didn't issue the NAMES request (consider two clients
+	    ;; talking to an IRC proxy), `erc-channel-begin-receiving-names'
+	    ;; will not have been called, so we have to do it here.
+	    (unless erc-channel-new-member-names
+	      (erc-channel-begin-receiving-names))
             (puthash (erc-downcase name) t
                      erc-channel-new-member-names)
             (erc-update-current-channel-member
