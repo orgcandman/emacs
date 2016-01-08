@@ -370,17 +370,20 @@ terminate_due_to_signal (int sig, int backtrace_limit)
 {
   signal (sig, SIG_DFL);
 
-  /* If fatal error occurs in code below, avoid infinite recursion.  */
-  if (! fatal_error_in_progress)
+  if (attempt_orderly_shutdown_on_fatal_signal)
     {
-      fatal_error_in_progress = 1;
+      /* If fatal error occurs in code below, avoid infinite recursion.  */
+      if (! fatal_error_in_progress)
+        {
+          fatal_error_in_progress = 1;
 
-      totally_unblock_input ();
-      if (sig == SIGTERM || sig == SIGHUP || sig == SIGINT)
-        Fkill_emacs (make_number (sig));
+          totally_unblock_input ();
+          if (sig == SIGTERM || sig == SIGHUP || sig == SIGINT)
+            Fkill_emacs (make_number (sig));
 
-      shut_down_emacs (sig, Qnil);
-      emacs_backtrace (backtrace_limit);
+          shut_down_emacs (sig, Qnil);
+          emacs_backtrace (backtrace_limit);
+        }
     }
 
   /* Signal the same code; this time it will really be fatal.
@@ -761,6 +764,9 @@ main (int argc, char **argv)
      names between UTF-8 and the system's ANSI codepage.  */
   maybe_load_unicows_dll ();
 #endif
+  /* This has to be done before module_init is called below, so that
+     the latter could use the thread ID of the main thread.  */
+  w32_init_main_thread ();
 #endif
 
 #ifdef RUN_TIME_REMAP
@@ -775,6 +781,10 @@ main (int argc, char **argv)
 #endif
 
   atexit (close_output_streams);
+
+#ifdef HAVE_MODULES
+  module_init ();
+#endif
 
   sort_args (argc, argv);
   argc = 0;
@@ -1454,6 +1464,11 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
       syms_of_terminal ();
       syms_of_term ();
       syms_of_undo ();
+
+#ifdef HAVE_MODULES
+      syms_of_module ();
+#endif
+
 #ifdef HAVE_SOUND
       syms_of_sound ();
 #endif
