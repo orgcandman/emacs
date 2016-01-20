@@ -1,6 +1,6 @@
 ;;; electric.el --- window maker and Command loop for `electric' modes
 
-;; Copyright (C) 1985-1986, 1995, 2001-2015 Free Software Foundation,
+;; Copyright (C) 1985-1986, 1995, 2001-2016 Free Software Foundation,
 ;; Inc.
 
 ;; Author: K. Shane Hartman
@@ -417,14 +417,17 @@ The variable `electric-layout-rules' says when and how to insert newlines."
 
 (defcustom electric-quote-comment t
   "Non-nil means to use electric quoting in program comments."
+  :version "25.1"
   :type 'boolean :safe 'booleanp :group 'electricity)
 
 (defcustom electric-quote-string nil
   "Non-nil means to use electric quoting in program strings."
+  :version "25.1"
   :type 'boolean :safe 'booleanp :group 'electricity)
 
 (defcustom electric-quote-paragraph t
   "Non-nil means to use electric quoting in text paragraphs."
+  :version "25.1"
   :type 'boolean :safe 'booleanp :group 'electricity)
 
 (defun electric--insertable-p (string)

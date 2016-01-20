@@ -1,6 +1,6 @@
 ;;; mode-local.el --- Support for mode local facilities
 ;;
-;; Copyright (C) 2004-2005, 2007-2015 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2005, 2007-2016 Free Software Foundation, Inc.
 ;;
 ;; Author: David Ponce <david@dponce.com>
 ;; Maintainer: David Ponce <david@dponce.com>
@@ -633,6 +633,9 @@ SYMBOL is a function that can be overridden."
       ;; LIST ALL LOADED OVERRIDES FOR SYMBOL HERE
       )))
 
+;; We are called from describe-function in help-fns.el, where this is defined.
+(defvar describe-function-orig-buffer)
+
 (defun describe-mode-local-overload (symbol)
   "For `help-fns-describe-function-functions'; add overloads for SYMBOL."
   (when (get symbol 'mode-local-overload)
@@ -667,7 +670,7 @@ SYMBOL is a function that can be overridden."
 
 (add-hook 'help-fns-describe-function-functions 'describe-mode-local-overload)
 
-(declare-function xref-item-location "xref" (xref))
+(declare-function xref-item-location "xref" (xref) t)
 
 (defun xref-mode-local--override-present (sym xrefs)
   "Return non-nil if SYM is in XREFS."

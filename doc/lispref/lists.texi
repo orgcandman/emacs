@@ -1,6 +1,6 @@
 @c -*-texinfo-*-
 @c This is part of the GNU Emacs Lisp Reference Manual.
-@c Copyright (C) 1990-1995, 1998-1999, 2001-2015 Free Software
+@c Copyright (C) 1990-1995, 1998-1999, 2001-2016 Free Software
 @c Foundation, Inc.
 @c See the file elisp.texi for copying conditions.
 @node Lists
@@ -1554,6 +1554,14 @@ keys may not be symbols:
 (assoc "simple leaves" leaves)
      @result{} ("simple leaves" . oak)
 @end smallexample
+@end defun
+
+@defun alist-get key value &optional default
+This function is like @code{assq}, but instead of returning the entire
+association for @var{key}, @code{(@var{key} . @var{value})}, it
+returns just the @var{value}.  It returns @var{default} if @var{key}
+is not found in @var{alist}, defaulting to @code{nil} if @var{default}
+is omitted.
 @end defun
 
 @defun rassq value alist

@@ -1,5 +1,5 @@
 ;;; screen.el --- terminal initialization for screen and tmux  -*- lexical-binding: t -*-
-;; Copyright (C) 1995, 2001-2015 Free Software Foundation, Inc.
+;; Copyright (C) 1995, 2001-2016 Free Software Foundation, Inc.
 
 (require 'term/xterm)
 
@@ -7,6 +7,7 @@
   "Extra capabilities supported under \"screen\".
 Some features of screen depend on the terminal emulator in which
 it runs, which can change when the screen session is moved to another tty."
+  :version "25.1"
   :type xterm--extra-capabilities-type
   :group 'xterm)
 

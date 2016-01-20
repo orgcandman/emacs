@@ -1,6 +1,6 @@
 ;;; font-lock.el --- Electric font lock mode
 
-;; Copyright (C) 1992-2015 Free Software Foundation, Inc.
+;; Copyright (C) 1992-2016 Free Software Foundation, Inc.
 
 ;; Author: Jamie Zawinski
 ;;	Richard Stallman
@@ -1302,15 +1302,18 @@ This function does 2 things:
                       (point-min))))
       (when (< end (point-max))
         (setq end
-              (if (get-text-property end 'font-lock-multiline)
-                  (or (text-property-any end (point-max)
-                                         'font-lock-multiline nil)
-                      (point-max))
+              (cond
+               ((get-text-property end 'font-lock-multiline)
+                (or (text-property-any end (point-max)
+                                       'font-lock-multiline nil)
+                    (point-max)))
+               ;; If `end' has been set by the function above, don't corrupt it.
+               (font-lock-extend-after-change-region-function end)
                 ;; Rounding up to a whole number of lines should include the
                 ;; line right after `end'.  Typical case: the first char of
                 ;; the line was deleted.  Or a \n was inserted in the middle
                 ;; of a line.
-                (1+ end))))
+               (t (1+ end)))))
       ;; Finally, pre-enlarge the region to a whole number of lines, to try
       ;; and anticipate what font-lock-default-fontify-region will do, so as to
       ;; avoid double-redisplay.
@@ -1561,6 +1564,7 @@ START should be at the beginning of a line."
   "Put proper face on each string and comment between START and END.
 START should be at the beginning of a line."
   (syntax-propertize end)  ; Apply any needed syntax-table properties.
+  (with-syntax-table (or syntax-ppss-table (syntax-table))
   (let ((comment-end-regexp
 	 (or font-lock-comment-end-skip
 	     (regexp-quote
@@ -1595,7 +1599,7 @@ START should be at the beginning of a line."
 				     font-lock-comment-delimiter-face))))
 	  (< (point) end))
       (setq state (parse-partial-sexp (point) end nil nil state
-				      'syntax-table)))))
+				      'syntax-table))))))
 
 ;;; End of Syntactic fontification functions.
 

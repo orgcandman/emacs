@@ -1,6 +1,6 @@
 ;;; dired.el --- directory-browsing commands -*- lexical-binding: t -*-
 
-;; Copyright (C) 1985-1986, 1992-1997, 2000-2015 Free Software
+;; Copyright (C) 1985-1986, 1992-1997, 2000-2016 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Sebastian Kremer <sk@thp.uni-koeln.de>
@@ -1453,7 +1453,7 @@ Do so according to the former subdir alist OLD-SUBDIR-ALIST."
     (define-key map "." 'dired-clean-directory)
     (define-key map "~" 'dired-flag-backup-files)
     ;; Upper case keys (except !) for operating on the marked files
-    (define-key map "A" 'dired-do-search)
+    (define-key map "A" 'dired-do-find-regexp)
     (define-key map "C" 'dired-do-copy)
     (define-key map "B" 'dired-do-byte-compile)
     (define-key map "D" 'dired-do-delete)
@@ -1463,7 +1463,7 @@ Do so according to the former subdir alist OLD-SUBDIR-ALIST."
     (define-key map "M" 'dired-do-chmod)
     (define-key map "O" 'dired-do-chown)
     (define-key map "P" 'dired-do-print)
-    (define-key map "Q" 'dired-do-query-replace-regexp)
+    (define-key map "Q" 'dired-do-find-regexp-and-replace)
     (define-key map "R" 'dired-do-rename)
     (define-key map "S" 'dired-do-symlink)
     (define-key map "T" 'dired-do-touch)
@@ -2810,7 +2810,9 @@ It runs the hook `dired-initial-position-hook'."
 (defun dired-current-directory (&optional localp)
   "Return the name of the subdirectory to which this line belongs.
 This returns a string with trailing slash, like `default-directory'.
-Optional argument means return a file name relative to `default-directory'."
+Optional argument means return a file name relative to `default-directory',
+in which case the value could be an empty string if `default-directory'
+is the directory where the file on this line resides."
   (let ((here (point))
 	(alist (or dired-subdir-alist
 		   ;; probably because called in a non-dired buffer

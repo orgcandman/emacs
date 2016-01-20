@@ -1,6 +1,6 @@
 ;;; etags.el --- etags facility for Emacs  -*- lexical-binding: t -*-
 
-;; Copyright (C) 1985-1986, 1988-1989, 1992-1996, 1998, 2000-2015 Free
+;; Copyright (C) 1985-1986, 1988-1989, 1992-1996, 1998, 2000-2016 Free
 ;; Software Foundation, Inc.
 
 ;; Author: Roland McGrath <roland@gnu.org>
@@ -1794,7 +1794,6 @@ Two variables control the processing we do on each file: the value of
 interesting (it returns non-nil if so) and `tags-loop-operate' is a form to
 evaluate to operate on an interesting file.  If the latter evaluates to
 nil, we exit; otherwise we scan the next file."
-  (declare (obsolete "use `xref-find-definitions' interface instead." "25.1"))
   (interactive)
   (let (new
 	;; Non-nil means we have finished one file

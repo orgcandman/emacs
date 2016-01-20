@@ -1,6 +1,6 @@
 ;;; rect.el --- rectangle functions for GNU Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985, 1999-2015 Free Software Foundation, Inc.
+;; Copyright (C) 1985, 1999-2016 Free Software Foundation, Inc.
 
 ;; Maintainer: Didier Verna <didier@xemacs.org>
 ;; Keywords: internal
@@ -403,6 +403,7 @@ With a prefix (or a FILL) argument, also fill too short lines."
 
 (defcustom rectangle-preview t
   "If non-nil, `string-rectangle' will show an-the-fly preview."
+  :version "25.1"
   :type 'boolean)
 
 (defun rectangle--string-preview ()

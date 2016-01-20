@@ -1,6 +1,6 @@
 @c -*-texinfo-*-
 @c This is part of the GNU Emacs Lisp Reference Manual.
-@c Copyright (C) 1990-1995, 1998-1999, 2001-2015 Free Software
+@c Copyright (C) 1990-1995, 1998-1999, 2001-2016 Free Software
 @c Foundation, Inc.
 @c See the file elisp.texi for copying conditions.
 @node Command Loop
@@ -689,6 +689,14 @@ the sequence of events to supply if the command inquires which events
 were used to invoke it.  If @var{keys} is omitted or @code{nil}, the
 default is the return value of @code{this-command-keys-vector}.
 @xref{Definition of this-command-keys-vector}.
+@end defun
+
+@defun funcall-interactively function &rest arguments
+This function works like @code{funcall} (@pxref{Calling Functions}),
+but it makes the call look like an interactive invocation: a call to
+@code{called-interactively-p} inside @var{function} will return
+@code{t}.  If @var{function} is not a command, it is called without
+signaling an error.
 @end defun
 
 @defun command-execute command &optional record-flag keys special

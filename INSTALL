@@ -1,5 +1,5 @@
 GNU Emacs Installation Guide
-Copyright (C) 1992, 1994, 1996-1997, 2000-2015 Free Software Foundation,
+Copyright (C) 1992, 1994, 1996-1997, 2000-2016 Free Software Foundation,
 Inc.
 See the end of the file for license conditions.
 
@@ -310,6 +310,9 @@ even on hosts where a narrower type would do.  With this option, on a
 typical 32-bit host, Emacs integers have 62 bits instead of 30.
 
 Use --with-cairo to compile Emacs with Cairo drawing.
+
+Use --with-modules to build Emacs with support for loading dynamic
+modules.
 
 Use --enable-gcc-warnings to enable compile-time checks that warn
 about possibly-questionable C code.  This is intended for developers

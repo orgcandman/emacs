@@ -1,6 +1,6 @@
 ;;; cursor-sensor.el --- React to cursor movement  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2015  Free Software Foundation, Inc.
+;; Copyright (C) 2015-2016 Free Software Foundation, Inc.
 
 ;; Author: Stefan Monnier <monnier@iro.umontreal.ca>
 ;; Keywords:
@@ -167,8 +167,8 @@
 This property should hold a list of functions which react to the motion
 of the cursor.  They're called with three arguments (WINDOW OLDPOS DIR)
 where WINDOW is the affected window, OLDPOS is the last known position of
-the cursor and DIR can be `left' or `entered' depending on whether the cursor is
-entering the area covered by the text-property property or leaving it."
+the cursor and DIR can be `entered' or `left' depending on whether the cursor
+is entering the area covered by the text-property property or leaving it."
   nil nil nil
   (if cursor-sensor-mode
       (add-hook 'pre-redisplay-functions #'cursor-sensor--detect

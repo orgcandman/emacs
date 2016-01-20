@@ -1,6 +1,6 @@
 ;;; package.el --- Simple package system for Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2007-2015 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2016 Free Software Foundation, Inc.
 
 ;; Author: Tom Tromey <tromey@redhat.com>
 ;;         Daniel Hackney <dan@haxney.org>
@@ -329,6 +329,7 @@ by running `package-install-selected-packages'.
 To check if a package is contained in this list here, use
 `package--user-selected-p', as it may populate the variable with
 a sane initial value."
+  :version "25.1"
   :type '(repeat symbol))
 
 (defcustom package-menu-async t
@@ -2654,6 +2655,7 @@ omitted from the package menu.  To toggle this, type \\[package-menu-toggle-hidi
 
 Values can be interactively added to this list by typing
 \\[package-menu-hide-package] on a package"
+  :version "25.1"
   :type '(repeat (regexp :tag "Hide packages with name matching")))
 
 (defun package-menu--refresh (&optional packages keywords)

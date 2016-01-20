@@ -1,6 +1,6 @@
 @c -*-texinfo-*-
 @c This is part of the GNU Emacs Lisp Reference Manual.
-@c Copyright (C) 1990-1995, 1998, 2001-2015 Free Software Foundation,
+@c Copyright (C) 1990-1995, 1998, 2001-2016 Free Software Foundation,
 @c Inc.
 @c See the file elisp.texi for copying conditions.
 @node Macros
@@ -158,6 +158,12 @@ expand the embedded calls to @code{inc}:
      @result{} (progn (setq r (1+ r)) (setq s (1+ s)))
 @end example
 
+@end defun
+
+@defun macroexpand-1 form &optional environment
+This function expands macros like @code{macroexpand}, but it only
+performs one step of the expansion: if the result is another macro
+call, @code{macroexpand-1} will not expand it.
 @end defun
 
 @node Compiling Macros

@@ -1,6 +1,6 @@
 ;;; rmail.el --- main code of "RMAIL" mail reader for Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985-1988, 1993-1998, 2000-2015 Free Software
+;; Copyright (C) 1985-1988, 1993-1998, 2000-2016 Free Software
 ;; Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -694,8 +694,9 @@ Element N specifies the summary line for message N+1.")
 This is set to nil by default.")
 
 (defcustom rmail-get-coding-function nil
-  "Function of no args to try to determine coding system for a message."
-  :type 'function
+  "Function of no args to try to determine coding system for a message.
+If nil, just search for `rmail-mime-charset-pattern'."
+  :type '(choice (const nil) function)
   :group 'rmail
   :version "24.4")
 

@@ -1,6 +1,6 @@
 ;;; dired-aux.el --- less commonly used parts of dired
 
-;; Copyright (C) 1985-1986, 1992, 1994, 1998, 2000-2015 Free Software
+;; Copyright (C) 1985-1986, 1992, 1994, 1998, 2000-2016 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Sebastian Kremer <sk@thp.uni-koeln.de>.
@@ -2712,6 +2712,41 @@ with the command \\[tags-loop-continue]."
 	  (error "File `%s' is visited read-only" file))))
   (tags-query-replace from to delimited
 		      '(dired-get-marked-files nil nil 'dired-nondirectory-p)))
+
+(declare-function xref--show-xrefs "xref")
+(declare-function xref-query-replace "xref")
+
+;;;###autoload
+(defun dired-do-find-regexp (regexp)
+  "Find all matches for REGEXP in all marked files, recursively."
+  (interactive "sSearch marked files (regexp): ")
+  (require 'grep)
+  (defvar grep-find-ignored-files)
+  (let* ((files (dired-get-marked-files))
+         (ignores (nconc (mapcar
+                          (lambda (s) (concat s "/"))
+                          vc-directory-exclusion-list)
+                         grep-find-ignored-files))
+         (xrefs (cl-mapcan
+                 (lambda (file)
+                   (xref-collect-matches regexp "*" file
+                                         (and (file-directory-p file)
+                                              ignores)))
+                 files)))
+    (unless xrefs
+      (user-error "No matches for: %s" regexp))
+    (xref--show-xrefs xrefs nil t)))
+
+;;;###autoload
+(defun dired-do-find-regexp-and-replace (from to)
+  "Replace matches of FROM with TO, in all marked files, recursively."
+  (interactive
+   (let ((common
+          (query-replace-read-args
+           "Query replace regexp in marked files" t t)))
+     (list (nth 0 common) (nth 1 common))))
+  (with-current-buffer (dired-do-find-regexp from)
+    (xref-query-replace from to)))
 
 (defun dired-nondirectory-p (file)
   (not (file-directory-p file)))

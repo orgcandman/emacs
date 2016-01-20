@@ -1,6 +1,6 @@
 /* Random utility Lisp functions.
 
-Copyright (C) 1985-1987, 1993-1995, 1997-2015 Free Software Foundation,
+Copyright (C) 1985-1987, 1993-1995, 1997-2016 Free Software Foundation,
 Inc.
 
 This file is part of GNU Emacs.
@@ -50,7 +50,8 @@ All integers representable in Lisp, i.e. between `most-negative-fixnum'
 and `most-positive-fixnum', inclusive, are equally likely.
 
 With positive integer LIMIT, return random number in interval [0,LIMIT).
-With argument t, set the random number seed from the current time and pid.
+With argument t, set the random number seed from the system's entropy
+pool if available, otherwise from less-random volatile data such as the time.
 With a string argument, set the seed based on the string's contents.
 Other values of LIMIT are ignored.
 

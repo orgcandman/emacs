@@ -1,6 +1,6 @@
 ;;; check-declare.el --- Check declare-function statements
 
-;; Copyright (C) 2007-2015 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2016 Free Software Foundation, Inc.
 
 ;; Author: Glenn Morris <rgm@gnu.org>
 ;; Keywords: lisp, tools, maint
@@ -131,6 +131,7 @@ With optional argument FULL, sums the number of elements in each element."
 
 (defcustom check-declare-ext-errors nil
   "When non-nil, warn about functions not found in :ext."
+  :version "25.1"
   :type 'boolean)
 
 (defun check-declare-verify (fnfile fnlist)

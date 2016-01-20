@@ -1,6 +1,6 @@
 ;;; newst-reader.el --- Generic RSS reader functions.
 
-;; Copyright (C) 2003-2015 Free Software Foundation, Inc.
+;; Copyright (C) 2003-2016 Free Software Foundation, Inc.
 
 ;; Author:      Ulf Jasper <ulf.jasper@web.de>
 ;; Filename:    newst-reader.el
@@ -69,6 +69,7 @@ This must be one of the functions `newsticker-plainview' or
 (defcustom newsticker-download-logos
   t
   "If non-nil newsticker downloads logo images of subscribed feeds."
+  :version "25.1"
   :type 'boolean
   :group 'newsticker-reader)
 

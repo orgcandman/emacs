@@ -1,6 +1,6 @@
 ;;; sgml-mode.el --- SGML- and HTML-editing modes -*- lexical-binding:t -*-
 
-;; Copyright (C) 1992, 1995-1996, 1998, 2001-2015 Free Software
+;; Copyright (C) 1992, 1995-1996, 1998, 2001-2016 Free Software
 ;; Foundation, Inc.
 
 ;; Author: James Clark <jjc@jclark.com>
@@ -862,11 +862,12 @@ Return non-nil if we skipped over matched tags."
                 (if endp
                     (when (sgml-skip-tag-backward 1) (forward-char 1) t)
                   (with-syntax-table sgml-tag-syntax-table
-                    (up-list -1)
-                    (when (sgml-skip-tag-forward 1)
-                      (backward-sexp 1)
-                      (forward-char 2)
-                      t))))
+                    (let ((forward-sexp-function nil))
+                      (up-list -1)
+                      (when (sgml-skip-tag-forward 1)
+                        (backward-sexp 1)
+                        (forward-char 2)
+                        t)))))
                (clones (get-char-property (point) 'text-clones)))
           (when (and match
                      (/= cl-end cl-start)

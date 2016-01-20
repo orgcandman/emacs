@@ -1,6 +1,6 @@
 ;;; thingatpt.el --- get the `thing' at point  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1991-1998, 2000-2015 Free Software Foundation, Inc.
+;; Copyright (C) 1991-1998, 2000-2016 Free Software Foundation, Inc.
 
 ;; Author: Mike Williams <mikew@gopher.dosli.govt.nz>
 ;; Maintainer: emacs-devel@gnu.org
@@ -280,8 +280,8 @@ If nil, construct the regexp from `thing-at-point-uri-schemes'.")
     "finger://" "fish://" "ftp://" "geo:" "git://" "go:" "gopher://"
     "h323:" "http://" "https://" "im:" "imap://" "info:" "ipp:"
     "irc://" "irc6://" "ircs://" "iris.beep:" "jar:" "ldap://"
-    "ldaps://" "mailto:" "mid:"  "mtqp://" "mupdate://" "news:"
-    "nfs://" "nntp://" "opaquelocktoken:" "pop://" "pres:"
+    "ldaps://" "magnet:" "mailto:" "mid:"  "mtqp://" "mupdate://"
+    "news:" "nfs://" "nntp://" "opaquelocktoken:" "pop://" "pres:"
     "resource://" "rmi://" "rsync://" "rtsp://" "rtspu://" "service:"
     "sftp://" "sip:" "sips:" "smb://" "sms:" "snmp://" "soap.beep://"
     "soap.beeps://" "ssh://" "svn://" "svn+ssh://" "tag:" "tel:"
