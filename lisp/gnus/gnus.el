@@ -27,7 +27,7 @@
 
 ;;; Code:
 
-(eval '(run-hooks 'gnus-load-hook))
+(run-hooks 'gnus-load-hook)
 
 (eval-when-compile (require 'cl))
 (require 'wid-edit)
@@ -303,15 +303,9 @@ be set in `.emacs' instead."
   :group 'gnus-start
   :type 'boolean)
 
-(unless (featurep 'gnus-xmas)
-  (defalias 'gnus-extent-detached-p 'ignore)
-  (defalias 'gnus-extent-start-open 'ignore)
-  (defalias 'gnus-mail-strip-quoted-names 'mail-strip-quoted-names)
-  (defalias 'gnus-character-to-event 'identity)
-  (defalias 'gnus-assq-delete-all 'assq-delete-all)
-  (defalias 'gnus-add-text-properties 'add-text-properties)
-  (defalias 'gnus-put-text-property 'put-text-property)
-  (defvar gnus-mode-line-image-cache t)
+(defvar gnus-mode-line-image-cache t)
+
+(eval-and-compile
   (if (fboundp 'find-image)
       (defun gnus-mode-line-buffer-identification (line)
 	(let ((str (car-safe line))
@@ -336,12 +330,7 @@ be set in `.emacs' instead."
 		      str)
 		     (list str))
 	    line)))
-    (defalias 'gnus-mode-line-buffer-identification 'identity))
-  (defalias 'gnus-deactivate-mark 'deactivate-mark)
-  (defalias 'gnus-window-edges 'window-edges)
-  (defalias 'gnus-key-press-event-p 'numberp)
-  ;;(defalias 'gnus-decode-rfc1522 'ignore)
-  )
+    (defalias 'gnus-mode-line-buffer-identification 'identity)))
 
 ;; We define these group faces here to avoid the display
 ;; update forced when creating new faces.
@@ -914,14 +903,20 @@ be set in `.emacs' instead."
 
 (defun gnus-add-buffer ()
   "Add the current buffer to the list of Gnus buffers."
+  (gnus-prune-buffers)
   (push (current-buffer) gnus-buffers))
 
 (defmacro gnus-kill-buffer (buffer)
   "Kill BUFFER and remove from the list of Gnus buffers."
   `(let ((buf ,buffer))
      (when (gnus-buffer-exists-p buf)
-       (setq gnus-buffers (delete (get-buffer buf) gnus-buffers))
-       (kill-buffer buf))))
+       (kill-buffer buf)
+       (gnus-prune-buffers))))
+
+(defun gnus-prune-buffers ()
+  (dolist (buf gnus-buffers)
+    (unless (buffer-live-p buf)
+      (setq gnus-buffers (delete buf gnus-buffers)))))
 
 (defun gnus-buffers ()
   "Return a list of live Gnus buffers."
@@ -2503,16 +2498,11 @@ Disabling the agent may result in noticeable loss of performance."
 		 (function-item gnus-slave-no-server)))
 
 (defcustom gnus-other-frame-parameters nil
-  "Frame parameters used by `gnus-other-frame' to create a Gnus frame.
-This should be an alist for Emacs, or a plist for XEmacs."
+  "Frame parameters used by `gnus-other-frame' to create a Gnus frame."
   :group 'gnus-start
-  :type (if (featurep 'xemacs)
-	    '(repeat (list :inline t :format "%v"
-			   (symbol :tag "Property")
-			   (sexp :tag "Value")))
-	  '(repeat (cons :format "%v"
-			 (symbol :tag "Parameter")
-			 (sexp :tag "Value")))))
+  :type '(repeat (cons :format "%v"
+		       (symbol :tag "Parameter")
+		       (sexp :tag "Value"))))
 
 (defcustom gnus-user-agent '(emacs gnus type)
   "Which information should be exposed in the User-Agent header.
@@ -3026,7 +3016,7 @@ See Info node `(gnus)Formatting Variables'."
 
 (defun gnus-suppress-keymap (keymap)
   (suppress-keymap keymap)
-  (let ((keys `([delete] "\177" "\M-u"))) ;gnus-mouse-2
+  (let ((keys `([delete] "\177" "\M-u"))) ;[mouse-2]
     (while keys
       (define-key keymap (pop keys) 'undefined))))
 
@@ -3155,10 +3145,6 @@ Return nil if not defined."
   (setcar (nthcdr 2 (gnus-gethash group gnus-newsrc-hashtb))
 	  info))
 
-;;; Load the compatibility functions.
-
-(require 'gnus-ems)
-
 
 ;;;
 ;;; Shutdown
@@ -3243,8 +3229,7 @@ If ARG, insert string at point."
 			 4.99
 		       (+ 5 (* 0.02
 			       (abs
-				(- (mm-char-int (aref (downcase alpha) 0))
-				   (mm-char-int ?t))))
+				(- (aref (downcase alpha) 0) ?t)))
 			  -0.01))
 		     minor least)
 	 (format "%d.%02d%02d" major minor least))))))
@@ -3448,7 +3433,7 @@ that that variable is buffer-local to the summary buffers."
 
 (defun gnus-simplify-mode-line ()
   "Make mode lines a bit simpler."
-  (setq mode-line-modified (cdr gnus-mode-line-modified))
+  (setq mode-line-modified "--")
   (when (listp mode-line-format)
     (make-local-variable 'mode-line-format)
     (setq mode-line-format (copy-sequence mode-line-format))
@@ -4386,12 +4371,12 @@ current display is used."
 				 (with-current-buffer (window-buffer window)
 				   (string-match "\\`gnus-"
 						 (symbol-name major-mode))))
-			(gnus-select-frame-set-input-focus
+			(select-frame-set-input-focus
 			 (setq gnus-other-frame-object (window-frame window)))
 			(select-window window)
 			(throw 'found t)))
 		    'ignore t)))
-      (gnus-select-frame-set-input-focus
+      (select-frame-set-input-focus
        (setq gnus-other-frame-object
 	     (if display
 		 (make-frame-on-display display gnus-other-frame-parameters)
@@ -4434,10 +4419,6 @@ prompt the user for the name of an NNTP server to use."
   (interactive)
   (require 'debbugs-gnu)
   (debbugs-gnu nil "gnus"))
-
-;; Allow redefinition of Gnus functions.
-
-(gnus-ems-redefine)
 
 (provide 'gnus)
 

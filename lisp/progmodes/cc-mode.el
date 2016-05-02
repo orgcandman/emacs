@@ -141,7 +141,18 @@
 ;; derived-mode-ex.el>.
 
 (defun c-leave-cc-mode-mode ()
-  (setq c-buffer-is-cc-mode nil))
+  (when c-buffer-is-cc-mode
+    (save-restriction
+      (widen)
+      (c-save-buffer-state ()
+	(c-clear-char-properties (point-min) (point-max) 'category)
+	(c-clear-char-properties (point-min) (point-max) 'syntax-table)
+	(c-clear-char-properties (point-min) (point-max) 'c-is-sws)
+	(c-clear-char-properties (point-min) (point-max) 'c-in-sws)
+	(c-clear-char-properties (point-min) (point-max) 'c-type)
+	(if (c-major-mode-is 'awk-mode)
+	    (c-clear-char-properties (point-min) (point-max) 'c-awk-NL-prop))))
+    (setq c-buffer-is-cc-mode nil)))
 
 (defun c-init-language-vars-for (mode)
   "Initialize the language variables for one of the language modes
@@ -1482,6 +1493,7 @@ Key bindings:
 	abbrev-mode t)
   (use-local-map c-mode-map)
   (c-init-language-vars-for 'c-mode)
+  (c-make-noise-macro-regexps)
   (c-make-macro-with-semi-re) ; matches macro names whose expansion ends with ;
   (c-common-init 'c-mode)
   (easy-menu-add c-c-menu)
@@ -1537,6 +1549,7 @@ Key bindings:
 	abbrev-mode t)
   (use-local-map c++-mode-map)
   (c-init-language-vars-for 'c++-mode)
+  (c-make-noise-macro-regexps)
   (c-make-macro-with-semi-re) ; matches macro names whose expansion ends with ;
   (c-common-init 'c++-mode)
   (easy-menu-add c-c++-menu)
@@ -1590,6 +1603,7 @@ Key bindings:
 	abbrev-mode t)
   (use-local-map objc-mode-map)
   (c-init-language-vars-for 'objc-mode)
+  (c-make-noise-macro-regexps)
   (c-make-macro-with-semi-re) ; matches macro names whose expansion ends with ;
   (c-common-init 'objc-mode)
   (easy-menu-add c-objc-menu)

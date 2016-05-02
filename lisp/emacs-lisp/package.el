@@ -183,7 +183,13 @@ If VERSION is a string, only that version is ever loaded.
  Any other version, even if newer, is silently ignored.
  Hence, the package is \"held\" at that version.
 If VERSION is nil, the package is not loaded (it is \"disabled\")."
-  :type '(repeat symbol)
+  :type '(repeat (choice (const all)
+                         (list :tag "Specific package"
+                               (symbol :tag "Package name")
+                               (choice :tag "Version"
+                                (const :tag "disable" nil)
+                                (const :tag "most recent" t)
+                                (string :tag "specific version")))))
   :risky t
   :version "24.1")
 
@@ -899,12 +905,15 @@ untar into a directory named DIR; otherwise, signal an error."
   file)
 
 (defvar generated-autoload-file)
+(defvar autoload-timestamps)
 (defvar version-control)
 
 (defun package-generate-autoloads (name pkg-dir)
   (let* ((auto-name (format "%s-autoloads.el" name))
          ;;(ignore-name (concat name "-pkg.el"))
          (generated-autoload-file (expand-file-name auto-name pkg-dir))
+         ;; We don't need 'em, and this makes the output reproducible.
+         (autoload-timestamps nil)
          ;; Silence `autoload-generate-file-autoloads'.
          (noninteractive inhibit-message)
          (backup-inhibited t)
@@ -1447,9 +1456,8 @@ loading packages twice."
 (defvar package--downloads-in-progress nil
   "List of in-progress asynchronous downloads.")
 
-(declare-function epg-check-configuration "epg-config"
-                  (config &optional minimum-version))
-(declare-function epg-configuration "epg-config" ())
+(declare-function epg-find-configuration "epg-config"
+                  (protocol &optional force))
 (declare-function epg-import-keys-from-file "epg" (context keys))
 
 ;;;###autoload
@@ -1549,11 +1557,15 @@ downloads in the background."
   (let ((default-keyring (expand-file-name "package-keyring.gpg"
                                            data-directory))
         (inhibit-message async))
+    (if (get 'package-check-signature 'saved-value)
+        (when package-check-signature
+          (epg-find-configuration 'OpenPGP))
+      (setq package-check-signature
+            (if (epg-find-configuration 'OpenPGP)
+                'allow-unsigned)))
     (when (and package-check-signature (file-exists-p default-keyring))
       (condition-case-unless-debug error
-          (progn
-            (epg-check-configuration (epg-configuration))
-            (package-import-keyring default-keyring))
+          (package-import-keyring default-keyring)
         (error (message "Cannot import default keyring: %S" (cdr error))))))
   (package--download-and-read-archives async))
 
@@ -2280,7 +2292,7 @@ Otherwise no newline is inserted."
     (insert "\n")
     (unless (and pkg-dir (not archive)) ; Installed pkgs don't have archive.
       (package--print-help-section "Archive"
-        (or archive "n/a") "\n"))
+        (or archive "n/a")))
     (and version
          (package--print-help-section "Version"
            (package-version-join version)))

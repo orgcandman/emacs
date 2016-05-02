@@ -12,8 +12,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -1908,8 +1908,6 @@ ccl_get_compiled_code (Lisp_Object ccl_prog, ptrdiff_t *idx)
 bool
 setup_ccl_program (struct ccl_program *ccl, Lisp_Object ccl_prog)
 {
-  int i;
-
   if (! NILP (ccl_prog))
     {
       struct Lisp_Vector *vp;
@@ -1931,8 +1929,7 @@ setup_ccl_program (struct ccl_program *ccl, Lisp_Object ccl_prog)
 	}
     }
   ccl->ic = CCL_HEADER_MAIN;
-  for (i = 0; i < 8; i++)
-    ccl->reg[i] = 0;
+  memset (ccl->reg, 0, sizeof ccl->reg);
   ccl->last_block = false;
   ccl->status = 0;
   ccl->stack_idx = 0;

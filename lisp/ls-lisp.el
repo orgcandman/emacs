@@ -72,7 +72,7 @@
 
 (defcustom ls-lisp-emulation
   (cond ;; ((eq system-type 'windows-nt) 'MS-Windows)
-	((memq system-type '(hpux usg-unix-v irix berkeley-unix))
+	((memq system-type '(hpux usg-unix-v berkeley-unix))
 	 'UNIX))	; very similar to GNU
   ;; Anything else defaults to nil, meaning GNU.
   "Platform to emulate: GNU (default), MacOS, MS-Windows, UNIX.
@@ -348,7 +348,9 @@ SWITCHES is a *list* of characters.  TIME-INDEX is the time index into
 file-attributes according to SWITCHES.  WILDCARD-REGEXP is nil or an *Emacs
 regexp*.  FULL-DIRECTORY-P means file is a directory and SWITCHES does
 not contain `d', so that a full listing is expected."
-  (if (or wildcard-regexp full-directory-p)
+  (if (or (and wildcard-regexp
+               (not (string= "[^~]\\'" wildcard-regexp))) ; Switch -B pseudo-wildcard regexp
+          full-directory-p)
       (let* ((dir (file-name-as-directory file))
 	     (default-directory dir)	; so that file-attributes works
 	     (file-alist

@@ -85,7 +85,7 @@ from Isearch by using a key sequence like `C-s C-s M-%'." "24.3")
   ;; while preparing to dump, also stops customize-rogue listing this.
   :initialize 'custom-initialize-delay
   :group 'matching
-  :type 'sexp
+  :type '(choice string (sexp :tag "Display specification"))
   :version "25.1")
 
 (defcustom query-replace-from-history-variable 'query-replace-history
@@ -1268,6 +1268,7 @@ Compatibility function for \\[next-error] invocations."
     (t :background "gray"))
   "Face used to highlight matches permanently."
   :group 'matching
+  :group 'basic-faces
   :version "22.1")
 
 (defcustom list-matching-lines-default-context-lines 0
@@ -1824,6 +1825,8 @@ C-w to delete match and recursive edit,
 C-l to clear the screen, redisplay, and offer same replacement again,
 ! to replace all remaining matches in this buffer with no more questions,
 ^ to move point back to previous match,
+u to undo previous replacement,
+U to undo all replacements,
 E to edit the replacement string.
 In multi-buffer replacements type `Y' to replace all remaining
 matches in all remaining buffers with no more questions,
@@ -1853,6 +1856,8 @@ in the current buffer."
     (define-key map "\C-l" 'recenter)
     (define-key map "!" 'automatic)
     (define-key map "^" 'backup)
+    (define-key map "u" 'undo)
+    (define-key map "U" 'undo-all)
     (define-key map "\C-h" 'help)
     (define-key map [f1] 'help)
     (define-key map [help] 'help)
@@ -1878,7 +1883,7 @@ The valid answers include `act', `skip', `act-and-show',
 `act-and-exit', `exit', `exit-prefix', `recenter', `scroll-up',
 `scroll-down', `scroll-other-window', `scroll-other-window-down',
 `edit', `edit-replacement', `delete-and-edit', `automatic',
-`backup', `quit', and `help'.
+`backup', `undo', `undo-all', `quit', and `help'.
 
 This keymap is used by `y-or-n-p' as well as `query-replace'.")
 
@@ -1980,13 +1985,15 @@ but coerced to the correct value of INTEGERS."
 		  new)))
       (match-data integers reuse t)))
 
-(defun replace-match-maybe-edit (newtext fixedcase literal noedit match-data backward)
+(defun replace-match-maybe-edit (newtext fixedcase literal noedit match-data
+                                 &optional backward)
   "Make a replacement with `replace-match', editing `\\?'.
 FIXEDCASE, LITERAL are passed to `replace-match' (which see).
 After possibly editing it (if `\\?' is present), NEWTEXT is also
 passed to `replace-match'.  If NOEDIT is true, no check for `\\?'
 is made (to save time).  MATCH-DATA is used for the replacement.
-In case editing is done, it is changed to use markers.
+In case editing is done, it is changed to use markers.  BACKWARD is
+used to reverse the replacement direction.
 
 The return value is non-nil if there has been no `\\?' or NOEDIT was
 passed in.  If LITERAL is set, no checking is done, anyway."
@@ -2027,7 +2034,7 @@ It is called with three arguments, as if it were
 `re-search-forward'.")
 
 (defun replace-search (search-string limit regexp-flag delimited-flag
-				     case-fold-search backward)
+		       case-fold-search &optional backward)
   "Search for the next occurrence of SEARCH-STRING to replace."
   ;; Let-bind global isearch-* variables to values used
   ;; to search the next replacement.  These let-bindings
@@ -2061,7 +2068,7 @@ It is called with three arguments, as if it were
 
 (defun replace-highlight (match-beg match-end range-beg range-end
 			  search-string regexp-flag delimited-flag
-			  case-fold-search backward)
+			  case-fold-search &optional backward)
   (if query-replace-highlight
       (if replace-overlay
 	  (move-overlay replace-overlay match-beg match-end (current-buffer))
@@ -2130,6 +2137,10 @@ It must return a string."
          (noedit nil)
          (keep-going t)
          (stack nil)
+         (search-string-replaced nil)    ; last string matching `from-string'
+         (next-replacement-replaced nil) ; replacement string
+                                         ; (substituted regexp)
+         (last-was-undo)
          (replace-count 0)
          (skip-read-only-count 0)
          (skip-filtered-count 0)
@@ -2326,8 +2337,28 @@ It must return a string."
 		   (match-beginning 0) (match-end 0)
 		   start end search-string
 		   regexp-flag delimited-flag case-fold-search backward)
-		  ;; Bind message-log-max so we don't fill up the message log
-		  ;; with a bunch of identical messages.
+                  ;; Obtain the matched groups: needed only when
+                  ;; regexp-flag non nil.
+                  (when (and last-was-undo regexp-flag)
+                    (setq last-was-undo nil
+                          real-match-data
+                          (save-excursion
+                            (goto-char (match-beginning 0))
+                            (looking-at search-string)
+                            (match-data t real-match-data))))
+                  ;; Matched string and next-replacement-replaced
+                  ;; stored in stack.
+                  (setq search-string-replaced (buffer-substring-no-properties
+                                                (match-beginning 0)
+                                                (match-end 0))
+                        next-replacement-replaced
+                        (query-replace-descr
+                         (save-match-data
+                           (set-match-data real-match-data)
+                           (match-substitute-replacement
+                            next-replacement nocasify literal))))
+		  ;; Bind message-log-max so we don't fill up the
+		  ;; message log with a bunch of identical messages.
 		  (let ((message-log-max nil)
 			(replacement-presentation
 			 (if query-replace-show-replacement
@@ -2340,8 +2371,8 @@ It must return a string."
                              (query-replace-descr from-string)
                              (query-replace-descr replacement-presentation)))
 		  (setq key (read-event))
-		  ;; Necessary in case something happens during read-event
-		  ;; that clobbers the match data.
+		  ;; Necessary in case something happens during
+		  ;; read-event that clobbers the match data.
 		  (set-match-data real-match-data)
 		  (setq key (vector key))
 		  (setq def (lookup-key map key))
@@ -2352,7 +2383,8 @@ It must return a string."
 			    (concat "Query replacing "
 				    (if delimited-flag
 					(or (and (symbolp delimited-flag)
-						 (get delimited-flag 'isearch-message-prefix))
+						 (get delimited-flag
+                                                      'isearch-message-prefix))
 					    "word ") "")
 				    (if regexp-flag "regexp " "")
 				    (if backward "backward " "")
@@ -2379,6 +2411,73 @@ It must return a string."
 			   (message "No previous match")
 			   (ding 'no-terminate)
 			   (sit-for 1)))
+			((or (eq def 'undo) (eq def 'undo-all))
+			 (if (null stack)
+                             (progn
+                               (message "Nothing to undo")
+                               (ding 'no-terminate)
+                               (sit-for 1))
+			   (let ((stack-idx         0)
+                                 (stack-len         (length stack))
+                                 (num-replacements  0)
+                                 search-string
+                                 next-replacement)
+                             (while (and (< stack-idx stack-len)
+                                         stack
+                                         (null replaced))
+                               (let* ((elt (nth stack-idx stack)))
+                                 (setq
+                                  stack-idx (1+ stack-idx)
+                                  replaced (nth 1 elt)
+                                  ;; Bind swapped values
+                                  ;; (search-string <--> replacement)
+                                  search-string (nth (if replaced 4 3) elt)
+                                  next-replacement (nth (if replaced 3 4) elt)
+                                  search-string-replaced search-string
+                                  next-replacement-replaced next-replacement)
+
+                                 (when (and (= stack-idx stack-len)
+                                            (null replaced)
+                                            (zerop num-replacements))
+                                          (message "Nothing to undo")
+                                          (ding 'no-terminate)
+                                          (sit-for 1))
+
+                                 (when replaced
+                                   (setq stack (nthcdr stack-idx stack))
+                                   (goto-char (nth 0 elt))
+                                   (set-match-data (nth 2 elt))
+                                   (setq real-match-data
+                                         (save-excursion
+                                           (goto-char (match-beginning 0))
+                                           (looking-at search-string)
+                                           (match-data t (nth 2 elt)))
+                                         noedit
+                                         (replace-match-maybe-edit
+                                          next-replacement nocasify literal
+                                          noedit real-match-data backward)
+                                         replace-count (1- replace-count)
+                                         real-match-data
+                                         (save-excursion
+                                           (goto-char (match-beginning 0))
+                                           (looking-at next-replacement)
+                                           (match-data t (nth 2 elt))))
+                                   ;; Set replaced nil to keep in loop
+                                   (when (eq def 'undo-all)
+                                     (setq replaced nil
+                                           stack-len (- stack-len stack-idx)
+                                           stack-idx 0
+                                           num-replacements
+                                           (1+ num-replacements))))))
+                             (when (and (eq def 'undo-all)
+                                        (null (zerop num-replacements)))
+                               (message "Undid %d %s" num-replacements
+                                        (if (= num-replacements 1)
+                                            "replacement"
+                                          "replacements"))
+                               (ding 'no-terminate)
+                               (sit-for 1)))
+			   (setq replaced nil last-was-undo t)))
 			((eq def 'act)
 			 (or replaced
 			     (setq noedit
@@ -2501,9 +2600,12 @@ It must return a string."
 				 (match-beginning 0)
 				 (match-end 0)
 				 (current-buffer))
-			      (match-data t)))
-		      stack))))))
-
+			      (match-data t))
+				search-string-replaced
+				next-replacement-replaced)
+		      stack)
+                (setq next-replacement-replaced nil
+                      search-string-replaced    nil))))))
       (replace-dehighlight))
     (or unread-command-events
 	(message "Replaced %d occurrence%s%s"

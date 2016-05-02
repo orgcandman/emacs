@@ -208,9 +208,11 @@ icon widgets used to draw the tree.  By default these images are used:
 
 (defcustom tree-widget-space-width 0.5
   "Amount of space between an icon image and a node widget.
-Must be a valid space :width display property."
+Must be a valid space :width display property.
+See Info node `(elisp)Specified Space'."
   :group 'tree-widget
-  :type 'sexp)
+  :type '(choice (number :tag "Multiple of normal character width")
+                 sexp))
 
 ;;; Image support
 ;;
@@ -664,7 +666,7 @@ This hook should be local in the buffer setup to display widgets.")
          (flags  (widget-get tree :tree-widget--guide-flags))
          (indent (widget-get tree :indent))
          ;; Setup widget's image support.  Looking up for images, and
-         ;; setting widgets' :tag-glyph is done here, to allow to
+         ;; setting widgets' :tag-glyph is done here, to allow us to
          ;; dynamically change the image theme.
          (widget-image-enable (tree-widget-use-image-p))     ; Emacs
          (widget-glyph-enable widget-image-enable)           ; XEmacs

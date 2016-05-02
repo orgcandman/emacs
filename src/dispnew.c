@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -39,6 +39,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "syssignal.h"
 #include "systime.h"
 #include "tparam.h"
+#include "xwidget.h"
 
 #ifdef HAVE_WINDOW_SYSTEM
 #include TERM_HEADER
@@ -680,7 +681,9 @@ void
 clear_glyph_matrix_rows (struct glyph_matrix *matrix, int start, int end)
 {
   eassert (start <= end);
-  eassert (start >= 0 && start < matrix->nrows);
+  eassert (start >= 0 && (start < matrix->nrows
+			  /* matrix->nrows can be 0 for the initial frame.  */
+			  || (matrix->nrows == 0)));
   eassert (end >= 0 && end <= matrix->nrows);
 
   for (; start < end; ++start)
@@ -3543,6 +3546,7 @@ update_window (struct window *w, bool force_p)
   add_window_display_history (w, w->current_matrix->method, paused_p);
 #endif
 
+  xwidget_end_redisplay (w, w->current_matrix);
   clear_glyph_matrix (desired_matrix);
 
   return paused_p;
@@ -4115,6 +4119,11 @@ scrolling_window (struct window *w, bool header_line_p)
       else
 	break;
     }
+
+#ifdef HAVE_XWIDGETS
+  /* Currently this seems needed to detect xwidget movement reliably. */
+    return 0;
+#endif
 
   /* Give up if some rows in the desired matrix are not enabled.  */
   if (! MATRIX_ROW_ENABLED_P (desired_matrix, i))
@@ -5660,7 +5669,7 @@ DEFUN ("sleep-for", Fsleep_for, Ssleep_for, 1, 2, 0,
 SECONDS may be a floating-point value, meaning that you can wait for a
 fraction of a second.  Optional second arg MILLISECONDS specifies an
 additional wait period, in milliseconds; this is for backwards compatibility.
-(Not all operating systems support waiting for a fraction of a second.)  */)
+\(Not all operating systems support waiting for a fraction of a second.)  */)
   (Lisp_Object seconds, Lisp_Object milliseconds)
 {
   double duration = extract_float (seconds);

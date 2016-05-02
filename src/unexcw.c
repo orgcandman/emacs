@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -29,10 +29,6 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <assert.h>
 
 #define DOTEXE ".exe"
-
-extern void report_sheap_usage (int);
-
-extern int bss_sbrk_did_unexec;
 
 /*
 ** header for Windows executable files
@@ -276,8 +272,6 @@ unexec (const char *outfile, const char *infile)
   int ret;
   int ret2;
 
-  report_sheap_usage (1);
-
   infile = add_exe_suffix_if_necessary (infile, infile_buffer);
   outfile = add_exe_suffix_if_necessary (outfile, outfile_buffer);
 
@@ -302,9 +296,7 @@ unexec (const char *outfile, const char *infile)
   ret = emacs_close (fd_in);
   assert (ret == 0);
 
-  bss_sbrk_did_unexec = 1;
   fixup_executable (fd_out);
-  bss_sbrk_did_unexec = 0;
 
   ret = emacs_close (fd_out);
   assert (ret == 0);

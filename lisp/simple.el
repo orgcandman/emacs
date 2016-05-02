@@ -2041,6 +2041,10 @@ next element of the minibuffer history in the minibuffer."
        ;; the end of the line when it fails to go to the next line.
        (goto-char old-point)
        (next-history-element arg)
+       ;; Reset `temporary-goal-column' because a correct value is not
+       ;; calculated when `next-line' above fails by bumping against
+       ;; the bottom of the minibuffer (bug#22544).
+       (setq temporary-goal-column 0)
        ;; Restore the original goal column on the last line
        ;; of possibly multi-line input.
        (goto-char (point-max))
@@ -2071,6 +2075,10 @@ previous element of the minibuffer history in the minibuffer."
        ;; the beginning of the line when it fails to go to the previous line.
        (goto-char old-point)
        (previous-history-element arg)
+       ;; Reset `temporary-goal-column' because a correct value is not
+       ;; calculated when `previous-line' above fails by bumping against
+       ;; the top of the minibuffer (bug#22544).
+       (setq temporary-goal-column 0)
        ;; Restore the original goal column on the first line
        ;; of possibly multi-line input.
        (goto-char (minibuffer-prompt-end))
@@ -2078,7 +2086,15 @@ previous element of the minibuffer history in the minibuffer."
 	   (if (= (line-number-at-pos) 1)
 	       (move-to-column (+ old-column (1- (minibuffer-prompt-end))))
 	     (move-to-column old-column))
-	 (goto-char (line-end-position)))))))
+	 ;; Put the cursor at the end of the visual line instead of the
+	 ;; logical line, so the next `previous-line-or-history-element'
+	 ;; would move to the previous history element, not to a possible upper
+	 ;; visual line from the end of logical line in `line-move-visual' mode.
+	 (end-of-visual-line)
+	 ;; Since `end-of-visual-line' puts the cursor at the beginning
+	 ;; of the next visual line, move it one char back to the end
+	 ;; of the first visual line (bug#22544).
+	 (unless (eolp) (backward-char 1)))))))
 
 (defun next-complete-history-element (n)
   "Get next history element which completes the minibuffer before the point.
@@ -2894,7 +2910,7 @@ removes the previous `undo-boundary' if a series of such calls
 have been made.  By default `self-insert-command' and
 `delete-char' are the only amalgamating commands, although this
 function could be called by any command wishing to have this
-behaviour."
+behavior."
   (let ((last-amalgamating-count
          (undo-auto--last-boundary-amalgamating-number)))
     (setq undo-auto--this-command-amalgamating t)
@@ -3178,6 +3194,8 @@ shell (with its need to quote arguments)."
 (defun shell-command (command &optional output-buffer error-buffer)
   "Execute string COMMAND in inferior shell; display output, if any.
 With prefix argument, insert the COMMAND's output at point.
+
+Interactively, prompt for COMMAND in the minibuffer.
 
 If COMMAND ends in `&', execute it asynchronously.
 The output appears in the buffer `*Async Shell Command*'.
@@ -3730,8 +3748,13 @@ support pty association, if PROGRAM is nil."
 (defun process-menu-delete-process ()
   "Kill process at point in a `list-processes' buffer."
   (interactive)
-  (delete-process (tabulated-list-get-id))
-  (revert-buffer))
+  (let ((pos (point)))
+    (delete-process (tabulated-list-get-id))
+    (revert-buffer)
+    (goto-char (min pos (point-max)))
+    (if (eobp)
+        (forward-line -1)
+      (beginning-of-line))))
 
 (defun list-processes--refresh ()
   "Recompute the list of processes for the Process List buffer.
@@ -6720,7 +6743,13 @@ current object."
 (defun backward-word (&optional arg)
   "Move backward until encountering the beginning of a word.
 With argument ARG, do this that many times.
-If ARG is omitted or nil, move point backward one word."
+If ARG is omitted or nil, move point backward one word.
+
+The word boundaries are normally determined by the buffer's syntax
+table, but `find-word-boundary-function-table', such as set up
+by `subword-mode', can change that.  If a Lisp program needs to
+move by words determined strictly by the syntax table, it should
+use `backward-word-strictly' instead."
   (interactive "^p")
   (forward-word (- (or arg 1))))
 

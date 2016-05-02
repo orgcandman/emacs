@@ -2119,7 +2119,7 @@ See `set-language-info-alist' for use in programs."
       (with-current-buffer standard-output
 	(insert language-name " language environment\n\n")
 	(if (stringp doc)
-	    (insert doc "\n\n"))
+	    (insert (substitute-command-keys doc) "\n\n"))
 	(condition-case nil
 	    (let ((str (eval (get-language-info language-name 'sample-text))))
 	      (if (stringp str)
@@ -2235,7 +2235,7 @@ See `set-language-info-alist' for use in programs."
     ("br" . "Latin-1") ; Breton
     ("bs" . "Latin-2") ; Bosnian
     ("byn" . "UTF-8")  ; Bilin; Blin
-    ("ca" . "Latin-1") ; Catalan
+    ("ca" "Catalan" iso-8859-1) ; Catalan
     ; co Corsican
     ("cs" "Czech" iso-8859-2)
     ("cy" "Welsh" iso-8859-14)
@@ -2935,11 +2935,15 @@ on encoding."
 	       (#xA000 . #xD7FF)
 	       ;; (#xD800 . #xFAFF) Surrogate/Private
 	       (#xFB00 . #x134FF)
-	       ;; (#x13500 . #x167FF) unused
-	       (#x16800 . #x16A3F)
-	       ;; (#x16A40 . #x1AFFF) unused
+	       ;; (#x13500 . #x143FF) unused
+               (#x14400 . #x14646)
+	       ;; (#x14647 . #x167FF) unused
+	       (#x16800 . #x16F9F)
+	       ;; (#x16FA0 . #x1AFFF) unused
 	       (#x1B000 . #x1B0FF)
-	       ;; (#x1B100 . #x1CFFF) unused
+	       ;; (#x1B100 . #x1BBFF) unused
+               (#x1BC00 . #x1BCAF)
+	       ;; (#x1BCB0 . #x1CFFF) unused
 	       (#x1D000 . #x1FFFF)
 	       ;; (#x20000 . #xDFFFF) CJK Ideograph Extension A, B, etc, unused
 	       (#xE0000 . #xE01FF)))

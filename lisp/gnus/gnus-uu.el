@@ -217,11 +217,8 @@ Note that this variable can be used in conjunction with the
 
 ;; Various variables users may set
 
-(defcustom gnus-uu-tmp-dir
-  (cond ((fboundp 'temp-directory) (temp-directory))
-	((boundp 'temporary-file-directory) temporary-file-directory)
-	("/tmp/"))
-  "*Variable saying where gnus-uu is to do its work.
+(defcustom gnus-uu-tmp-dir temporary-file-directory
+  "Variable saying where gnus-uu is to do its work.
 Default is \"/tmp/\"."
   :group 'gnus-extract
   :type 'directory)
@@ -408,7 +405,7 @@ didn't work, and overwrite existing files.  Otherwise, ask each time."
 			  gnus-uu-default-dir))))
   (gnus-uu-initialize)
   (setq gnus-uu-binhex-article-name
-	(mm-make-temp-file (expand-file-name "binhex" gnus-uu-work-dir)))
+	(make-temp-file (expand-file-name "binhex" gnus-uu-work-dir)))
   (gnus-uu-decode-with-method 'gnus-uu-binhex-article n dir))
 
 (defun gnus-uu-decode-yenc (n dir)
@@ -474,7 +471,7 @@ didn't work, and overwrite existing files.  Otherwise, ask each time."
 			 gnus-uu-default-dir gnus-uu-default-dir)))
   (gnus-uu-initialize)
   (setq gnus-uu-binhex-article-name
-	(mm-make-temp-file (expand-file-name "binhex" gnus-uu-work-dir)))
+	(make-temp-file (expand-file-name "binhex" gnus-uu-work-dir)))
   (let ((gnus-view-pseudos (or gnus-view-pseudos 'automatic)))
     (gnus-uu-decode-binhex n file)))
 
@@ -486,7 +483,7 @@ didn't work, and overwrite existing files.  Otherwise, ask each time."
   (interactive "P")
   (gnus-uu-initialize)
   (let ((gnus-uu-save-in-digest t)
-	(file (mm-make-temp-file (nnheader-concat gnus-uu-work-dir "forward")))
+	(file (make-temp-file (nnheader-concat gnus-uu-work-dir "forward")))
 	(message-forward-as-mime message-forward-as-mime)
 	(mail-parse-charset gnus-newsgroup-charset)
 	(mail-parse-ignored-charsets gnus-newsgroup-ignored-charsets)
@@ -641,9 +638,9 @@ When called interactively, prompt for REGEXP."
   (interactive)
   (gnus-save-hidden-threads
     (let ((level (gnus-summary-thread-level)))
-      (while (and (gnus-summary-set-process-mark
-		   (gnus-summary-article-number))
+      (while (and (gnus-summary-set-process-mark (gnus-summary-article-number))
 		  (zerop (forward-line 1))
+		  (not (eobp))
 		  (> (gnus-summary-thread-level) level)))))
   (gnus-summary-position-point))
 
@@ -876,10 +873,7 @@ When called interactively, prompt for REGEXP."
 	(with-current-buffer buffer
 	  (save-restriction
 	    (let ((inhibit-read-only t))
-	      (set-text-properties (point-min) (point-max) nil)
-	      ;; These two are necessary for XEmacs 19.12 fascism.
-	      (put-text-property (point-min) (point-max) 'invisible nil)
-	      (put-text-property (point-min) (point-max) 'intangible nil))
+	      (set-text-properties (point-min) (point-max) nil))
 	    (when (and message-forward-as-mime
 		       message-forward-show-mml
 		       gnus-uu-digest-buffer)
@@ -1787,7 +1781,7 @@ Gnus might fail to display all of it.")
 		 gnus-uu-tmp-dir)))
 
       (setq gnus-uu-work-dir
-	    (mm-make-temp-file (concat gnus-uu-tmp-dir "gnus") 'dir))
+	    (make-temp-file (concat gnus-uu-tmp-dir "gnus") 'dir))
       (gnus-set-file-modes gnus-uu-work-dir 448)
       (setq gnus-uu-work-dir (file-name-as-directory gnus-uu-work-dir))
       (push (cons gnus-newsgroup-name gnus-uu-work-dir)

@@ -276,19 +276,10 @@ If `mm-url-use-external' is non-nil, use `mm-url-program'."
 	    (insert-file-contents (substring url (1- (match-end 0))))
 	  (mm-url-insert-file-contents-external url))
 	(goto-char (point-min))
-	(if (fboundp 'url-generic-parse-url)
-	    (setq url-current-object
-		  (url-generic-parse-url url)))
+	(setq url-current-object (url-generic-parse-url url))
 	(list url (buffer-size)))
     (mm-url-load-url)
     (let ((name buffer-file-name)
-	  (url-request-extra-headers
-	   ;; ISTM setting a Connection header was a workaround for
-	   ;; older versions of url included with w3, but it does more
-	   ;; harm than good with the one shipped with Emacs. --ansel
-	   (if (not (and (boundp 'url-version)
-			 (equal url-version "Emacs")))
-	       (list (cons "Connection" "Close"))))
 	  result)
       (setq result (url-insert-file-contents url))
       (save-excursion
@@ -296,10 +287,9 @@ If `mm-url-use-external' is non-nil, use `mm-url-program'."
 	(while (re-search-forward "\r 1000\r ?" nil t)
 	  (replace-match "")))
       (setq buffer-file-name name)
-      (if (and (fboundp 'url-generic-parse-url)
-	       (listp result))
-	  (setq url-current-object (url-generic-parse-url
-				    (car result))))
+      (when (listp result)
+	(setq url-current-object
+	      (url-generic-parse-url (car result))))
       result)))
 
 ;;;###autoload
@@ -364,7 +354,7 @@ If FOLLOW-REFRESH is non-nil, redirect refresh url in META."
 			      (string-to-number (substring entity 1)))))
 		       (setq c (or (cdr (assq c mm-extra-numeric-entities))
 				   (mm-ucs-to-char c)))
-		       (if (mm-char-or-char-int-p c) c ?#))
+		       (if (characterp c) c ?#))
 		   (or (cdr (assq (intern entity)
 				  mm-url-html-entities))
 		       ?#))))
@@ -399,10 +389,7 @@ spaces.  Die Die Die."
 	  ((= char ?  ) "+")
 	  ((memq char mm-url-unreserved-chars) (char-to-string char))
 	  (t (upcase (format "%%%02x" char)))))
-       (mm-encode-coding-string chunk
-				(if (fboundp 'find-coding-systems-string)
-				    (car (find-coding-systems-string chunk))
-				  buffer-file-coding-system))
+       (encode-coding-string chunk (car (find-coding-systems-string chunk)))
        "")))
 
 (defun mm-url-encode-www-form-urlencoded (pairs)

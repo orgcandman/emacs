@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -427,6 +427,15 @@ kset_system_key_syms (struct kboard *kb, Lisp_Object val)
 }
 
 
+static bool
+echo_keystrokes_p (void)
+{
+  return (!cursor_in_echo_area)
+	 && (FLOATP (Vecho_keystrokes) ? XFLOAT_DATA (Vecho_keystrokes) > 0.0
+	     : INTEGERP (Vecho_keystrokes) ? XINT (Vecho_keystrokes) > 0
+             : false);
+}
+
 /* Add C to the echo string, without echoing it immediately.  C can be
    a character, which is pretty-printed, or a symbol, whose name is
    printed.  */
@@ -568,7 +577,9 @@ echo_update (void)
 static void
 echo_now (void)
 {
-  if (!current_kboard->immediate_echo)
+  if (!current_kboard->immediate_echo
+      /* This test breaks calls that use `echo_now' to display the echo_prompt.
+         && echo_keystrokes_p () */)
     {
       current_kboard->immediate_echo = true;
       echo_update ();
@@ -2270,13 +2281,6 @@ read_decoded_event_from_main_queue (struct timespec *end_time,
     }
 }
 
-static bool
-echo_keystrokes_p (void)
-{
-  return (FLOATP (Vecho_keystrokes) ? XFLOAT_DATA (Vecho_keystrokes) > 0.0
-	  : INTEGERP (Vecho_keystrokes) ? XINT (Vecho_keystrokes) > 0 : false);
-}
-
 /* Read a character from the keyboard; call the redisplay if needed.  */
 /* commandflag 0 means do not autosave, but do redisplay.
    -1 means do not redisplay, but do autosave.
@@ -3220,33 +3224,37 @@ record_char (Lisp_Object c)
   else
     store_kbd_macro_char (c);
 
-  if (!recorded)
+  /* recent_keys should not include events from keyboard macros.  */
+  if (NILP (Vexecuting_kbd_macro))
     {
-      total_keys += total_keys < NUM_RECENT_KEYS;
-      ASET (recent_keys, recent_keys_index, c);
-      if (++recent_keys_index >= NUM_RECENT_KEYS)
-	recent_keys_index = 0;
-    }
-  else if (recorded < 0)
-    {
-      /* We need to remove one or two events from recent_keys.
-         To do this, we simply put nil at those events and move the
-	 recent_keys_index backwards over those events.  Usually,
-	 users will never see those nil events, as they will be
-	 overwritten by the command keys entered to see recent_keys
-	 (e.g. C-h l).  */
-
-      while (recorded++ < 0 && total_keys > 0)
+      if (!recorded)
 	{
-	  if (total_keys < NUM_RECENT_KEYS)
-	    total_keys--;
-	  if (--recent_keys_index < 0)
-	    recent_keys_index = NUM_RECENT_KEYS - 1;
-	  ASET (recent_keys, recent_keys_index, Qnil);
+	  total_keys += total_keys < NUM_RECENT_KEYS;
+	  ASET (recent_keys, recent_keys_index, c);
+	  if (++recent_keys_index >= NUM_RECENT_KEYS)
+	    recent_keys_index = 0;
 	}
-    }
+      else if (recorded < 0)
+	{
+	  /* We need to remove one or two events from recent_keys.
+	     To do this, we simply put nil at those events and move the
+	     recent_keys_index backwards over those events.  Usually,
+	     users will never see those nil events, as they will be
+	     overwritten by the command keys entered to see recent_keys
+	     (e.g. C-h l).  */
 
-  num_nonmacro_input_events++;
+	  while (recorded++ < 0 && total_keys > 0)
+	    {
+	      if (total_keys < NUM_RECENT_KEYS)
+		total_keys--;
+	      if (--recent_keys_index < 0)
+		recent_keys_index = NUM_RECENT_KEYS - 1;
+	      ASET (recent_keys, recent_keys_index, Qnil);
+	    }
+	}
+
+      num_nonmacro_input_events++;
+    }
 
   /* Write c to the dribble file.  If c is a lispy event, write
      the event's symbol to the dribble file, in <brackets>.  Bleaugh.
@@ -4009,6 +4017,13 @@ kbd_buffer_get_event (KBOARD **kbp,
         }
 #ifdef HAVE_DBUS
       else if (event->kind == DBUS_EVENT)
+	{
+	  obj = make_lispy_event (&event->ie);
+	  kbd_fetch_ptr = event + 1;
+	}
+#endif
+#ifdef HAVE_XWIDGETS
+      else if (event->kind == XWIDGET_EVENT)
 	{
 	  obj = make_lispy_event (&event->ie);
 	  kbd_fetch_ptr = event + 1;
@@ -5950,6 +5965,13 @@ make_lispy_event (struct input_event *event)
       }
 #endif /* HAVE_DBUS */
 
+#ifdef HAVE_XWIDGETS
+    case XWIDGET_EVENT:
+      {
+        return Fcons (Qxwidget_event, event->arg);
+      }
+#endif
+
 #if defined HAVE_INOTIFY || defined HAVE_KQUEUE || defined HAVE_GFILENOTIFY
     case FILE_NOTIFY_EVENT:
       {
@@ -7127,9 +7149,6 @@ struct user_signal_info
 /* List of user signals.  */
 static struct user_signal_info *user_signals = NULL;
 
-/* Function called when handling user signals.  */
-void (*handle_user_signal_hook) (int);
-
 void
 add_user_signal (int sig, const char *name)
 {
@@ -7178,8 +7197,6 @@ handle_user_signal (int sig)
           }
 
 	p->npending++;
-	if (handle_user_signal_hook)
-	  (*handle_user_signal_hook) (sig);
 #ifdef USABLE_SIGIO
 	if (interrupt_input)
 	  handle_input_available_signal (sig);
@@ -8876,11 +8893,15 @@ read_key_sequence (Lisp_Object *keybuf, int bufsize, Lisp_Object prompt,
 	     of echoing, so that it serves as a prompt for the next
 	     character.  */
 	  kset_echo_prompt (current_kboard, prompt);
+          /* FIXME: This use of echo_now doesn't look quite right and is ugly
+             since it forces us to fiddle with current_kboard->immediate_echo
+             before and after.  */
 	  current_kboard->immediate_echo = false;
 	  echo_now ();
+          if (!echo_keystrokes_p ())
+	    current_kboard->immediate_echo = false;
 	}
-      else if (cursor_in_echo_area
-	       && echo_keystrokes_p ())
+      else if (echo_keystrokes_p ())
 	/* This doesn't put in a dash if the echo buffer is empty, so
 	   you don't always see a dash hanging out in the minibuffer.  */
 	echo_dash ();
@@ -10286,13 +10307,16 @@ handle_interrupt (bool in_signal_handler)
 	 is used.  Note that [Enter] is not echoed by dos.  */
       cursor_to (SELECTED_FRAME (), 0, 0);
 #endif
+
+      write_stdout ("Emacs is resuming after an emergency escape.\n");
+
       /* It doesn't work to autosave while GC is in progress;
 	 the code used for auto-saving doesn't cope with the mark bit.  */
       if (!gc_in_progress)
 	{
 	  write_stdout ("Auto-save? (y or n) ");
 	  c = read_stdin ();
-	  if ((c & 040) == 'Y')
+	  if (c == 'y' || c == 'Y')
 	    {
 	      Fdo_auto_save (Qt, Qnil);
 #ifdef MSDOS
@@ -10324,7 +10348,7 @@ handle_interrupt (bool in_signal_handler)
       write_stdout ("Abort (and dump core)? (y or n) ");
 #endif
       c = read_stdin ();
-      if ((c & ~040) == 'Y')
+      if (c == 'y' || c == 'Y')
 	emacs_abort ();
       while (c != '\n')
 	c = read_stdin ();
@@ -10956,6 +10980,10 @@ syms_of_keyboard (void)
   DEFSYM (Qdbus_event, "dbus-event");
 #endif
 
+#ifdef HAVE_XWIDGETS
+  DEFSYM (Qxwidget_event, "xwidget-event");
+#endif
+
 #ifdef USE_FILE_NOTIFY
   DEFSYM (Qfile_notify, "file-notify");
 #endif /* USE_FILE_NOTIFY */
@@ -11355,7 +11383,7 @@ See Info node `(elisp)Multiple Terminals'.  */);
 
   DEFVAR_BOOL ("cannot-suspend", cannot_suspend,
 	       doc: /* Non-nil means to always spawn a subshell instead of suspending.
-(Even if the operating system has support for stopping a process.)  */);
+\(Even if the operating system has support for stopping a process.)  */);
   cannot_suspend = false;
 
   DEFVAR_BOOL ("menu-prompting", menu_prompting,
@@ -11569,7 +11597,7 @@ immediately after running `post-command-hook'.  */);
   DEFVAR_LISP ("input-method-function", Vinput_method_function,
 	       doc: /* If non-nil, the function that implements the current input method.
 It's called with one argument, a printing character that was just read.
-(That means a character with code 040...0176.)
+\(That means a character with code 040...0176.)
 Typically this function uses `read-event' to read additional events.
 When it does so, it should first bind `input-method-function' to nil
 so it will not be called recursively.
@@ -11602,10 +11630,10 @@ It's called with one argument, the help string to display.  */);
   DEFVAR_LISP ("disable-point-adjustment", Vdisable_point_adjustment,
 	       doc: /* If non-nil, suppress point adjustment after executing a command.
 
-After a command is executed, if point is moved into a region that has
-special properties (e.g. composition, display), we adjust point to
-the boundary of the region.  But, when a command sets this variable to
-non-nil, we suppress the point adjustment.
+After a command is executed, if point moved into a region that has
+special properties (e.g. composition, display), Emacs adjusts point to
+the boundary of the region.  But when a command leaves this variable at
+a non-nil value (e.g., with a setq), this point adjustment is suppressed.
 
 This variable is set to nil before reading a command, and is checked
 just after executing the command.  */);
@@ -11613,11 +11641,11 @@ just after executing the command.  */);
 
   DEFVAR_LISP ("global-disable-point-adjustment",
 	       Vglobal_disable_point_adjustment,
-	       doc: /* If non-nil, always suppress point adjustment.
+	       doc: /* If non-nil, always suppress point adjustments.
 
-The default value is nil, in which case, point adjustment are
-suppressed only after special commands that set
-`disable-point-adjustment' (which see) to non-nil.  */);
+The default value is nil, in which case point adjustments are
+suppressed only after special commands that leave
+`disable-point-adjustment' (which see) at a non-nil value.  */);
   Vglobal_disable_point_adjustment = Qnil;
 
   DEFVAR_LISP ("minibuffer-message-timeout", Vminibuffer_message_timeout,

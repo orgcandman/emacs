@@ -26,13 +26,6 @@
 
 ;;; Code:
 
-(eval-and-compile
-  (require 'nnheader)
-  ;; In Emacs 24, `open-protocol-stream' is an autoloaded alias for
-  ;; `make-network-stream'.
-  (unless (fboundp 'open-protocol-stream)
-    (require 'proto-stream)))
-
 (eval-when-compile
   (require 'cl))
 
@@ -113,6 +106,12 @@ some servers.")
 
 (defvoo nnimap-current-infos nil)
 
+(defun nnimap-decode-gnus-group (group)
+  (decode-coding-string group 'utf-8))
+
+(defun nnimap-encode-gnus-group (group)
+  (encode-coding-string group 'utf-8))
+
 (defvoo nnimap-fetch-partial-articles nil
   "If non-nil, Gnus will fetch partial articles.
 If t, Gnus will fetch only the first part.  If a string, it
@@ -158,7 +157,8 @@ textual parts.")
     (forward "gnus-forward")))
 
 (defvar nnimap-quirks
-  '(("QRESYNC" "Zimbra" "QRESYNC ")))
+  '(("QRESYNC" "Zimbra" "QRESYNC ")
+    ("MOVE" "Dovecot" nil)))
 
 (defvar nnimap-inhibit-logging nil)
 
@@ -228,7 +228,7 @@ textual parts.")
 	  (delete-region (+ (match-beginning 0) 2) (point))
 	  (setq string (buffer-substring (point) (+ (point) size)))
 	  (delete-region (point) (+ (point) size))
-	  (insert (format "%S" (mm-subst-char-in-string ?\n ?\s string))))
+	  (insert (format "%S" (subst-char-in-string ?\n ?\s string))))
 	(beginning-of-line)
 	(setq article
 	      (and (re-search-forward "UID \\([0-9]+\\)" (line-end-position)
@@ -359,7 +359,7 @@ textual parts.")
 	(with-current-buffer buffer
 	  (when (and nnimap-object
 		     (nnimap-last-command-time nnimap-object)
-		     (> (gnus-float-time
+		     (> (float-time
 			 (time-subtract
 			  now
 			  (nnimap-last-command-time nnimap-object)))
@@ -418,7 +418,7 @@ textual parts.")
       (when nnimap-server-port
 	(push nnimap-server-port ports))
       (let* ((stream-list
-	      (open-protocol-stream
+	      (open-network-stream
 	       "*nnimap*" (current-buffer) nnimap-address
 	       (nnimap-map-port (car ports))
 	       :type nnimap-stream
@@ -431,7 +431,7 @@ textual parts.")
 	       :success " OK "
 	       :starttls-function
 	       (lambda (capabilities)
-		 (when (gnus-string-match-p "STARTTLS" capabilities)
+		 (when (string-match-p "STARTTLS" capabilities)
 		   "1 STARTTLS\r\n"))))
 	     (stream (car stream-list))
 	     (props (cdr stream-list))
@@ -441,9 +441,7 @@ textual parts.")
 	(when (and stream (not (memq (process-status stream) '(open run))))
 	  (setq stream nil))
 
-        (when (and (fboundp 'set-network-process-option) ;; Not in XEmacs.
-                   (fboundp 'process-type) ;; Emacs 22 doesn't provide it.
-                   (eq (process-type stream) 'network))
+        (when (eq (process-type stream) 'network)
           ;; Use TCP-keepalive so that connections that pass through a NAT
           ;; router don't hang when left idle.
           (set-network-process-option stream :keepalive t))
@@ -455,15 +453,15 @@ textual parts.")
 	      (nnheader-report 'nnimap "Unable to contact %s:%s via %s"
 			       nnimap-address (car ports) nnimap-stream)
 	      'no-connect)
-	  (gnus-set-process-query-on-exit-flag stream nil)
-	  (if (not (gnus-string-match-p "[*.] \\(OK\\|PREAUTH\\)" greeting))
+	  (set-process-query-on-exit-flag stream nil)
+	  (if (not (string-match-p "[*.] \\(OK\\|PREAUTH\\)" greeting))
 	      (nnheader-report 'nnimap "%s" greeting)
 	    ;; Store the greeting (for debugging purposes).
 	    (setf (nnimap-greeting nnimap-object) greeting)
 	    (setf (nnimap-capabilities nnimap-object)
 		  (mapcar #'upcase
 			  (split-string capabilities)))
-	    (unless (gnus-string-match-p "[*.] PREAUTH" greeting)
+	    (unless (string-match-p "[*.] PREAUTH" greeting)
 	      (if (not (setq credentials
 			     (if (eq nnimap-authenticator 'anonymous)
 				 (list "anonymous"
@@ -794,9 +792,6 @@ textual parts.")
 	(incf num)))
     (nreverse parts)))
 
-(defun nnimap-decode-gnus-group (group)
-  (decode-coding-string group 'utf-8))
-
 (deffoo nnimap-request-group (group &optional server dont-check info)
   (setq group (nnimap-decode-gnus-group group))
   (let ((result (nnimap-change-group
@@ -825,7 +820,7 @@ textual parts.")
 			(- (cdr active) (car active))
 			(car active)
 			(cdr active)
-			group))
+			(nnimap-encode-gnus-group group)))
 	t))))
 
 (deffoo nnimap-request-group-scan (group &optional server info)
@@ -860,7 +855,8 @@ textual parts.")
 	(erase-buffer)
 	(insert
 	 (format
-	  "211 %d %d %d %S\n" (1+ (- high low)) low high group))
+	  "211 %d %d %d %S\n" (1+ (- high low)) low high
+	  (nnimap-encode-gnus-group group)))
 	t))))
 
 (deffoo nnimap-request-create-group (group &optional server _args)
@@ -918,7 +914,8 @@ textual parts.")
   t)
 
 (deffoo nnimap-request-move-article (article group server accept-form
-					     &optional _last internal-move-group)
+					     &optional _last
+					     internal-move-group)
   (setq group (nnimap-decode-gnus-group group))
   (when internal-move-group
     (setq internal-move-group (nnimap-decode-gnus-group internal-move-group)))
@@ -928,17 +925,19 @@ textual parts.")
 		       'nnimap-request-head
 		     'nnimap-request-article)
 		   article group server (current-buffer))
-      ;; If the move is internal (on the same server), just do it the easy
-      ;; way.
+      ;; If the move is internal (on the same server), just do it the
+      ;; easy way.
       (let ((message-id (message-field-value "message-id")))
 	(if internal-move-group
             (with-current-buffer (nnimap-buffer)
-              (let* ((can-move (nnimap-capability "MOVE"))
-                    (command (if can-move
-                                 "UID MOVE %d %S"
-                               "UID COPY %d %S"))
-                    (result (nnimap-command command article
-                                            (utf7-encode internal-move-group t))))
+              (let* ((can-move (and (nnimap-capability "MOVE")
+				    (equal (nnimap-quirk "MOVE") "MOVE")))
+		     (command (if can-move
+				  "UID MOVE %d %S"
+				"UID COPY %d %S"))
+		     (result (nnimap-command
+			      command article
+			      (utf7-encode internal-move-group t))))
                 (when (and (car result) (not can-move))
                   (nnimap-delete-article article))
                 (cons internal-move-group
@@ -947,11 +946,10 @@ textual parts.")
                            internal-move-group server message-id
                            nnimap-request-articles-find-limit)))))
 	  ;; Move the article to a different method.
-	  (let ((result (eval accept-form)))
-	    (when result
-	      (nnimap-change-group group server)
-	      (nnimap-delete-article article)
-	      result)))))))
+	  (when-let ((result (eval accept-form)))
+	    (nnimap-change-group group server)
+	    (nnimap-delete-article article)
+	    result))))))
 
 (deffoo nnimap-request-expire-articles (articles group &optional server force)
   (setq group (nnimap-decode-gnus-group group))
@@ -999,7 +997,8 @@ textual parts.")
       (and (nnimap-change-group group server)
 	   (with-current-buffer (nnimap-buffer)
 	     (nnheader-message 7 "Expiring articles from %s: %s" group articles)
-             (let ((can-move (nnimap-capability "MOVE")))
+             (let ((can-move (and (nnimap-capability "MOVE")
+				  (equal (nnimap-quirk "MOVE") "MOVE"))))
                (nnimap-command
                 (if can-move
                     "UID MOVE %s %S"
@@ -1323,7 +1322,7 @@ If LIMIT, first try to limit the search to the N last articles."
 	    (let* ((sequence (car response))
 		   (response (cadr response))
 		   (group (cadr (assoc sequence sequences)))
-		   (egroup (encode-coding-string group 'utf-8)))
+		   (egroup (nnimap-encode-gnus-group group)))
 	      (when (and group
 			 (equal (caar response) "OK"))
 		(let ((uidnext (nnimap-find-parameter "UIDNEXT" response))
@@ -1354,7 +1353,7 @@ If LIMIT, first try to limit the search to the N last articles."
 		       (nnimap-get-groups)))
 	(unless (assoc group nnimap-current-infos)
 	  ;; Insert dummy numbers here -- they don't matter.
-	  (insert (format "%S 0 1 y\n" (encode-coding-string group 'utf-8)))))
+	  (insert (format "%S 0 1 y\n" (nnimap-encode-gnus-group group)))))
       t)))
 
 (deffoo nnimap-retrieve-group-data-early (server infos)
@@ -1453,8 +1452,9 @@ If LIMIT, first try to limit the search to the N last articles."
 		     (active (gnus-active group)))
 		(when active
 		  (insert (format "%S %d %d y\n"
-				  (decode-coding-string
-				   (gnus-group-real-name group) 'utf-8)
+				  (nnimap-encode-gnus-group
+				   (nnimap-decode-gnus-group
+				    (gnus-group-real-name group)))
 				  (cdr active)
 				  (car active))))))))))))
 
@@ -1672,7 +1672,8 @@ If LIMIT, first try to limit the search to the N last articles."
       (nreverse result))))
 
 (defun nnimap-store-info (info active)
-  (let* ((group (gnus-group-real-name (gnus-info-group info)))
+  (let* ((group (nnimap-decode-gnus-group
+		 (gnus-group-real-name (gnus-info-group info))))
 	 (entry (assoc group nnimap-current-infos)))
     (if entry
 	(setcdr entry (list info active))
@@ -1881,9 +1882,7 @@ Return the server's response to the SELECT or EXAMINE command."
   (let ((name "*imap log*"))
     (or (get-buffer name)
         (with-current-buffer (get-buffer-create name)
-          (when (boundp 'window-point-insertion-type)
-            (make-local-variable 'window-point-insertion-type)
-            (setq window-point-insertion-type t))
+	  (setq-local window-point-insertion-type t)
           (current-buffer)))))
 
 (defun nnimap-log-command (command)
@@ -2070,7 +2069,8 @@ Return the server's response to the SELECT or EXAMINE command."
 				  nnmail-split-fancy))
 	  (nnmail-inhibit-default-split-group t)
 	  (groups (nnimap-get-groups))
-          (can-move (nnimap-capability "MOVE"))
+          (can-move (and (nnimap-capability "MOVE")
+			 (equal (nnimap-quirk "MOVE") "MOVE")))
 	  new-articles)
       (erase-buffer)
       (nnimap-command "SELECT %S" nnimap-inbox)

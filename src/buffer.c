@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -42,6 +42,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "blockinput.h"
 #include "keymap.h"
 #include "frame.h"
+#include "xwidget.h"
 
 #ifdef WINDOWSNT
 #include "w32heap.h"		/* for mmap_* */
@@ -1043,7 +1044,7 @@ DEFUN ("generate-new-buffer-name", Fgenerate_new_buffer_name,
        doc: /* Return a string that is the name of no existing buffer based on NAME.
 If there is no live buffer named NAME, then return NAME.
 Otherwise modify name by appending `<NUMBER>', incrementing NUMBER
-(starting at 2) until an unused name is found, and then return that name.
+\(starting at 2) until an unused name is found, and then return that name.
 Optional second argument IGNORE specifies a name that is okay to use (if
 it is in the sequence to be tried) even if a buffer with that name exists.
 
@@ -1746,6 +1747,7 @@ cleaning up all windows currently displaying the buffer to be killed. */)
   unlock_buffer (b);
 
   kill_buffer_processes (buffer);
+  kill_buffer_xwidgets (buffer);
 
   /* Killing buffer processes may run sentinels which may have killed
      our buffer.  */
@@ -2143,16 +2145,16 @@ DEFUN ("barf-if-buffer-read-only", Fbarf_if_buffer_read_only,
        doc: /* Signal a `buffer-read-only' error if the current buffer is read-only.
 If the text under POSITION (which defaults to point) has the
 `inhibit-read-only' text property set, the error will not be raised.  */)
-  (Lisp_Object pos)
+  (Lisp_Object position)
 {
-  if (NILP (pos))
-    XSETFASTINT (pos, PT);
+  if (NILP (position))
+    XSETFASTINT (position, PT);
   else
-    CHECK_NUMBER (pos);
+    CHECK_NUMBER (position);
 
   if (!NILP (BVAR (current_buffer, read_only))
       && NILP (Vinhibit_read_only)
-      && NILP (Fget_text_property (pos, Qinhibit_read_only, Qnil)))
+      && NILP (Fget_text_property (position, Qinhibit_read_only, Qnil)))
     xsignal1 (Qbuffer_read_only, Fcurrent_buffer ());
   return Qnil;
 }
@@ -3791,10 +3793,10 @@ If omitted, BUFFER defaults to the current buffer.
 BEG and END may be integers or markers.
 The fourth arg FRONT-ADVANCE, if non-nil, makes the marker
 for the front of the overlay advance when text is inserted there
-(which means the text *is not* included in the overlay).
+\(which means the text *is not* included in the overlay).
 The fifth arg REAR-ADVANCE, if non-nil, makes the marker
 for the rear of the overlay advance when text is inserted there
-(which means the text *is* included in the overlay).  */)
+\(which means the text *is* included in the overlay).  */)
   (Lisp_Object beg, Lisp_Object end, Lisp_Object buffer,
    Lisp_Object front_advance, Lisp_Object rear_advance)
 {
@@ -5275,7 +5277,7 @@ init_buffer (int initialized)
   if (NILP (BVAR (&buffer_defaults, enable_multibyte_characters)))
     Fset_buffer_multibyte (Qnil);
 
-  pwd = get_current_dir_name ();
+  pwd = emacs_get_current_dir_name ();
 
   if (!pwd)
     {
@@ -6026,7 +6028,7 @@ between 0.0 and 1.0, inclusive.  */);
 	       doc: /* List of functions to call before each text change.
 Two arguments are passed to each function: the positions of
 the beginning and end of the range of old text to be changed.
-(For an insertion, the beginning and end are at the same place.)
+\(For an insertion, the beginning and end are at the same place.)
 No information is given about the length of the text after the change.
 
 Buffer changes made while executing the `before-change-functions'
@@ -6043,7 +6045,7 @@ from happening repeatedly and making Emacs nonfunctional.  */);
 Three arguments are passed to each function: the positions of
 the beginning and end of the range of changed text,
 and the length in chars of the pre-change text replaced by that range.
-(For an insertion, the pre-change length is zero;
+\(For an insertion, the pre-change length is zero;
 for a deletion, that length is the number of chars deleted,
 and the post-change beginning and end are at the same place.)
 
@@ -6088,7 +6090,7 @@ was modified between BEG and END.  PROPERTY is the property name,
 and VALUE is the old value.
 
 An entry (apply FUN-NAME . ARGS) means undo the change with
-(apply FUN-NAME ARGS).
+\(apply FUN-NAME ARGS).
 
 An entry (apply DELTA BEG END FUN-NAME . ARGS) supports selective undo
 in the active region.  BEG and END is the range affected by this entry
@@ -6248,7 +6250,7 @@ to the default frame line height.  A value of nil means add no extra space.  */)
 		     doc: /* Non-nil means show a cursor in non-selected windows.
 If nil, only shows a cursor in the selected window.
 If t, displays a cursor related to the usual cursor type
-(a solid box becomes hollow, a bar becomes a narrower bar).
+\(a solid box becomes hollow, a bar becomes a narrower bar).
 You can also specify the cursor type as in the `cursor-type' variable.
 Use Custom to set this variable and update the display.  */);
 

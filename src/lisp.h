@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -67,19 +67,6 @@ DEFINE_GDB_SYMBOL_BEGIN (int, GCTYPEBITS)
 #define GCTYPEBITS 3
 DEFINE_GDB_SYMBOL_END (GCTYPEBITS)
 
-/* The number of bits needed in an EMACS_INT over and above the number
-   of bits in a pointer.  This is 0 on systems where:
-   1.  We can specify multiple-of-8 alignment on static variables.
-   2.  We know malloc returns a multiple of 8.  */
-#if (defined alignas \
-     && (defined GNU_MALLOC || defined DOUG_LEA_MALLOC || defined __GLIBC__ \
-	 || defined DARWIN_OS || defined __sun || defined __MINGW32__ \
-	 || defined CYGWIN))
-# define NONPOINTER_BITS 0
-#else
-# define NONPOINTER_BITS GCTYPEBITS
-#endif
-
 /* EMACS_INT - signed integer wide enough to hold an Emacs value
    EMACS_INT_MAX - maximum value of EMACS_INT; can be used in #if
    pI - printf length modifier for EMACS_INT
@@ -87,18 +74,16 @@ DEFINE_GDB_SYMBOL_END (GCTYPEBITS)
 #ifndef EMACS_INT_MAX
 # if INTPTR_MAX <= 0
 #  error "INTPTR_MAX misconfigured"
-# elif INTPTR_MAX <= INT_MAX >> NONPOINTER_BITS && !defined WIDE_EMACS_INT
+# elif INTPTR_MAX <= INT_MAX && !defined WIDE_EMACS_INT
 typedef int EMACS_INT;
 typedef unsigned int EMACS_UINT;
 #  define EMACS_INT_MAX INT_MAX
 #  define pI ""
-# elif INTPTR_MAX <= LONG_MAX >> NONPOINTER_BITS && !defined WIDE_EMACS_INT
+# elif INTPTR_MAX <= LONG_MAX && !defined WIDE_EMACS_INT
 typedef long int EMACS_INT;
 typedef unsigned long EMACS_UINT;
 #  define EMACS_INT_MAX LONG_MAX
 #  define pI "l"
-/* Check versus LLONG_MAX, not LLONG_MAX >> NONPOINTER_BITS.
-   In theory this is not safe, but in practice it seems to be OK.  */
 # elif INTPTR_MAX <= LLONG_MAX
 typedef long long int EMACS_INT;
 typedef unsigned long long int EMACS_UINT;
@@ -275,10 +260,6 @@ DEFINE_GDB_SYMBOL_END (USE_LSB_TAG)
 # error "USE_LSB_TAG not supported on this platform; please report this." \
 	"Try 'configure --with-wide-int' to work around the problem."
 error !;
-#endif
-
-#ifndef alignas
-# error "alignas not defined"
 #endif
 
 #ifdef HAVE_STRUCT_ATTRIBUTE_ALIGNED
@@ -619,7 +600,9 @@ extern _Noreturn Lisp_Object wrong_type_argument (Lisp_Object, Lisp_Object);
 extern _Noreturn void wrong_choice (Lisp_Object, Lisp_Object);
 
 /* Defined in emacs.c.  */
+#ifdef DOUG_LEA_MALLOC
 extern bool might_dump;
+#endif
 /* True means Emacs has already been initialized.
    Used during startup to detect startup of dumped Emacs.  */
 extern bool initialized;
@@ -799,6 +782,9 @@ enum pvec_type
   PVEC_WINDOW_CONFIGURATION,
   PVEC_SUBR,
   PVEC_OTHER,
+  PVEC_XWIDGET,
+  PVEC_XWIDGET_VIEW,
+
   /* These should be last, check internal_equal to see why.  */
   PVEC_COMPILED,
   PVEC_CHAR_TABLE,
@@ -2087,7 +2073,7 @@ struct Lisp_Marker
   /* For markers that point somewhere,
      this is used to chain of all the markers in a given buffer.  */
   /* We could remove it and use an array in buffer_text instead.
-     That would also allow to preserve it ordered.  */
+     That would also allow us to preserve it ordered.  */
   struct Lisp_Marker *next;
   /* This is the char position where the marker points.  */
   ptrdiff_t charpos;
@@ -3587,6 +3573,7 @@ extern void parse_str_as_multibyte (const unsigned char *, ptrdiff_t,
 				    ptrdiff_t *, ptrdiff_t *);
 
 /* Defined in alloc.c.  */
+extern void *my_heap_start (void);
 extern void check_pure_size (void);
 extern void free_misc (Lisp_Object);
 extern void allocate_string_data (struct Lisp_String *, EMACS_INT, EMACS_INT);
@@ -3598,6 +3585,8 @@ extern void mark_object (Lisp_Object);
 #if defined REL_ALLOC && !defined SYSTEM_MALLOC && !defined HYBRID_MALLOC
 extern void refill_memory_reserve (void);
 #endif
+extern void alloc_unexec_pre (void);
+extern void alloc_unexec_post (void);
 extern const char *pending_malloc_warning;
 extern Lisp_Object zero_vector;
 extern Lisp_Object *stack_base;
@@ -3763,6 +3752,15 @@ extern void check_cons_list (void);
 INLINE void (check_cons_list) (void) { lisp_h_check_cons_list (); }
 #endif
 
+/* Defined in gmalloc.c.  */
+#if !defined DOUG_LEA_MALLOC && !defined HYBRID_MALLOC && !defined SYSTEM_MALLOC
+extern size_t __malloc_extra_blocks;
+#endif
+#if !HAVE_DECL_ALIGNED_ALLOC
+extern void *aligned_alloc (size_t, size_t) ATTRIBUTE_MALLOC_SIZE ((2));
+#endif
+extern void malloc_enable_thread (void);
+
 #ifdef REL_ALLOC
 /* Defined in ralloc.c.  */
 extern void *r_alloc (void **, size_t) ATTRIBUTE_ALLOC_SIZE ((2));
@@ -3907,6 +3905,8 @@ extern void set_unwind_protect_ptr (ptrdiff_t, void (*) (void *), void *);
 extern Lisp_Object unbind_to (ptrdiff_t, Lisp_Object);
 extern _Noreturn void error (const char *, ...) ATTRIBUTE_FORMAT_PRINTF (1, 2);
 extern _Noreturn void verror (const char *, va_list)
+  ATTRIBUTE_FORMAT_PRINTF (1, 0);
+extern Lisp_Object vformat_string (const char *, va_list)
   ATTRIBUTE_FORMAT_PRINTF (1, 0);
 extern void un_autoload (Lisp_Object);
 extern Lisp_Object call_debugger (Lisp_Object arg);
@@ -4132,6 +4132,9 @@ extern bool noninteractive;
 /* True means remove site-lisp directories from load-path.  */
 extern bool no_site_lisp;
 
+/* True means put details like time stamps into builds.  */
+extern bool build_details;
+
 /* Pipe used to send exit notification to the daemon parent at
    startup.  On Windows, we use a kernel event instead.  */
 #ifndef WINDOWSNT
@@ -4243,9 +4246,7 @@ struct tty_display_info;
 struct terminal;
 
 /* Defined in sysdep.c.  */
-#ifndef HAVE_GET_CURRENT_DIR_NAME
-extern char *get_current_dir_name (void);
-#endif
+extern char *emacs_get_current_dir_name (void);
 extern void stuff_char (char c);
 extern void init_foreground_group (void);
 extern void sys_subshell (void);
@@ -4530,6 +4531,12 @@ extern void *record_xmalloc (size_t) ATTRIBUTE_ALLOC_SIZE ((1));
    This feature is experimental and requires careful debugging.
    Build with CPPFLAGS='-DUSE_STACK_LISP_OBJECTS=0' to disable it.  */
 
+#if (!defined USE_STACK_LISP_OBJECTS \
+     && defined __GNUC__ && !defined __clang__ \
+     && !(4 < __GNUC__ + (3 < __GNUC_MINOR__ + (2 <= __GNUC_PATCHLEVEL__))))
+  /* Work around GCC bugs 36584 and 35271, which were fixed in GCC 4.3.2.  */
+# define USE_STACK_LISP_OBJECTS false
+#endif
 #ifndef USE_STACK_LISP_OBJECTS
 # define USE_STACK_LISP_OBJECTS true
 #endif

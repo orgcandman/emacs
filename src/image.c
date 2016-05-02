@@ -6,8 +6,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -57,8 +57,6 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #endif /* HAVE_WINDOW_SYSTEM */
 
 #ifdef HAVE_X_WINDOWS
-#define COLOR_TABLE_SUPPORT 1
-
 typedef struct x_bitmap_record Bitmap_Record;
 #define GET_PIXEL(ximg, x, y) XGetPixel (ximg, x, y)
 #define NO_PIXMAP None
@@ -74,9 +72,6 @@ typedef struct x_bitmap_record Bitmap_Record;
 # include "w32.h"
 #endif
 
-/* W32_TODO : Color tables on W32.  */
-#undef COLOR_TABLE_SUPPORT
-
 typedef struct w32_bitmap_record Bitmap_Record;
 #define GET_PIXEL(ximg, x, y) GetPixel (ximg, x, y)
 #define NO_PIXMAP 0
@@ -89,13 +84,7 @@ typedef struct w32_bitmap_record Bitmap_Record;
 
 #endif /* HAVE_NTGUI */
 
-#ifdef USE_CAIRO
-#undef COLOR_TABLE_SUPPORT
-#endif
-
 #ifdef HAVE_NS
-#undef COLOR_TABLE_SUPPORT
-
 typedef struct ns_bitmap_record Bitmap_Record;
 
 #define GET_PIXEL(ximg, x, y) XGetPixel (ximg, x, y)
@@ -108,6 +97,12 @@ typedef struct ns_bitmap_record Bitmap_Record;
   ns_defined_color (f, name, color_def, alloc, 0)
 #define DefaultDepthOfScreen(screen) x_display_list->n_planes
 #endif /* HAVE_NS */
+
+#if (defined HAVE_X_WINDOWS \
+     && ! (defined HAVE_NTGUI || defined USE_CAIRO || defined HAVE_NS))
+/* W32_TODO : Color tables on W32.  */
+# define COLOR_TABLE_SUPPORT 1
+#endif
 
 static void x_disable_image (struct frame *, struct image *);
 static void x_edge_detection (struct frame *, struct image *, Lisp_Object,
@@ -4615,16 +4610,14 @@ colors_in_color_table (int *n)
 static unsigned long
 lookup_rgb_color (struct frame *f, int r, int g, int b)
 {
-  unsigned long pixel;
-
 #ifdef HAVE_NTGUI
-  pixel = PALETTERGB (r >> 8, g >> 8, b >> 8);
-#endif /* HAVE_NTGUI */
-
-#ifdef HAVE_NS
-  pixel = RGB_TO_ULONG (r >> 8, g >> 8, b >> 8);
-#endif /* HAVE_NS */
-  return pixel;
+  return PALETTERGB (r >> 8, g >> 8, b >> 8);
+#elif defined HAVE_NS
+  return RGB_TO_ULONG (r >> 8, g >> 8, b >> 8);
+#else
+  xsignal1 (Qfile_error,
+	    build_string ("This Emacs mishandles this image file type"));
+#endif
 }
 
 static void
@@ -7320,7 +7313,6 @@ tiff_load (struct frame *f, struct image *img)
   {
     unsigned char *data = (unsigned char *) xmalloc (width*height*4);
     uint32_t *dataptr = (uint32_t *) data;
-    int r, g, b, a;
 
     for (y = 0; y < height; ++y)
       {
@@ -7634,19 +7626,19 @@ gif_load (struct frame *f, struct image *img)
 {
   int rc, width, height, x, y, i, j;
   ColorMapObject *gif_color_map;
-  unsigned long pixel_colors[256];
   GifFileType *gif;
   gif_memory_source memsrc;
   Lisp_Object specified_bg = image_spec_value (img->spec, QCbackground, NULL);
   Lisp_Object specified_file = image_spec_value (img->spec, QCfile, NULL);
   Lisp_Object specified_data = image_spec_value (img->spec, QCdata, NULL);
-  unsigned long bgcolor = 0;
   EMACS_INT idx;
   int gif_err;
 
 #ifdef USE_CAIRO
   unsigned char *data = 0;
 #else
+  unsigned long pixel_colors[256];
+  unsigned long bgcolor = 0;
   XImagePtr ximg;
 #endif
 
@@ -7833,9 +7825,13 @@ gif_load (struct frame *f, struct image *img)
      gif_load call to construct and save all animation frames.  */
 
   init_color_table ();
+
+#ifndef USE_CAIRO
   if (STRINGP (specified_bg))
     bgcolor = x_alloc_image_color (f, img, specified_bg,
 				   FRAME_BACKGROUND_PIXEL (f));
+#endif
+
   for (j = 0; j <= idx; ++j)
     {
       /* We use a local variable `raster' here because RasterBits is a
@@ -8077,15 +8073,25 @@ compute_image_size (size_t width, size_t height,
 {
   Lisp_Object value;
   int desired_width, desired_height;
+  double scale = 1;
+
+  value = image_spec_value (spec, QCscale, NULL);
+  if (NUMBERP (value))
+    scale = extract_float (value);
 
   /* If width and/or height is set in the display spec assume we want
      to scale to those values.  If either h or w is unspecified, the
      unspecified should be calculated from the specified to preserve
      aspect ratio.  */
   value = image_spec_value (spec, QCwidth, NULL);
-  desired_width = NATNUMP (value) ? min (XFASTINT (value), INT_MAX) : -1;
+  desired_width = NATNUMP (value) ?
+    min (XFASTINT (value) * scale, INT_MAX) : -1;
   value = image_spec_value (spec, QCheight, NULL);
-  desired_height = NATNUMP (value) ? min (XFASTINT (value), INT_MAX) : -1;
+  desired_height = NATNUMP (value) ?
+    min (XFASTINT (value) * scale, INT_MAX) : -1;
+
+  width = width * scale;
+  height = height * scale;
 
   if (desired_width == -1)
     {
@@ -8135,6 +8141,13 @@ compute_image_size (size_t width, size_t height,
   if (desired_width == -1 && desired_height != -1)
     /* h known, calculate w.  */
     desired_width = scale_image_size (desired_height, height, width);
+
+  /* We have no width/height settings, so just apply the scale. */
+  if (desired_width == -1 && desired_height == -1)
+    {
+      desired_width = width;
+      desired_height = height;
+    }
 
   *d_width = desired_width;
   *d_height = desired_height;
@@ -8549,6 +8562,18 @@ imagemagick_load_image (struct frame *f, struct image *img,
       DestroyMagickWand (image_wand);
       return 0;
     }
+
+#ifdef HAVE_MAGICKAUTOORIENTIMAGE
+  /* If no :rotation is explicitly specified, apply the automatic
+     rotation from EXIF. */
+  if (NILP (image_spec_value (img->spec, QCrotation, NULL)))
+    if (MagickAutoOrientImage (image_wand) == MagickFalse)
+      {
+        image_error ("Error applying automatic orientation in image `%s'", img->spec);
+        DestroyMagickWand (image_wand);
+        return 0;
+      }
+#endif
 
   if (ino < 0 || ino >= MagickGetNumberImages (image_wand))
     {
@@ -9182,11 +9207,6 @@ svg_load_image (struct frame *f,         /* Pointer to emacs frame structure.  *
   int height;
   const guint8 *pixels;
   int rowstride;
-  XImagePtr ximg;
-  Lisp_Object specified_bg;
-  XColor background;
-  int x;
-  int y;
 
 #if ! GLIB_CHECK_VERSION (2, 36, 0)
   /* g_type_init is a glib function that must be called prior to
@@ -9237,19 +9257,17 @@ svg_load_image (struct frame *f,         /* Pointer to emacs frame structure.  *
   eassert (gdk_pixbuf_get_has_alpha (pixbuf));
   eassert (gdk_pixbuf_get_bits_per_sample (pixbuf) == 8);
 
-#ifdef USE_CAIRO
   {
+#ifdef USE_CAIRO
     unsigned char *data = (unsigned char *) xmalloc (width*height*4);
-    int y;
     uint32_t bgcolor = get_spec_bg_or_alpha_as_argb (img, f);
 
-    for (y = 0; y < height; ++y)
+    for (int y = 0; y < height; ++y)
       {
         const guchar *iconptr = pixels + y * rowstride;
         uint32_t *dataptr = (uint32_t *) (data + y * rowstride);
-        int x;
 
-        for (x = 0; x < width; ++x)
+        for (int x = 0; x < width; ++x)
           {
             if (iconptr[3] == 0)
               *dataptr = bgcolor;
@@ -9266,80 +9284,77 @@ svg_load_image (struct frame *f,         /* Pointer to emacs frame structure.  *
 
     create_cairo_image_surface (img, data, width, height);
     g_object_unref (pixbuf);
-  }
 #else
-  /* Try to create a x pixmap to hold the svg pixmap.  */
-  if (!image_create_x_image_and_pixmap (f, img, width, height, 0, &ximg, 0))
-    {
-      g_object_unref (pixbuf);
-      return 0;
-    }
+    /* Try to create a x pixmap to hold the svg pixmap.  */
+    XImagePtr ximg;
+    if (!image_create_x_image_and_pixmap (f, img, width, height, 0, &ximg, 0))
+      {
+	g_object_unref (pixbuf);
+	return 0;
+      }
 
-  init_color_table ();
+    init_color_table ();
 
-  /* Handle alpha channel by combining the image with a background
-     color.  */
-  specified_bg = image_spec_value (img->spec, QCbackground, NULL);
-  if (!STRINGP (specified_bg)
-      || !x_defined_color (f, SSDATA (specified_bg), &background, 0))
-    x_query_frame_background_color (f, &background);
+    /* Handle alpha channel by combining the image with a background
+       color.  */
+    XColor background;
+    Lisp_Object specified_bg = image_spec_value (img->spec, QCbackground, NULL);
+    if (!STRINGP (specified_bg)
+	|| !x_defined_color (f, SSDATA (specified_bg), &background, 0))
+      x_query_frame_background_color (f, &background);
 
-  /* SVG pixmaps specify transparency in the last byte, so right
-     shift 8 bits to get rid of it, since emacs doesn't support
-     transparency.  */
-  background.red   >>= 8;
-  background.green >>= 8;
-  background.blue  >>= 8;
+    /* SVG pixmaps specify transparency in the last byte, so right
+       shift 8 bits to get rid of it, since emacs doesn't support
+       transparency.  */
+    background.red   >>= 8;
+    background.green >>= 8;
+    background.blue  >>= 8;
 
-  /* This loop handles opacity values, since Emacs assumes
-     non-transparent images.  Each pixel must be "flattened" by
-     calculating the resulting color, given the transparency of the
-     pixel, and the image background color.  */
-  for (y = 0; y < height; ++y)
-    {
-      for (x = 0; x < width; ++x)
-	{
-	  int red;
-	  int green;
-	  int blue;
-	  int opacity;
+    /* This loop handles opacity values, since Emacs assumes
+       non-transparent images.  Each pixel must be "flattened" by
+       calculating the resulting color, given the transparency of the
+       pixel, and the image background color.  */
+    for (int y = 0; y < height; ++y)
+      {
+	for (int x = 0; x < width; ++x)
+	  {
+	    int red     = *pixels++;
+	    int green   = *pixels++;
+	    int blue    = *pixels++;
+	    int opacity = *pixels++;
 
-	  red     = *pixels++;
-	  green   = *pixels++;
-	  blue    = *pixels++;
-	  opacity = *pixels++;
+	    red   = ((red * opacity)
+		     + (background.red * ((1 << 8) - opacity)));
+	    green = ((green * opacity)
+		     + (background.green * ((1 << 8) - opacity)));
+	    blue  = ((blue * opacity)
+		     + (background.blue * ((1 << 8) - opacity)));
 
-	  red   = ((red * opacity)
-		   + (background.red * ((1 << 8) - opacity)));
-	  green = ((green * opacity)
-		   + (background.green * ((1 << 8) - opacity)));
-	  blue  = ((blue * opacity)
-		   + (background.blue * ((1 << 8) - opacity)));
+	    XPutPixel (ximg, x, y, lookup_rgb_color (f, red, green, blue));
+	  }
 
-	  XPutPixel (ximg, x, y, lookup_rgb_color (f, red, green, blue));
-	}
-
-      pixels += rowstride - 4 * width;
-    }
+	pixels += rowstride - 4 * width;
+      }
 
 #ifdef COLOR_TABLE_SUPPORT
-  /* Remember colors allocated for this image.  */
-  img->colors = colors_in_color_table (&img->ncolors);
-  free_color_table ();
+    /* Remember colors allocated for this image.  */
+    img->colors = colors_in_color_table (&img->ncolors);
+    free_color_table ();
 #endif /* COLOR_TABLE_SUPPORT */
 
-  g_object_unref (pixbuf);
+    g_object_unref (pixbuf);
 
-  img->width  = width;
-  img->height = height;
+    img->width  = width;
+    img->height = height;
 
-  /* Maybe fill in the background field while we have ximg handy.
-     Casting avoids a GCC warning.  */
-  IMAGE_BACKGROUND (img, f, (XImagePtr_or_DC)ximg);
+    /* Maybe fill in the background field while we have ximg handy.
+       Casting avoids a GCC warning.  */
+    IMAGE_BACKGROUND (img, f, (XImagePtr_or_DC)ximg);
 
-  /* Put ximg into the image.  */
-  image_put_x_image (f, img, ximg, 0);
+    /* Put ximg into the image.  */
+    image_put_x_image (f, img, ximg, 0);
 #endif /* ! USE_CAIRO */
+  }
 
   return 1;
 
@@ -9597,8 +9612,6 @@ x_kill_gs_process (Pixmap pixmap, struct frame *f)
 			0, 0, img->width, img->height, ~0, ZPixmap);
       if (ximg)
 	{
-	  int x, y;
-
 	  /* Initialize the color table.  */
 	  init_color_table ();
 
@@ -9606,8 +9619,8 @@ x_kill_gs_process (Pixmap pixmap, struct frame *f)
 	     color table.  After having done so, the color table will
 	     contain an entry for each color used by the image.  */
 #ifdef COLOR_TABLE_SUPPORT
-	  for (y = 0; y < img->height; ++y)
-	    for (x = 0; x < img->width; ++x)
+	  for (int y = 0; y < img->height; ++y)
+	    for (int x = 0; x < img->width; ++x)
 	      {
 		unsigned long pixel = XGetPixel (ximg, x, y);
 
@@ -9806,6 +9819,7 @@ non-numeric, there is no explicit limit on the size of images.  */);
   DEFSYM (QCcrop, ":crop");
   DEFSYM (QCrotation, ":rotation");
   DEFSYM (QCmatrix, ":matrix");
+  DEFSYM (QCscale, ":scale");
   DEFSYM (QCcolor_adjustment, ":color-adjustment");
   DEFSYM (QCmask, ":mask");
 

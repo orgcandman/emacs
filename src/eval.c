@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -1191,7 +1191,7 @@ suppresses the debugger).
 When a handler handles an error, control returns to the `condition-case'
 and it executes the handler's BODY...
 with VAR bound to (ERROR-SYMBOL . SIGNAL-DATA) from the error.
-(If VAR is nil, the handler can't access that information.)
+\(If VAR is nil, the handler can't access that information.)
 Then the value of the last BODY form is returned from the `condition-case'
 expression.
 
@@ -1245,7 +1245,7 @@ internal_lisp_condition_case (volatile Lisp_Object var, Lisp_Object bodyform,
     for (i = 0; i < clausenb; i++)
       {
 	Lisp_Object clause = clauses[i];
-	Lisp_Object condition = XCAR (clause);
+	Lisp_Object condition = CONSP (clause) ? XCAR (clause) : Qnil;
 	if (!CONSP (condition))
 	  condition = Fcons (condition, Qnil);
 	struct handler *c = push_handler (condition, CONDITION_CASE);
@@ -1751,9 +1751,9 @@ find_handler_clause (Lisp_Object handlers, Lisp_Object conditions)
 }
 
 
-/* Dump an error message; called like vprintf.  */
-void
-verror (const char *m, va_list ap)
+/* Format and return a string; called like vprintf.  */
+Lisp_Object
+vformat_string (const char *m, va_list ap)
 {
   char buf[4000];
   ptrdiff_t size = sizeof buf;
@@ -1767,7 +1767,14 @@ verror (const char *m, va_list ap)
   if (buffer != buf)
     xfree (buffer);
 
-  xsignal1 (Qerror, string);
+  return string;
+}
+
+/* Dump an error message; called like vprintf.  */
+void
+verror (const char *m, va_list ap)
+{
+  xsignal1 (Qerror, vformat_string (m, ap));
 }
 
 
@@ -2409,7 +2416,7 @@ may be nil, a function, or a list of functions.  Call each
 function in order with arguments ARGS, stopping at the first
 one that returns nil, and return nil.  Otherwise (if all functions
 return non-nil, or if there are no functions to call), return non-nil
-(do not rely on the precise return value in this case).
+\(do not rely on the precise return value in this case).
 
 Do not use `make-local-variable' to make a hook variable buffer-local.
 Instead, use `add-hook' and specify t for the LOCAL argument.

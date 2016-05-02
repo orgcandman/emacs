@@ -5,8 +5,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -288,8 +288,9 @@ struct frame
      cleared.  */
   bool_bf explicit_name : 1;
 
-  /* True if size of some window on this frame has changed.  */
-  bool_bf window_sizes_changed : 1;
+  /* True if configuration of windows on this frame has changed since
+     last call of run_window_size_change_functions.  */
+  bool_bf window_configuration_changed : 1;
 
   /* True if the mouse has moved on this display device
      since the last time we checked.  */
@@ -828,10 +829,10 @@ default_pixels_per_inch_y (void)
    are frozen on frame F.  */
 #define FRAME_WINDOWS_FROZEN(f) (f)->frozen_window_starts
 
-/* True if a size change has been requested for frame F
-   but not yet really put into effect.  This can be true temporarily
-   when an X event comes in at a bad time.  */
-#define FRAME_WINDOW_SIZES_CHANGED(f) (f)->window_sizes_changed
+/* True if the frame's window configuration has changed since last call
+   of run_window_size_change_functions.  */
+#define FRAME_WINDOW_CONFIGURATION_CHANGED(f)	\
+  (f)->window_configuration_changed
 
 /* The minibuffer window of frame F, if it has one; otherwise nil.  */
 #define FRAME_MINIBUF_WINDOW(f) f->minibuffer_window

@@ -15,8 +15,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -1050,8 +1050,8 @@ usage: (define-charset-internal ...)  */)
       /* Here, we just copy the parent's fast_map.  It's not accurate,
 	 but at least it works for quickly detecting which character
 	 DOESN'T belong to this charset.  */
-      for (i = 0; i < 190; i++)
-	charset.fast_map[i] = parent_charset->fast_map[i];
+      memcpy (charset.fast_map, parent_charset->fast_map,
+	      sizeof charset.fast_map);
 
       /* We also copy these for parents.  */
       charset.min_char = parent_charset->min_char;

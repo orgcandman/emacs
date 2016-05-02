@@ -145,11 +145,12 @@ This returns a string containing the characters @var{characters}.
 @end example
 @end defun
 
-@defun substring string start &optional end
+@defun substring string &optional start end
 This function returns a new string which consists of those characters
 from @var{string} in the range from (and including) the character at the
 index @var{start} up to (but excluding) the character at the index
-@var{end}.  The first character is at index zero.
+@var{end}.  The first character is at index zero.  With one argument,
+this function just copies @var{string}.
 
 @example
 @group
@@ -630,6 +631,14 @@ the codeset part of the locale cannot be @code{"UTF-8"} on MS-Windows.
 
 If your system does not support a locale environment, this function
 behaves like @code{string-lessp}.
+@end defun
+
+@defun string-version-lessp string1 string2
+This function compares strings lexicographically, except it treats
+sequences of numerical characters as if they comprised a base-ten
+number, and then compares the numbers.  So @samp{foo2.png} is
+``smaller'' than @samp{foo12.png} according to this predicate, even if
+@samp{12} is lexicographically ``smaller'' than @samp{2}.
 @end defun
 
 @defun string-prefix-p string1 string2 &optional ignore-case

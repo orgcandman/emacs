@@ -6,8 +6,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -347,7 +347,10 @@ enum glyph_type
   IMAGE_GLYPH,
 
   /* Glyph is a space of fractional width and/or height.  */
-  STRETCH_GLYPH
+  STRETCH_GLYPH,
+
+  /* Glyph is an external widget drawn by the GUI toolkit.  */
+  XWIDGET_GLYPH
 };
 
 
@@ -498,6 +501,11 @@ struct glyph
 
     /* Image ID for image glyphs (type == IMAGE_GLYPH).  */
     int img_id;
+
+#ifdef HAVE_XWIDGETS
+    /* Xwidget reference (type == XWIDGET_GLYPH).  */
+    struct xwidget *xwidget;
+#endif
 
     /* Sub-structure for type == STRETCH_GLYPH.  */
     struct
@@ -1350,6 +1358,9 @@ struct glyph_string
   /* Image, if any.  */
   struct image *img;
 
+  /* Xwidget.  */
+  struct xwidget *xwidget;
+
   /* Slice */
   struct glyph_slice slice;
 
@@ -1962,8 +1973,8 @@ struct bidi_it {
 				   resolving weak and neutral types */
   bidi_type_t type_after_wn;	/* bidi type after overrides and Wn */
   bidi_type_t orig_type;	/* original bidi type, as found in the buffer */
-  char resolved_level;		/* final resolved level of this character */
-  char isolate_level;		/* count of isolate initiators unmatched by PDI */
+  signed char resolved_level;	/* final resolved level of this character */
+  signed char isolate_level;	/* count of isolate initiators unmatched by PDI */
   ptrdiff_t invalid_levels;	/* how many PDFs to ignore */
   ptrdiff_t invalid_isolates;	/* how many PDIs to ignore */
   struct bidi_saved_info prev;	/* info about previous character */
@@ -2101,7 +2112,10 @@ enum display_element_type
   IT_TRUNCATION,
 
   /* Continuation glyphs.  See the comment for IT_TRUNCATION.  */
-  IT_CONTINUATION
+  IT_CONTINUATION,
+
+  /* Xwidget.  */
+  IT_XWIDGET
 };
 
 
@@ -2165,6 +2179,7 @@ enum it_method {
   GET_FROM_C_STRING,
   GET_FROM_IMAGE,
   GET_FROM_STRETCH,
+  GET_FROM_XWIDGET,
   NUM_IT_METHODS
 };
 
@@ -2382,6 +2397,10 @@ struct it
       struct {
 	Lisp_Object object;
       } stretch;
+      /* method == GET_FROM_XWIDGET */
+      struct {
+	Lisp_Object object;
+      } xwidget;
     } u;
 
     /* Current text and display positions.  */
@@ -2505,6 +2524,9 @@ struct it
 
   /* If what == IT_IMAGE, the id of the image to display.  */
   ptrdiff_t image_id;
+
+  /* If what == IT_XWIDGET.  */
+  struct xwidget *xwidget;
 
   /* Values from `slice' property.  */
   struct it_slice slice;

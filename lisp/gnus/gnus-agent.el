@@ -30,10 +30,8 @@
 (require 'gnus-score)
 (require 'gnus-srvr)
 (require 'gnus-util)
+(require 'timer)
 (eval-when-compile
-  (if (featurep 'xemacs)
-      (require 'itimer)
-    (require 'timer))
   (require 'cl))
 
 (autoload 'gnus-server-update-server "gnus-srvr")
@@ -82,27 +80,15 @@ If nil, only read articles will be expired."
   :group 'gnus-agent
   :type 'hook)
 
-;; Extracted from gnus-xmas-redefine in order to preserve user settings
-(when (featurep 'xemacs)
-  (add-hook 'gnus-agent-group-mode-hook 'gnus-xmas-agent-group-menu-add))
-
 (defcustom gnus-agent-summary-mode-hook nil
   "Hook run in Agent summary minor modes."
   :group 'gnus-agent
   :type 'hook)
 
-;; Extracted from gnus-xmas-redefine in order to preserve user settings
-(when (featurep 'xemacs)
-  (add-hook 'gnus-agent-summary-mode-hook 'gnus-xmas-agent-summary-menu-add))
-
 (defcustom gnus-agent-server-mode-hook nil
   "Hook run in Agent summary minor modes."
   :group 'gnus-agent
   :type 'hook)
-
-;; Extracted from gnus-xmas-redefine in order to preserve user settings
-(when (featurep 'xemacs)
-  (add-hook 'gnus-agent-server-mode-hook 'gnus-xmas-agent-server-menu-add))
 
 (defcustom gnus-agent-confirmation-function 'y-or-n-p
   "Function to confirm when error happens."
@@ -251,16 +237,6 @@ NOTES:
 ;; Dynamic variables
 (defvar gnus-headers)
 (defvar gnus-score)
-
-;; Added to support XEmacs
-(eval-and-compile
-  (unless (fboundp 'directory-files-and-attributes)
-    (defun directory-files-and-attributes (directory
-					   &optional full match nosort)
-      (let (result)
-	(dolist (file (directory-files directory full match nosort))
-	  (push (cons file (file-attributes file)) result))
-	(nreverse result)))))
 
 ;;;
 ;;; Setup
@@ -571,19 +547,9 @@ manipulated as follows:
        ["Remove" gnus-agent-remove-server t]))))
 
 (defun gnus-agent-make-mode-line-string (string mouse-button mouse-func)
-  (if (and (fboundp 'propertize)
-	   (fboundp 'make-mode-line-mouse-map))
-      (propertize string 'local-map
-		  (make-mode-line-mouse-map mouse-button mouse-func)
-		  'mouse-face
-		  (if (and (featurep 'xemacs)
-			   ;; XEmacs's `facep' only checks for a face
-			   ;; object, not for a face name, so it's useless
-			   ;; to check with `facep'.
-			   (find-face 'modeline))
-		      'modeline
-		    'mode-line-highlight))
-    string))
+  (propertize string 'local-map
+	      (make-mode-line-mouse-map mouse-button mouse-func)
+	      'mouse-face 'mode-line-highlight))
 
 (defun gnus-agent-toggle-plugged (set-to)
   "Toggle whether Gnus is unplugged or not."
@@ -680,7 +646,7 @@ minor mode in all Gnus buffers."
 
 (defun gnus-agent-queue-setup (&optional group-name)
   "Make sure the queue group exists.
-Optional arg GROUP-NAME allows to specify another group."
+Optional arg GROUP-NAME allows another group to be specified."
   (unless (gnus-gethash (format "nndraft:%s" (or group-name "queue"))
 			gnus-newsrc-hashtb)
     (gnus-request-create-group (or group-name "queue") '(nndraft ""))
@@ -868,7 +834,7 @@ be a select method."
 		      (not (eq gnus-agent-synchronize-flags 'ask)))
 		 (and (eq gnus-agent-synchronize-flags 'ask)
 		      (gnus-y-or-n-p
-		       (gnus-format-message
+		       (format-message
 			"Synchronize flags on server `%s'? "
 			(cadr method))))))
     (gnus-agent-synchronize-flags-server method)))
@@ -2713,7 +2679,7 @@ The following commands are available:
   (let* ((gnus-tmp-name (format "%s" (car category)))
 	 (gnus-tmp-groups (length (gnus-agent-cat-groups category))))
     (beginning-of-line)
-    (gnus-add-text-properties
+    (add-text-properties
      (point)
      (prog1 (1+ (point))
        ;; Insert the text.

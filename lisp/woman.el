@@ -752,7 +752,10 @@ Default is t."
   "Imenu support for Sections and Subsections.
 An alist with elements of the form (MENU-TITLE REGEXP INDEX) --
 see the documentation for `imenu-generic-expression'."
-  :type 'sexp
+  :type '(alist :key-type (choice :tag "Title" (const nil) string)
+                :value-type (group (choice (string :tag "Regexp")
+                                           function)
+                                   integer))
   :group 'woman-interface)
 
 (defcustom woman-imenu nil
@@ -1651,7 +1654,7 @@ Do not call directly!"
 	     (setq woman-frame (make-frame)))))
     (set-buffer (get-buffer-create bufname))
     (condition-case nil
-        (display-buffer (current-buffer))
+        (pop-to-buffer-same-window (current-buffer))
       (error (pop-to-buffer (current-buffer))))
     (buffer-disable-undo)
     (setq buffer-read-only nil)
@@ -2061,14 +2064,14 @@ alist in `woman-buffer-alist' and return nil."
   (if (zerop woman-buffer-number)
       (let ((buffer (get-buffer (cdr (car woman-buffer-alist)))))
 	(if buffer
-	    (display-buffer buffer)
+	    (pop-to-buffer-same-window buffer)
 	  ;; Delete alist element:
 	  (setq woman-buffer-alist (cdr woman-buffer-alist))
 	  nil))
     (let* ((prev-ptr (nthcdr (1- woman-buffer-number) woman-buffer-alist))
 	   (buffer (get-buffer (cdr (car (cdr prev-ptr))))))
       (if buffer
-	  (display-buffer buffer)
+	  (pop-to-buffer-same-window buffer)
 	;; Delete alist element:
 	(setcdr prev-ptr (cdr (cdr prev-ptr)))
 	(if (>= woman-buffer-number (length woman-buffer-alist))

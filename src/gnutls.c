@@ -5,8 +5,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -397,11 +397,47 @@ gnutls_log_function2i (int level, const char *string, int extra)
   message ("gnutls.c: [%d] %s %d", level, string, extra);
 }
 
+int
+gnutls_try_handshake (struct Lisp_Process *proc)
+{
+  gnutls_session_t state = proc->gnutls_state;
+  int ret;
+  bool non_blocking = proc->is_non_blocking_client;
+
+  if (proc->gnutls_complete_negotiation_p)
+    non_blocking = false;
+
+  if (non_blocking)
+    proc->gnutls_p = true;
+
+  do
+    {
+      ret = gnutls_handshake (state);
+      emacs_gnutls_handle_error (state, ret);
+      QUIT;
+    }
+  while (ret < 0
+	 && gnutls_error_is_fatal (ret) == 0
+	 && ! non_blocking);
+
+  proc->gnutls_initstage = GNUTLS_STAGE_HANDSHAKE_TRIED;
+
+  if (ret == GNUTLS_E_SUCCESS)
+    {
+      /* Here we're finally done.  */
+      proc->gnutls_initstage = GNUTLS_STAGE_READY;
+    }
+  else
+    {
+      /* check_memory_full (gnutls_alert_send_appropriate (state, ret));  */
+    }
+  return ret;
+}
+
 static int
 emacs_gnutls_handshake (struct Lisp_Process *proc)
 {
   gnutls_session_t state = proc->gnutls_state;
-  int ret;
 
   if (proc->gnutls_initstage < GNUTLS_STAGE_HANDSHAKE_CANDO)
     return -1;
@@ -443,26 +479,7 @@ emacs_gnutls_handshake (struct Lisp_Process *proc)
       proc->gnutls_initstage = GNUTLS_STAGE_TRANSPORT_POINTERS_SET;
     }
 
-  do
-    {
-      ret = gnutls_handshake (state);
-      emacs_gnutls_handle_error (state, ret);
-      QUIT;
-    }
-  while (ret < 0 && gnutls_error_is_fatal (ret) == 0);
-
-  proc->gnutls_initstage = GNUTLS_STAGE_HANDSHAKE_TRIED;
-
-  if (ret == GNUTLS_E_SUCCESS)
-    {
-      /* Here we're finally done.  */
-      proc->gnutls_initstage = GNUTLS_STAGE_READY;
-    }
-  else
-    {
-      check_memory_full (gnutls_alert_send_appropriate (state, ret));
-    }
-  return ret;
+  return gnutls_try_handshake (proc);
 }
 
 ptrdiff_t
@@ -528,26 +545,12 @@ emacs_gnutls_read (struct Lisp_Process *proc, char *buf, ptrdiff_t nbyte)
   ssize_t rtnval;
   gnutls_session_t state = proc->gnutls_state;
 
-  int log_level = proc->gnutls_log_level;
-
   if (proc->gnutls_initstage != GNUTLS_STAGE_READY)
     {
-      /* If the handshake count is under the limit, try the handshake
-         again and increment the handshake count.  This count is kept
-         per process (connection), not globally.  */
-      if (proc->gnutls_handshakes_tried < GNUTLS_EMACS_HANDSHAKES_LIMIT)
-        {
-          proc->gnutls_handshakes_tried++;
-          emacs_gnutls_handshake (proc);
-          GNUTLS_LOG2i (5, log_level, "Retried handshake",
-                        proc->gnutls_handshakes_tried);
-          return -1;
-        }
-
-      GNUTLS_LOG (2, log_level, "Giving up on handshake; resetting retries");
-      proc->gnutls_handshakes_tried = 0;
-      return 0;
+      errno = EAGAIN;
+      return -1;
     }
+
   rtnval = gnutls_record_recv (state, buf, nbyte);
   if (rtnval >= 0)
     return rtnval;
@@ -655,7 +658,7 @@ emacs_gnutls_deinit (Lisp_Object proc)
 
   CHECK_PROCESS (proc);
 
-  if (XPROCESS (proc)->gnutls_p == 0)
+  if (! XPROCESS (proc)->gnutls_p)
     return Qnil;
 
   log_level = XPROCESS (proc)->gnutls_log_level;
@@ -682,8 +685,21 @@ emacs_gnutls_deinit (Lisp_Object proc)
 	GNUTLS_INITSTAGE (proc) = GNUTLS_STAGE_INIT - 1;
     }
 
-  XPROCESS (proc)->gnutls_p = 0;
+  XPROCESS (proc)->gnutls_p = false;
   return Qt;
+}
+
+DEFUN ("gnutls-asynchronous-parameters", Fgnutls_asynchronous_parameters,
+       Sgnutls_asynchronous_parameters, 2, 2, 0,
+       doc: /* Mark this process as being a pre-init GnuTLS process.
+The second parameter is the list of parameters to feed to gnutls-boot
+to finish setting up the connection. */)
+  (Lisp_Object proc, Lisp_Object params)
+{
+  CHECK_PROCESS (proc);
+
+  XPROCESS (proc)->gnutls_boot_parameters = params;
+  return Qnil;
 }
 
 DEFUN ("gnutls-get-initstage", Fgnutls_get_initstage, Sgnutls_get_initstage, 1, 1, 0,
@@ -703,7 +719,9 @@ usage: (gnutls-errorp ERROR)  */
        attributes: const)
   (Lisp_Object err)
 {
-  if (EQ (err, Qt)) return Qnil;
+  if (EQ (err, Qt)
+      || EQ (err, Qgnutls_e_again))
+    return Qnil;
 
   return Qt;
 }
@@ -1022,7 +1040,7 @@ The return value is a property list with top-level keys :warnings and
 
   CHECK_PROCESS (proc);
 
-  if (GNUTLS_INITSTAGE (proc) < GNUTLS_STAGE_INIT)
+  if (GNUTLS_INITSTAGE (proc) != GNUTLS_STAGE_READY)
     return Qnil;
 
   /* Then collect any warnings already computed by the handshake. */
@@ -1154,6 +1172,159 @@ emacs_gnutls_global_deinit (void)
 }
 #endif
 
+static void ATTRIBUTE_FORMAT_PRINTF (2, 3)
+boot_error (struct Lisp_Process *p, const char *m, ...)
+{
+  va_list ap;
+  va_start (ap, m);
+  if (p->is_non_blocking_client)
+    pset_status (p, list2 (Qfailed, vformat_string (m, ap)));
+  else
+    verror (m, ap);
+}
+
+Lisp_Object
+gnutls_verify_boot (Lisp_Object proc, Lisp_Object proplist)
+{
+  int ret;
+  struct Lisp_Process *p = XPROCESS (proc);
+  gnutls_session_t state = p->gnutls_state;
+  unsigned int peer_verification;
+  Lisp_Object warnings;
+  int max_log_level = p->gnutls_log_level;
+  Lisp_Object hostname, verify_error;
+  bool verify_error_all = false;
+  char *c_hostname;
+
+  if (NILP (proplist))
+    proplist = Fcdr (Fplist_get (p->childp, QCtls_parameters));
+
+  verify_error = Fplist_get (proplist, QCgnutls_bootprop_verify_error);
+  hostname = Fplist_get (proplist, QCgnutls_bootprop_hostname);
+
+  if (EQ (verify_error, Qt))
+    verify_error_all = true;
+  else if (NILP (Flistp (verify_error)))
+    {
+      boot_error (p,
+		  "gnutls-boot: invalid :verify_error parameter (not a list)");
+      return Qnil;
+    }
+
+  if (!STRINGP (hostname))
+    {
+      boot_error (p, "gnutls-boot: invalid :hostname parameter (not a string)");
+      return Qnil;
+    }
+  c_hostname = SSDATA (hostname);
+
+  /* Now verify the peer, following
+     http://www.gnu.org/software/gnutls/manual/html_node/Verifying-peer_0027s-certificate.html.
+     The peer should present at least one certificate in the chain; do a
+     check of the certificate's hostname with
+     gnutls_x509_crt_check_hostname against :hostname.  */
+
+  ret = gnutls_certificate_verify_peers2 (state, &peer_verification);
+  if (ret < GNUTLS_E_SUCCESS)
+    return gnutls_make_error (ret);
+
+  XPROCESS (proc)->gnutls_peer_verification = peer_verification;
+
+  warnings = Fplist_get (Fgnutls_peer_status (proc), intern (":warnings"));
+  if (!NILP (warnings))
+    {
+      for (Lisp_Object tail = warnings; CONSP (tail); tail = XCDR (tail))
+        {
+          Lisp_Object warning = XCAR (tail);
+          Lisp_Object message = Fgnutls_peer_status_warning_describe (warning);
+          if (!NILP (message))
+            GNUTLS_LOG2 (1, max_log_level, "verification:", SSDATA (message));
+        }
+    }
+
+  if (peer_verification != 0)
+    {
+      if (verify_error_all
+          || !NILP (Fmember (QCgnutls_bootprop_trustfiles, verify_error)))
+        {
+	  emacs_gnutls_deinit (proc);
+	  boot_error (p,
+		      "Certificate validation failed %s, verification code %x",
+		      c_hostname, peer_verification);
+	  return Qnil;
+        }
+      else
+	{
+          GNUTLS_LOG2 (1, max_log_level, "certificate validation failed:",
+                       c_hostname);
+	}
+    }
+
+  /* Up to here the process is the same for X.509 certificates and
+     OpenPGP keys.  From now on X.509 certificates are assumed.  This
+     can be easily extended to work with openpgp keys as well.  */
+  if (gnutls_certificate_type_get (state) == GNUTLS_CRT_X509)
+    {
+      gnutls_x509_crt_t gnutls_verify_cert;
+      const gnutls_datum_t *gnutls_verify_cert_list;
+      unsigned int gnutls_verify_cert_list_size;
+
+      ret = gnutls_x509_crt_init (&gnutls_verify_cert);
+      if (ret < GNUTLS_E_SUCCESS)
+	return gnutls_make_error (ret);
+
+      gnutls_verify_cert_list
+	= gnutls_certificate_get_peers (state, &gnutls_verify_cert_list_size);
+
+      if (gnutls_verify_cert_list == NULL)
+	{
+	  gnutls_x509_crt_deinit (gnutls_verify_cert);
+	  emacs_gnutls_deinit (proc);
+	  boot_error (p, "No x509 certificate was found\n");
+	  return Qnil;
+	}
+
+      /* Check only the first certificate in the given chain.  */
+      ret = gnutls_x509_crt_import (gnutls_verify_cert,
+				    &gnutls_verify_cert_list[0],
+				    GNUTLS_X509_FMT_DER);
+
+      if (ret < GNUTLS_E_SUCCESS)
+	{
+	  gnutls_x509_crt_deinit (gnutls_verify_cert);
+	  return gnutls_make_error (ret);
+	}
+
+      XPROCESS (proc)->gnutls_certificate = gnutls_verify_cert;
+
+      int err = gnutls_x509_crt_check_hostname (gnutls_verify_cert,
+						c_hostname);
+      check_memory_full (err);
+      if (!err)
+	{
+	  XPROCESS (proc)->gnutls_extra_peer_verification
+	    |= CERTIFICATE_NOT_MATCHING;
+          if (verify_error_all
+              || !NILP (Fmember (QCgnutls_bootprop_hostname, verify_error)))
+            {
+	      gnutls_x509_crt_deinit (gnutls_verify_cert);
+	      emacs_gnutls_deinit (proc);
+	      boot_error (p, "The x509 certificate does not match \"%s\"",
+			  c_hostname);
+	      return Qnil;
+            }
+	  else
+	    GNUTLS_LOG2 (1, max_log_level, "x509 certificate does not match:",
+			 c_hostname);
+	}
+    }
+
+  /* Set this flag only if the whole initialization succeeded.  */
+  XPROCESS (proc)->gnutls_p = true;
+
+  return gnutls_make_error (ret);
+}
+
 DEFUN ("gnutls-boot", Fgnutls_boot, Sgnutls_boot, 3, 3, 0,
        doc: /* Initialize GnuTLS client for process PROC with TYPE+PROPLIST.
 Currently only client mode is supported.  Return a success/failure
@@ -1190,6 +1361,9 @@ t to do all checks.  Currently it can contain `:trustfiles' and
 :min-prime-bits is the minimum accepted number of bits the client will
 accept in Diffie-Hellman key exchange.
 
+:complete-negotiation, if non-nil, will make negotiation complete
+before returning even on non-blocking sockets.
+
 The debug level will be set for this process AND globally for GnuTLS.
 So if you set it higher or lower at any point, it affects global
 debugging.
@@ -1212,14 +1386,12 @@ one trustfile (usually a CA bundle).  */)
 {
   int ret = GNUTLS_E_SUCCESS;
   int max_log_level = 0;
-  bool verify_error_all = 0;
 
   gnutls_session_t state;
   gnutls_certificate_credentials_t x509_cred = NULL;
   gnutls_anon_client_credentials_t anon_cred = NULL;
   Lisp_Object global_init;
   char const *priority_string_ptr = "NORMAL"; /* default priority string.  */
-  unsigned int peer_verification;
   char *c_hostname;
 
   /* Placeholders for the property list elements.  */
@@ -1230,19 +1402,24 @@ one trustfile (usually a CA bundle).  */)
   /* Lisp_Object callbacks; */
   Lisp_Object loglevel;
   Lisp_Object hostname;
-  Lisp_Object verify_error;
   Lisp_Object prime_bits;
-  Lisp_Object warnings;
+  struct Lisp_Process *p = XPROCESS (proc);
 
   CHECK_PROCESS (proc);
   CHECK_SYMBOL (type);
   CHECK_LIST (proplist);
 
   if (NILP (Fgnutls_available_p ()))
-    error ("GnuTLS not available");
+    {
+      boot_error (p, "GnuTLS not available");
+      return Qnil;
+    }
 
   if (!EQ (type, Qgnutls_x509pki) && !EQ (type, Qgnutls_anon))
-    error ("Invalid GnuTLS credential type");
+    {
+      boot_error (p, "Invalid GnuTLS credential type");
+      return Qnil;
+    }
 
   hostname              = Fplist_get (proplist, QCgnutls_bootprop_hostname);
   priority_string       = Fplist_get (proplist, QCgnutls_bootprop_priority);
@@ -1250,20 +1427,13 @@ one trustfile (usually a CA bundle).  */)
   keylist               = Fplist_get (proplist, QCgnutls_bootprop_keylist);
   crlfiles              = Fplist_get (proplist, QCgnutls_bootprop_crlfiles);
   loglevel              = Fplist_get (proplist, QCgnutls_bootprop_loglevel);
-  verify_error          = Fplist_get (proplist, QCgnutls_bootprop_verify_error);
   prime_bits            = Fplist_get (proplist, QCgnutls_bootprop_min_prime_bits);
 
-  if (EQ (verify_error, Qt))
-    {
-      verify_error_all = 1;
-    }
-  else if (NILP (Flistp (verify_error)))
-    {
-      error ("gnutls-boot: invalid :verify_error parameter (not a list)");
-    }
-
   if (!STRINGP (hostname))
-    error ("gnutls-boot: invalid :hostname parameter (not a string)");
+    {
+      boot_error (p, "gnutls-boot: invalid :hostname parameter (not a string)");
+      return Qnil;
+    }
   c_hostname = SSDATA (hostname);
 
   state = XPROCESS (proc)->gnutls_state;
@@ -1371,7 +1541,8 @@ one trustfile (usually a CA bundle).  */)
 	  else
 	    {
 	      emacs_gnutls_deinit (proc);
-	      error ("Invalid trustfile");
+	      boot_error (p, "Invalid trustfile");
+	      return Qnil;
 	    }
 	}
 
@@ -1395,7 +1566,8 @@ one trustfile (usually a CA bundle).  */)
 	  else
 	    {
 	      emacs_gnutls_deinit (proc);
-	      error ("Invalid CRL file");
+	      boot_error (p, "Invalid CRL file");
+	      return Qnil;
 	    }
 	}
 
@@ -1424,8 +1596,9 @@ one trustfile (usually a CA bundle).  */)
 	  else
 	    {
 	      emacs_gnutls_deinit (proc);
-	      error (STRINGP (keyfile) ? "Invalid client cert file"
-		     : "Invalid client key file");
+	      boot_error (p, STRINGP (keyfile) ? "Invalid client cert file"
+			  : "Invalid client key file");
+	      return Qnil;
 	    }
 	}
     }
@@ -1479,114 +1652,14 @@ one trustfile (usually a CA bundle).  */)
 	return gnutls_make_error (ret);
     }
 
+  XPROCESS (proc)->gnutls_complete_negotiation_p =
+    !NILP (Fplist_get (proplist, QCgnutls_complete_negotiation));
   GNUTLS_INITSTAGE (proc) = GNUTLS_STAGE_CRED_SET;
   ret = emacs_gnutls_handshake (XPROCESS (proc));
   if (ret < GNUTLS_E_SUCCESS)
     return gnutls_make_error (ret);
 
-  /* Now verify the peer, following
-     http://www.gnu.org/software/gnutls/manual/html_node/Verifying-peer_0027s-certificate.html.
-     The peer should present at least one certificate in the chain; do a
-     check of the certificate's hostname with
-     gnutls_x509_crt_check_hostname against :hostname.  */
-
-  ret = gnutls_certificate_verify_peers2 (state, &peer_verification);
-  if (ret < GNUTLS_E_SUCCESS)
-    return gnutls_make_error (ret);
-
-  XPROCESS (proc)->gnutls_peer_verification = peer_verification;
-
-  warnings = Fplist_get (Fgnutls_peer_status (proc), intern (":warnings"));
-  if (!NILP (warnings))
-    {
-      Lisp_Object tail;
-      for (tail = warnings; CONSP (tail); tail = XCDR (tail))
-        {
-          Lisp_Object warning = XCAR (tail);
-          Lisp_Object message = Fgnutls_peer_status_warning_describe (warning);
-          if (!NILP (message))
-            GNUTLS_LOG2 (1, max_log_level, "verification:", SSDATA (message));
-        }
-    }
-
-  if (peer_verification != 0)
-    {
-      if (verify_error_all
-          || !NILP (Fmember (QCgnutls_bootprop_trustfiles, verify_error)))
-        {
-	  emacs_gnutls_deinit (proc);
-	  error ("Certificate validation failed %s, verification code %x",
-		 c_hostname, peer_verification);
-        }
-      else
-	{
-          GNUTLS_LOG2 (1, max_log_level, "certificate validation failed:",
-                       c_hostname);
-	}
-    }
-
-  /* Up to here the process is the same for X.509 certificates and
-     OpenPGP keys.  From now on X.509 certificates are assumed.  This
-     can be easily extended to work with openpgp keys as well.  */
-  if (gnutls_certificate_type_get (state) == GNUTLS_CRT_X509)
-    {
-      gnutls_x509_crt_t gnutls_verify_cert;
-      const gnutls_datum_t *gnutls_verify_cert_list;
-      unsigned int gnutls_verify_cert_list_size;
-
-      ret = gnutls_x509_crt_init (&gnutls_verify_cert);
-      if (ret < GNUTLS_E_SUCCESS)
-	return gnutls_make_error (ret);
-
-      gnutls_verify_cert_list =
-	gnutls_certificate_get_peers (state, &gnutls_verify_cert_list_size);
-
-      if (gnutls_verify_cert_list == NULL)
-	{
-	  gnutls_x509_crt_deinit (gnutls_verify_cert);
-	  emacs_gnutls_deinit (proc);
-	  error ("No x509 certificate was found\n");
-	}
-
-      /* We only check the first certificate in the given chain.  */
-      ret = gnutls_x509_crt_import (gnutls_verify_cert,
-				       &gnutls_verify_cert_list[0],
-				       GNUTLS_X509_FMT_DER);
-
-      if (ret < GNUTLS_E_SUCCESS)
-	{
-	  gnutls_x509_crt_deinit (gnutls_verify_cert);
-	  return gnutls_make_error (ret);
-	}
-
-      XPROCESS (proc)->gnutls_certificate = gnutls_verify_cert;
-
-      int err = gnutls_x509_crt_check_hostname (gnutls_verify_cert,
-						c_hostname);
-      check_memory_full (err);
-      if (!err)
-	{
-	  XPROCESS (proc)->gnutls_extra_peer_verification |=
-	    CERTIFICATE_NOT_MATCHING;
-          if (verify_error_all
-              || !NILP (Fmember (QCgnutls_bootprop_hostname, verify_error)))
-            {
-	      gnutls_x509_crt_deinit (gnutls_verify_cert);
-	      emacs_gnutls_deinit (proc);
-	      error ("The x509 certificate does not match \"%s\"", c_hostname);
-            }
-	  else
-	    {
-              GNUTLS_LOG2 (1, max_log_level, "x509 certificate does not match:",
-                           c_hostname);
-	    }
-	}
-    }
-
-  /* Set this flag only if the whole initialization succeeded.  */
-  XPROCESS (proc)->gnutls_p = 1;
-
-  return gnutls_make_error (ret);
+  return gnutls_verify_boot (proc, proplist);
 }
 
 DEFUN ("gnutls-bye", Fgnutls_bye,
@@ -1673,6 +1746,7 @@ syms_of_gnutls (void)
   DEFSYM (QCgnutls_bootprop_crlfiles, ":crlfiles");
   DEFSYM (QCgnutls_bootprop_min_prime_bits, ":min-prime-bits");
   DEFSYM (QCgnutls_bootprop_loglevel, ":loglevel");
+  DEFSYM (QCgnutls_complete_negotiation, ":complete-negotiation");
   DEFSYM (QCgnutls_bootprop_verify_flags, ":verify-flags");
   DEFSYM (QCgnutls_bootprop_verify_error, ":verify-error");
 
@@ -1693,6 +1767,7 @@ syms_of_gnutls (void)
 	make_number (GNUTLS_E_APPLICATION_ERROR_MIN));
 
   defsubr (&Sgnutls_get_initstage);
+  defsubr (&Sgnutls_asynchronous_parameters);
   defsubr (&Sgnutls_errorp);
   defsubr (&Sgnutls_error_fatalp);
   defsubr (&Sgnutls_error_string);

@@ -5,8 +5,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -106,6 +106,7 @@ struct Lisp_Process
 
 #ifdef HAVE_GNUTLS
     Lisp_Object gnutls_cred_type;
+    Lisp_Object gnutls_boot_parameters;
 #endif
 
     /* Pipe process attached to the standard error of this process.  */
@@ -161,7 +162,25 @@ struct Lisp_Process
        flag indicates that `raw_status' contains a new status that still
        needs to be synced to `status'.  */
     bool_bf raw_status_new : 1;
+    /* Whether this is a nonblocking socket. */
+    bool_bf is_non_blocking_client : 1;
+    /* Whether this is a server or a client socket. */
+    bool_bf is_server : 1;
     int raw_status;
+    /* The length of the socket backlog. */
+    int backlog;
+    /* The port number. */
+    int port;
+    /* The socket type. */
+    int socktype;
+    /* The socket protocol. */
+    int ai_protocol;
+
+#ifdef HAVE_GETADDRINFO_A
+    /* Whether the socket is waiting for response from an asynchronous
+       DNS call. */
+    struct gaicb *dns_request;
+#endif
 
 #ifdef HAVE_GNUTLS
     gnutls_initstage_t gnutls_initstage;
@@ -174,6 +193,7 @@ struct Lisp_Process
     int gnutls_log_level;
     int gnutls_handshakes_tried;
     bool_bf gnutls_p : 1;
+    bool_bf gnutls_complete_negotiation_p : 1;
 #endif
 };
 
@@ -189,6 +209,12 @@ INLINE void
 pset_childp (struct Lisp_Process *p, Lisp_Object val)
 {
   p->childp = val;
+}
+
+INLINE void
+pset_status (struct Lisp_Process *p, Lisp_Object val)
+{
+  p->status = val;
 }
 
 #ifdef HAVE_GNUTLS
@@ -225,7 +251,7 @@ extern Lisp_Object system_process_attributes (Lisp_Object);
 
 extern void record_deleted_pid (pid_t, Lisp_Object);
 struct sockaddr;
-extern Lisp_Object conv_sockaddr_to_lisp (struct sockaddr *, int);
+extern Lisp_Object conv_sockaddr_to_lisp (struct sockaddr *, ptrdiff_t);
 extern void hold_keyboard_input (void);
 extern void unhold_keyboard_input (void);
 extern bool kbd_on_hold_p (void);

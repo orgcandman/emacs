@@ -5,8 +5,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -25,8 +25,9 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "lisp.h"
 
-/* This limits the attempts to handshake per process (connection).  */
-#define GNUTLS_EMACS_HANDSHAKES_LIMIT 100
+/* This limits the attempts to handshake per process (connection).  It
+   should work out to about one minute in asynchronous cases. */
+#define GNUTLS_EMACS_HANDSHAKES_LIMIT 6000
 
 typedef enum
 {
@@ -84,6 +85,8 @@ extern void emacs_gnutls_transport_set_errno (gnutls_session_t state, int err);
 #endif
 extern Lisp_Object emacs_gnutls_deinit (Lisp_Object);
 extern Lisp_Object emacs_gnutls_global_init (void);
+extern int gnutls_try_handshake (struct Lisp_Process *p);
+extern Lisp_Object gnutls_verify_boot (Lisp_Object proc, Lisp_Object proplist);
 
 #endif
 

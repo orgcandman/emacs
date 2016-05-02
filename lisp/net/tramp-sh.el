@@ -308,6 +308,14 @@ The string is used in `tramp-methods'.")
     (tramp-connection-timeout   10)))
 ;;;###tramp-autoload
 (add-to-list 'tramp-methods
+  '("doas"
+    (tramp-login-program        "doas")
+    (tramp-login-args           (("-u" "%u") ("-s")))
+    (tramp-remote-shell         "/bin/sh")
+    (tramp-remote-shell-args    ("-c"))
+    (tramp-connection-timeout   10)))
+;;;###tramp-autoload
+(add-to-list 'tramp-methods
   '("ksu"
     (tramp-login-program        "ksu")
     (tramp-login-args           (("%u") ("-q")))
@@ -408,7 +416,7 @@ The string is used in `tramp-methods'.")
 
 ;;;###tramp-autoload
 (add-to-list 'tramp-default-user-alist
-	     `(,(concat "\\`" (regexp-opt '("su" "sudo" "ksu")) "\\'")
+	     `(,(concat "\\`" (regexp-opt '("su" "sudo" "doas" "ksu")) "\\'")
 	       nil "root"))
 ;; Do not add "ssh" based methods, otherwise ~/.ssh/config would be ignored.
 ;; Do not add "plink" based methods, they ask interactively for the user.
@@ -483,6 +491,7 @@ The string is used in `tramp-methods'.")
      (tramp-set-completion-function "nc" tramp-completion-function-alist-telnet)
      (tramp-set-completion-function "su" tramp-completion-function-alist-su)
      (tramp-set-completion-function "sudo" tramp-completion-function-alist-su)
+     (tramp-set-completion-function "doas" tramp-completion-function-alist-su)
      (tramp-set-completion-function "ksu" tramp-completion-function-alist-su)
      (tramp-set-completion-function "sg" tramp-completion-function-alist-sg)
      (tramp-set-completion-function
@@ -497,7 +506,7 @@ The string is used in `tramp-methods'.")
 ;; "getconf PATH" yields:
 ;; HP-UX: /usr/bin:/usr/ccs/bin:/opt/ansic/bin:/opt/langtools/bin:/opt/fortran/bin
 ;; Solaris: /usr/xpg4/bin:/usr/ccs/bin:/usr/bin:/opt/SUNWspro/bin
-;; GNU/Linux (Debian, Suse): /bin:/usr/bin
+;; GNU/Linux (Debian, Suse, RHEL): /bin:/usr/bin
 ;; FreeBSD: /usr/bin:/bin:/usr/sbin:/sbin: - beware trailing ":"!
 ;; Darwin: /usr/bin:/bin:/usr/sbin:/sbin
 ;; IRIX64: /usr/bin
@@ -2797,7 +2806,7 @@ The method used must be an out-of-band method."
 	  (narrow-to-region (point) (point))
 	  ;; We cannot use `insert-buffer-substring' because the Tramp
 	  ;; buffer changes its contents before insertion due to calling
-	  ;; `expand-file' and alike.
+	  ;; `expand-file-name' and alike.
 	  (insert
 	   (with-current-buffer (tramp-get-buffer v)
 	     (buffer-string)))
@@ -2860,9 +2869,10 @@ the result will be a local, non-Tramp, file name."
   ;; Unless NAME is absolute, concat DIR and NAME.
   (unless (file-name-absolute-p name)
     (setq name (concat (file-name-as-directory dir) name)))
-  ;; If NAME is not a Tramp file, run the real handler.
+  ;; If connection is not established yet, run the real handler.
   (if (not (tramp-connectable-p name))
-      (tramp-run-real-handler 'expand-file-name (list name nil))
+      (tramp-drop-volume-letter
+       (tramp-run-real-handler 'expand-file-name (list name nil)))
     ;; Dissect NAME.
     (with-parsed-tramp-file-name name nil
       (unless (tramp-run-real-handler 'file-name-absolute-p (list localname))
@@ -4110,44 +4120,36 @@ process to set up.  VEC specifies the connection."
   ;; CCC this can't be the right way to do it.  Hm.
   (tramp-message vec 5 "Determining coding system")
   (with-current-buffer (process-buffer proc)
-    (if (featurep 'mule)
-	;; Use MULE to select the right EOL convention for communicating
-	;; with the process.
-	(let ((cs (or (and (memq 'utf-8 (coding-system-list))
-			   (string-match "utf-?8" (tramp-get-remote-locale vec))
-			   (cons 'utf-8 'utf-8))
-		      (process-coding-system proc)
-		      (cons 'undecided 'undecided)))
-	      cs-decode cs-encode)
-	  (when (symbolp cs) (setq cs (cons cs cs)))
-	  (setq cs-decode (or (car cs) 'undecided)
-                cs-encode (or (cdr cs) 'undecided))
-	  (setq cs-encode
-		(coding-system-change-eol-conversion
-		 cs-encode
-		 (if (string-match
-		      "^Darwin" (tramp-get-connection-property vec "uname" ""))
-		     'mac 'unix)))
-	  (tramp-send-command vec "echo foo ; echo bar" t)
-	  (goto-char (point-min))
-	  (when (search-forward "\r" nil t)
-	    (setq cs-decode (coding-system-change-eol-conversion
-			     cs-decode 'dos)))
-          ;; Special setting for Mac OS X.
-          (when (and (string-match
-                      "^Darwin" (tramp-get-connection-property vec "uname" ""))
-                     (memq 'utf-8-hfs (coding-system-list)))
-            (setq cs-decode 'utf-8-hfs
-                  cs-encode 'utf-8-hfs))
-	  (set-buffer-process-coding-system cs-decode cs-encode)
-	  (tramp-message
-	   vec 5 "Setting coding system to `%s' and `%s'" cs-decode cs-encode))
-      ;; Look for ^M and do something useful if found.
+    ;; Use MULE to select the right EOL convention for communicating
+    ;; with the process.
+    (let ((cs (or (and (memq 'utf-8 (coding-system-list))
+		       (string-match "utf-?8" (tramp-get-remote-locale vec))
+		       (cons 'utf-8 'utf-8))
+		  (process-coding-system proc)
+		  (cons 'undecided 'undecided)))
+	  cs-decode cs-encode)
+      (when (symbolp cs) (setq cs (cons cs cs)))
+      (setq cs-decode (or (car cs) 'undecided)
+	    cs-encode (or (cdr cs) 'undecided)
+	    cs-encode
+	    (coding-system-change-eol-conversion
+	     cs-encode
+	     (if (string-match
+		  "^Darwin" (tramp-get-connection-property vec "uname" ""))
+		 'mac 'unix)))
+      (tramp-send-command vec "echo foo ; echo bar" t)
+      (goto-char (point-min))
       (when (search-forward "\r" nil t)
-	;; We have found a ^M but cannot frob the process coding system
-	;; because we're running on a non-MULE Emacs.  Let's try
-	;; stty, instead.
-	(tramp-send-command vec "stty -onlcr" t))))
+	(setq cs-decode (coding-system-change-eol-conversion cs-decode 'dos)))
+      ;; Special setting for Mac OS X.
+      (when (and (string-match
+		  "^Darwin" (tramp-get-connection-property vec "uname" ""))
+		 (memq 'utf-8-hfs (coding-system-list)))
+	(setq cs-decode 'utf-8-hfs
+	      cs-encode 'utf-8-hfs))
+      (set-buffer-process-coding-system cs-decode cs-encode)
+      (tramp-message
+       vec 5 "Setting coding system to `%s' and `%s'" cs-decode cs-encode)))
 
   (tramp-send-command vec "set +o vi +o emacs" t)
 
@@ -4933,7 +4935,10 @@ connection if a previous connection has died for some reason."
 			target-alist (cdr target-alist)))
 
 		;; Make initial shell settings.
-		(tramp-open-connection-setup-interactive-shell p vec)))))
+		(tramp-open-connection-setup-interactive-shell p vec)
+
+		;; Mark it as connected.
+		(tramp-set-connection-property p "connected" t)))))
 
       ;; When the user did interrupt, we must cleanup.
       (quit
@@ -5739,7 +5744,5 @@ function cell is returned to be applied on a buffer."
 ;;   rsync).
 ;; * Keep a second connection open for out-of-band methods like scp or
 ;;   rsync.
-;; * Check, whether we could also use "getent passwd" and "getent
-;;   group" for user/group name completion.
 
 ;;; tramp-sh.el ends here

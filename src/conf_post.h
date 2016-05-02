@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -99,12 +99,9 @@ typedef bool bool_bf;
 #ifdef emacs
 #define malloc hybrid_malloc
 #define realloc hybrid_realloc
+#define aligned_alloc hybrid_aligned_alloc
 #define calloc hybrid_calloc
 #define free hybrid_free
-#if defined HAVE_GET_CURRENT_DIR_NAME && !defined BROKEN_GET_CURRENT_DIR_NAME
-#define HYBRID_GET_CURRENT_DIR_NAME 1
-#define get_current_dir_name hybrid_get_current_dir_name
-#endif
 #endif
 #endif	/* HYBRID_MALLOC */
 
@@ -119,14 +116,6 @@ typedef bool bool_bf;
 #undef HAVE_RANDOM
 #undef HAVE_RINT
 #endif  /* HPUX */
-
-#ifdef IRIX6_5
-#ifdef emacs
-char *_getpty();
-#endif
-#define INET6 /* Needed for struct sockaddr_in6.  */
-#undef HAVE_GETADDRINFO /* IRIX has getaddrinfo but not struct addrinfo.  */
-#endif /* IRIX6_5 */
 
 #ifdef MSDOS
 #ifndef __DJGPP__

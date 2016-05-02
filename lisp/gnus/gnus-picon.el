@@ -73,7 +73,7 @@ Some people may want to add \"unknown\" to this list."
 
 (defcustom gnus-picon-properties '(:color-symbols (("None" . "white")))
   "List of image properties applied to picons."
-  :type 'sexp
+  :type 'plist
   :version "24.3"
   :group 'gnus-picon)
 
@@ -81,7 +81,6 @@ Some people may want to add \"unknown\" to this list."
   "How should picons be displayed.
 If `inline', the textual representation is replaced.  If `right', picons are
 added right to the textual representation."
-  ;; FIXME: `right' needs improvement for XEmacs.
   :type '(choice (const inline)
 		 (const right))
   :group 'gnus-picon)

@@ -58,39 +58,50 @@
 (defvar file-notify--test-tmpfile nil)
 (defvar file-notify--test-tmpfile1 nil)
 (defvar file-notify--test-desc nil)
+(defvar file-notify--test-desc1 nil)
+(defvar file-notify--test-desc2 nil)
 (defvar file-notify--test-results nil)
 (defvar file-notify--test-event nil)
 (defvar file-notify--test-events nil)
+
+(defconst file-notify--test-read-event-timeout 0.01
+  "Timeout for `read-event' calls.
+It is different for local and remote file notification libraries.")
 
 (defun file-notify--test-timeout ()
   "Timeout to wait for arriving events, in seconds."
   (cond
    ((file-remote-p temporary-file-directory) 6)
-   ((string-equal (file-notify--test-library) "w32notify") 20)
+   ((string-equal (file-notify--test-library) "w32notify") 4)
    ((eq system-type 'cygwin) 10)
    (t 3)))
 
 (defun file-notify--test-cleanup ()
   "Cleanup after a test."
   (file-notify-rm-watch file-notify--test-desc)
+  (file-notify-rm-watch file-notify--test-desc1)
+  (file-notify-rm-watch file-notify--test-desc2)
 
-  (when (and file-notify--test-tmpfile
-             (file-exists-p file-notify--test-tmpfile))
+  (ignore-errors
+    (delete-file (file-newest-backup file-notify--test-tmpfile)))
+  (ignore-errors
     (if (file-directory-p file-notify--test-tmpfile)
         (delete-directory file-notify--test-tmpfile 'recursive)
       (delete-file file-notify--test-tmpfile)))
-  (when (and file-notify--test-tmpfile1
-             (file-exists-p file-notify--test-tmpfile1))
+  (ignore-errors
     (if (file-directory-p file-notify--test-tmpfile1)
         (delete-directory file-notify--test-tmpfile1 'recursive)
       (delete-file file-notify--test-tmpfile1)))
-  (when (file-remote-p temporary-file-directory)
-    (tramp-cleanup-connection
-     (tramp-dissect-file-name temporary-file-directory) nil 'keep-password))
+  (ignore-errors
+    (when (file-remote-p temporary-file-directory)
+      (tramp-cleanup-connection
+       (tramp-dissect-file-name temporary-file-directory) nil 'keep-password)))
 
   (setq file-notify--test-tmpfile nil
         file-notify--test-tmpfile1 nil
         file-notify--test-desc nil
+        file-notify--test-desc1 nil
+        file-notify--test-desc2 nil
         file-notify--test-results nil
         file-notify--test-events nil)
   (when file-notify--test-event
@@ -129,7 +140,7 @@ being the result.")
          (setq desc
                (file-notify-add-watch
                 file-notify-test-remote-temporary-file-directory
-                '(change) 'ignore))))
+                '(change) #'ignore))))
       (setq file-notify--test-remote-enabled-checked (cons t desc))
       (when desc (file-notify-rm-watch desc))))
   ;; Return result.
@@ -155,6 +166,7 @@ remote host, or nil."
      :tags '(:expensive-test)
      (let* ((temporary-file-directory
 	     file-notify-test-remote-temporary-file-directory)
+            (file-notify--test-read-event-timeout 0.1)
 	    (ert-test (ert-get-test ',test)))
        (skip-unless (file-notify--test-remote-enabled))
        (tramp-cleanup-connection
@@ -168,7 +180,7 @@ remote host, or nil."
   (message "Library: `%s'" (file-notify--test-library))
   (should
    (setq file-notify--test-desc
-         (file-notify-add-watch temporary-file-directory '(change) 'ignore)))
+         (file-notify-add-watch temporary-file-directory '(change) #'ignore)))
 
   ;; Cleanup.
   (file-notify--test-cleanup))
@@ -187,23 +199,23 @@ remote host, or nil."
   ;; Check, that different valid parameters are accepted.
   (should
    (setq file-notify--test-desc
-         (file-notify-add-watch temporary-file-directory '(change) 'ignore)))
+         (file-notify-add-watch temporary-file-directory '(change) #'ignore)))
   (file-notify-rm-watch file-notify--test-desc)
   (should
    (setq file-notify--test-desc
          (file-notify-add-watch
-          temporary-file-directory '(attribute-change) 'ignore)))
+          temporary-file-directory '(attribute-change) #'ignore)))
   (file-notify-rm-watch file-notify--test-desc)
   (should
    (setq file-notify--test-desc
          (file-notify-add-watch
-          temporary-file-directory '(change attribute-change) 'ignore)))
+          temporary-file-directory '(change attribute-change) #'ignore)))
   (file-notify-rm-watch file-notify--test-desc)
   (write-region "any text" nil file-notify--test-tmpfile nil 'no-message)
   (should
    (setq file-notify--test-desc
          (file-notify-add-watch
-          file-notify--test-tmpfile '(change attribute-change) 'ignore)))
+          file-notify--test-tmpfile '(change attribute-change) #'ignore)))
   (file-notify-rm-watch file-notify--test-desc)
   (delete-file file-notify--test-tmpfile)
 
@@ -226,7 +238,7 @@ remote host, or nil."
   (should
    (equal (should-error
            (file-notify-add-watch
-            file-notify--test-tmpfile1 '(change attribute-change) 'ignore))
+            file-notify--test-tmpfile1 '(change attribute-change) #'ignore))
           `(file-notify-error
             "Directory does not exist" ,file-notify--test-tmpfile)))
 
@@ -244,19 +256,15 @@ is bound somewhere."
   (should (equal (car file-notify--test-event) file-notify--test-desc))
   ;; Check the file name.
   (should
-   (or (string-equal (file-notify--event-file-name file-notify--test-event)
-		     file-notify--test-tmpfile)
-       (string-equal (file-notify--event-file-name file-notify--test-event)
-		     file-notify--test-tmpfile1)
-       (string-equal (file-notify--event-file-name file-notify--test-event)
-		     temporary-file-directory)))
+   (string-prefix-p
+    (file-notify--event-watched-file file-notify--test-event)
+    (file-notify--event-file-name file-notify--test-event)))
   ;; Check the second file name if exists.
   (when (eq (nth 1 file-notify--test-event) 'renamed)
     (should
-     (or (string-equal (file-notify--event-file1-name file-notify--test-event)
-		       file-notify--test-tmpfile1)
-	 (string-equal (file-notify--event-file1-name file-notify--test-event)
-		       temporary-file-directory)))))
+     (string-prefix-p
+      (file-notify--event-watched-file file-notify--test-event)
+      (file-notify--event-file1-name file-notify--test-event)))))
 
 (defun file-notify--test-event-handler (event)
   "Run a test over FILE-NOTIFY--TEST-EVENT.
@@ -269,7 +277,8 @@ and the event to `file-notify--test-events'."
     (unless (string-match
 	     (regexp-quote ".#")
 	     (file-notify--event-file-name file-notify--test-event))
-      ;;(message "file-notify--test-event-handler %S" file-notify--test-event)
+      ;;(message "file-notify--test-event-handler result: %s event: %S"
+               ;;(null (ert-test-failed-p result)) file-notify--test-event)
       (setq file-notify--test-events
 	    (append file-notify--test-events `(,file-notify--test-event))
 	    file-notify--test-results
@@ -285,7 +294,27 @@ and the event to `file-notify--test-events'."
 TIMEOUT is the maximum time to wait for, in seconds."
   `(with-timeout (,timeout (ignore))
      (while (null ,until)
-       (read-event nil nil 0.1))))
+       (read-event nil nil file-notify--test-read-event-timeout))))
+
+(defun file-notify--test-with-events-check (events)
+  "Check whether received events match one of the EVENTS alternatives."
+  (let (result)
+    (dolist (elt events result)
+      (setq result
+            (or result
+                (equal elt (mapcar #'cadr file-notify--test-events)))))))
+
+(defun file-notify--test-with-events-explainer (events)
+  "Explain why `file-notify--test-with-events-check' fails."
+  (if (null (cdr events))
+      (format "Received events `%s' do not match expected events `%s'"
+              (mapcar #'cadr file-notify--test-events) (car events))
+    (format
+     "Received events `%s' do not match any sequence of expected events `%s'"
+     (mapcar #'cadr file-notify--test-events) events)))
+
+(put 'file-notify--test-with-events-check 'ert-explainer
+     'file-notify--test-with-events-explainer)
 
 (defmacro file-notify--test-with-events (events &rest body)
   "Run BODY collecting events and then compare with EVENTS.
@@ -293,29 +322,28 @@ EVENTS is either a simple list of events, or a list of lists of
 events, which represent different possible results.  Don't wait
 longer than timeout seconds for the events to be delivered."
   (declare (indent 1))
-  (let ((outer (make-symbol "outer")))
-    `(let* ((,outer file-notify--test-events)
-            (events (if (consp (car ,events)) ,events (list ,events)))
-            (max-length (apply 'max (mapcar 'length events)))
-            create-lockfiles result)
-       ;; Flush pending events.
-       (file-notify--wait-for-events
-        (file-notify--test-timeout)
-        (input-pending-p))
-       (let (file-notify--test-events)
-         ,@body
-         (file-notify--wait-for-events
-          ;; More events need more time.  Use some fudge factor.
-          (* (ceiling max-length 100) (file-notify--test-timeout))
-          (= max-length (length file-notify--test-events)))
-         ;; One of the possible results shall match.
-         (should
-          (dolist (elt events result)
-            (setq result
-                  (or result
-                      (equal elt (mapcar #'cadr file-notify--test-events))))))
-         (setq ,outer (append ,outer file-notify--test-events)))
-       (setq file-notify--test-events ,outer))))
+  `(let* ((events (if (consp (car ,events)) ,events (list ,events)))
+          (max-length (apply 'max (mapcar 'length events)))
+          create-lockfiles)
+     ;; Flush pending events.
+     (file-notify--wait-for-events
+      (file-notify--test-timeout)
+      (input-pending-p))
+     (setq file-notify--test-events nil
+           file-notify--test-results nil)
+     ,@body
+     (file-notify--wait-for-events
+      ;; More events need more time.  Use some fudge factor.
+      (* (ceiling max-length 100) (file-notify--test-timeout))
+      (= max-length (length file-notify--test-events)))
+     ;; Check the result sequence just to make sure that all events
+     ;; are as expected.
+     (dolist (result file-notify--test-results)
+       (when (ert-test-failed-p result)
+         (ert-fail
+          (cadr (ert-test-result-with-condition-condition result)))))
+     ;; One of the possible event sequences shall match.
+     (should (file-notify--test-with-events-check events))))
 
 (ert-deftest file-notify-test02-events ()
   "Check file creation/change/removal notifications."
@@ -333,7 +361,7 @@ longer than timeout seconds for the events to be delivered."
            (setq file-notify--test-desc
                  (file-notify-add-watch
                   file-notify--test-tmpfile
-                  '(change) 'file-notify--test-event-handler)))
+                  '(change) #'file-notify--test-event-handler)))
           (file-notify--test-with-events
               (cond
                ;; cygwin recognizes only `deleted' and `stopped' events.
@@ -342,11 +370,9 @@ longer than timeout seconds for the events to be delivered."
                (t '(created changed deleted stopped)))
             (write-region
              "another text" nil file-notify--test-tmpfile nil 'no-message)
-            (read-event nil nil 0.1)
+            (read-event nil nil file-notify--test-read-event-timeout)
             (delete-file file-notify--test-tmpfile))
-          ;; `file-notify-rm-watch' fires the `stopped' event.  Suppress it.
-          (let (file-notify--test-events)
-            (file-notify-rm-watch file-notify--test-desc)))
+          (file-notify-rm-watch file-notify--test-desc))
 
         ;; Check file change and deletion.
 	(setq file-notify--test-tmpfile (file-notify--test-make-temp-name))
@@ -355,7 +381,7 @@ longer than timeout seconds for the events to be delivered."
 	 (setq file-notify--test-desc
 	       (file-notify-add-watch
 		file-notify--test-tmpfile
-		'(change) 'file-notify--test-event-handler)))
+		'(change) #'file-notify--test-event-handler)))
         (file-notify--test-with-events
 	    (cond
 	     ;; cygwin recognizes only `deleted' and `stopped' events.
@@ -371,14 +397,12 @@ longer than timeout seconds for the events to be delivered."
               '((changed deleted stopped)
                 (changed changed deleted stopped)))
 	     (t '(changed changed deleted stopped)))
-          (read-event nil nil 0.1)
+          (read-event nil nil file-notify--test-read-event-timeout)
           (write-region
            "another text" nil file-notify--test-tmpfile nil 'no-message)
-          (read-event nil nil 0.1)
+          (read-event nil nil file-notify--test-read-event-timeout)
           (delete-file file-notify--test-tmpfile))
-	;; `file-notify-rm-watch' fires the `stopped' event.  Suppress it.
-	(let (file-notify--test-events)
-	  (file-notify-rm-watch file-notify--test-desc))
+        (file-notify-rm-watch file-notify--test-desc)
 
         ;; Check file creation, change and deletion when watching a
         ;; directory.  There must be a `stopped' event when deleting
@@ -390,11 +414,11 @@ longer than timeout seconds for the events to be delivered."
 		 file-notify--test-desc
 		 (file-notify-add-watch
 		  temporary-file-directory
-		  '(change) 'file-notify--test-event-handler)))
+		  '(change) #'file-notify--test-event-handler)))
 	  (file-notify--test-with-events
 	      (cond
-	       ;; w32notify does raise a `stopped' event when a
-	       ;; watched directory is deleted.
+	       ;; w32notify does not raise `deleted' and `stopped'
+	       ;; events for the watched directory.
 	       ((string-equal (file-notify--test-library) "w32notify")
 		'(created changed deleted))
 	       ;; cygwin recognizes only `deleted' and `stopped' events.
@@ -405,14 +429,13 @@ longer than timeout seconds for the events to be delivered."
 	       ((string-equal (file-notify--test-library) "kqueue")
 		'(created changed deleted stopped))
 	       (t '(created changed deleted deleted stopped)))
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (write-region
 	     "any text" nil file-notify--test-tmpfile nil 'no-message)
-	    (read-event nil nil 0.1)
-	    (delete-directory temporary-file-directory 'recursive))
-	  ;; `file-notify-rm-watch' fires the `stopped' event.  Suppress it.
-	  (let (file-notify--test-events)
-	    (file-notify-rm-watch file-notify--test-desc)))
+	    (read-event nil nil file-notify--test-read-event-timeout)
+            (delete-directory temporary-file-directory 'recursive)
+            (read-event nil nil file-notify--test-read-event-timeout))
+          (file-notify-rm-watch file-notify--test-desc))
 
         ;; Check copy of files inside a directory.
 	(let ((temporary-file-directory
@@ -423,13 +446,15 @@ longer than timeout seconds for the events to be delivered."
 		 file-notify--test-desc
 		 (file-notify-add-watch
 		  temporary-file-directory
-		  '(change) 'file-notify--test-event-handler)))
+		  '(change) #'file-notify--test-event-handler)))
 	  (file-notify--test-with-events
 	      (cond
 	       ;; w32notify does not distinguish between `changed' and
-	       ;; `attribute-changed'.
+	       ;; `attribute-changed'.  It does not raise `deleted'
+	       ;; and `stopped' events for the watched directory.
 	       ((string-equal (file-notify--test-library) "w32notify")
-		'(created changed created changed changed changed changed
+		'(created changed created changed
+		  changed changed changed
 		  deleted deleted))
 	       ;; cygwin recognizes only `deleted' and `stopped' events.
 	       ((eq system-type 'cygwin)
@@ -440,21 +465,20 @@ longer than timeout seconds for the events to be delivered."
 		'(created changed created changed deleted stopped))
 	       (t '(created changed created changed
 		    deleted deleted deleted stopped)))
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (write-region
 	     "any text" nil file-notify--test-tmpfile nil 'no-message)
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (copy-file file-notify--test-tmpfile file-notify--test-tmpfile1)
 	    ;; The next two events shall not be visible.
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (set-file-modes file-notify--test-tmpfile 000)
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (set-file-times file-notify--test-tmpfile '(0 0))
-	    (read-event nil nil 0.1)
-	    (delete-directory temporary-file-directory 'recursive))
-	  ;; `file-notify-rm-watch' fires the `stopped' event.  Suppress it.
-	  (let (file-notify--test-events)
-	    (file-notify-rm-watch file-notify--test-desc)))
+	    (read-event nil nil file-notify--test-read-event-timeout)
+            (delete-directory temporary-file-directory 'recursive)
+            (read-event nil nil file-notify--test-read-event-timeout))
+          (file-notify-rm-watch file-notify--test-desc))
 
         ;; Check rename of files inside a directory.
 	(let ((temporary-file-directory
@@ -465,11 +489,11 @@ longer than timeout seconds for the events to be delivered."
 		 file-notify--test-desc
 		 (file-notify-add-watch
 		  temporary-file-directory
-		  '(change) 'file-notify--test-event-handler)))
+		  '(change) #'file-notify--test-event-handler)))
 	  (file-notify--test-with-events
 	      (cond
-	       ;; w32notify does not distinguish between `changed' and
-	       ;; `attribute-changed'.
+	       ;; w32notify does not raise `deleted' and `stopped'
+	       ;; events for the watched directory.
 	       ((string-equal (file-notify--test-library) "w32notify")
 		'(created changed renamed deleted))
 	       ;; cygwin recognizes only `deleted' and `stopped' events.
@@ -480,17 +504,16 @@ longer than timeout seconds for the events to be delivered."
 	       ((string-equal (file-notify--test-library) "kqueue")
 		'(created changed renamed deleted stopped))
 	       (t '(created changed renamed deleted deleted stopped)))
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (write-region
 	     "any text" nil file-notify--test-tmpfile nil 'no-message)
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (rename-file file-notify--test-tmpfile file-notify--test-tmpfile1)
 	    ;; After the rename, we won't get events anymore.
-	    (read-event nil nil 0.1)
-	    (delete-directory temporary-file-directory 'recursive))
-	  ;; `file-notify-rm-watch' fires the `stopped' event.  Suppress it.
-	  (let (file-notify--test-events)
-	    (file-notify-rm-watch file-notify--test-desc)))
+	    (read-event nil nil file-notify--test-read-event-timeout)
+            (delete-directory temporary-file-directory 'recursive)
+            (read-event nil nil file-notify--test-read-event-timeout))
+          (file-notify-rm-watch file-notify--test-desc))
 
         ;; Check attribute change.  Does not work for cygwin.
 	(unless (eq system-type 'cygwin)
@@ -501,39 +524,29 @@ longer than timeout seconds for the events to be delivered."
 	   (setq file-notify--test-desc
 		 (file-notify-add-watch
 		  file-notify--test-tmpfile
-		  '(attribute-change) 'file-notify--test-event-handler)))
+		  '(attribute-change) #'file-notify--test-event-handler)))
 	  (file-notify--test-with-events
 	      (cond
 	       ;; w32notify does not distinguish between `changed' and
 	       ;; `attribute-changed'.
 	       ((string-equal (file-notify--test-library) "w32notify")
-		'(changed changed changed changed))
+		'(changed changed))
 	       ;; For kqueue and in the remote case, `write-region'
 	       ;; raises also an `attribute-changed' event.
 	       ((or (string-equal (file-notify--test-library) "kqueue")
 		    (file-remote-p temporary-file-directory))
 		'(attribute-changed attribute-changed attribute-changed))
 	       (t '(attribute-changed attribute-changed)))
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (write-region
 	     "any text" nil file-notify--test-tmpfile nil 'no-message)
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (set-file-modes file-notify--test-tmpfile 000)
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (set-file-times file-notify--test-tmpfile '(0 0))
-	    (read-event nil nil 0.1)
+	    (read-event nil nil file-notify--test-read-event-timeout)
 	    (delete-file file-notify--test-tmpfile))
-	  ;; `file-notify-rm-watch' fires the `stopped' event.  Suppress it.
-	  (let (file-notify--test-events)
-	    (file-notify-rm-watch file-notify--test-desc)))
-
-        ;; Check the global sequence again just to make sure that
-        ;; `file-notify--test-events' has been set correctly.
-        (should file-notify--test-results)
-        (dolist (result file-notify--test-results)
-          (when (ert-test-failed-p result)
-            (ert-fail
-             (cadr (ert-test-result-with-condition-condition result))))))
+          (file-notify-rm-watch file-notify--test-desc)))
 
     ;; Cleanup.
     (file-notify--test-cleanup)))
@@ -596,31 +609,29 @@ longer than timeout seconds for the events to be delivered."
 	    (should (string-match "another text" (buffer-string)))
 
             ;; Stop file notification.  Autorevert shall still work via polling.
-	    ;; It doesn't work for `w32notify'.
-	    (unless (string-equal (file-notify--test-library) "w32notify")
-	      (file-notify-rm-watch auto-revert-notify-watch-descriptor)
+	    (file-notify-rm-watch auto-revert-notify-watch-descriptor)
+	    (file-notify--wait-for-events
+	     timeout (null auto-revert-use-notify))
+	    (should-not auto-revert-use-notify)
+	    (should-not auto-revert-notify-watch-descriptor)
+
+	    ;; Modify file.  We wait for two seconds, in order to
+	    ;; have another timestamp.  One second seems to be too
+	    ;; short.
+	    (with-current-buffer (get-buffer-create "*Messages*")
+	      (narrow-to-region (point-max) (point-max)))
+	    (sleep-for 2)
+	    (write-region
+	     "foo bla" nil file-notify--test-tmpfile nil 'no-message)
+
+	    ;; Check, that the buffer has been reverted.
+	    (with-current-buffer (get-buffer-create "*Messages*")
 	      (file-notify--wait-for-events
-	       timeout (null auto-revert-use-notify))
-	      (should-not auto-revert-use-notify)
-	      (should-not auto-revert-notify-watch-descriptor)
-
-	      ;; Modify file.  We wait for two seconds, in order to
-	      ;; have another timestamp.  One second seems to be too
-	      ;; short.
-	      (with-current-buffer (get-buffer-create "*Messages*")
-		(narrow-to-region (point-max) (point-max)))
-	      (sleep-for 2)
-	      (write-region
-	       "foo bla" nil file-notify--test-tmpfile nil 'no-message)
-
-	      ;; Check, that the buffer has been reverted.
-	      (with-current-buffer (get-buffer-create "*Messages*")
-		(file-notify--wait-for-events
-		 timeout
-		 (string-match
-		  (format-message "Reverting buffer `%s'." (buffer-name buf))
-		  (buffer-string))))
-	      (should (string-match "foo bla" (buffer-string))))))
+	       timeout
+	       (string-match
+		(format-message "Reverting buffer `%s'." (buffer-name buf))
+		(buffer-string))))
+	    (should (string-match "foo bla" (buffer-string)))))
 
       ;; Cleanup.
       (with-current-buffer "*Messages*" (widen))
@@ -678,10 +689,10 @@ longer than timeout seconds for the events to be delivered."
                 (changed changed deleted stopped)))
 	     (t '(changed changed deleted stopped)))
           (should (file-notify-valid-p file-notify--test-desc))
-	  (read-event nil nil 0.1)
+	  (read-event nil nil file-notify--test-read-event-timeout)
           (write-region
            "another text" nil file-notify--test-tmpfile nil 'no-message)
-	  (read-event nil nil 0.1)
+	  (read-event nil nil file-notify--test-read-event-timeout)
 	  (delete-file file-notify--test-tmpfile))
 	;; After deleting the file, the descriptor is not valid anymore.
         (should-not (file-notify-valid-p file-notify--test-desc))
@@ -691,36 +702,37 @@ longer than timeout seconds for the events to be delivered."
     (file-notify--test-cleanup))
 
   (unwind-protect
-      ;; w32notify does not send a `stopped' event when deleting a
-      ;; directory.  The test does not work, therefore.
-      (unless (string-equal (file-notify--test-library) "w32notify")
-	(let ((temporary-file-directory
-	       (make-temp-file "file-notify-test-parent" t)))
-	  (should
-	   (setq file-notify--test-tmpfile (file-notify--test-make-temp-name)
-		 file-notify--test-desc
-		 (file-notify-add-watch
-		  temporary-file-directory
-		  '(change) #'file-notify--test-event-handler)))
-	  (file-notify--test-with-events
-	      (cond
-	       ;; cygwin recognizes only `deleted' and `stopped' events.
-	       ((eq system-type 'cygwin)
-		'(deleted stopped))
-	       ;; There are two `deleted' events, for the file and for
-	       ;; the directory.  Except for kqueue.
-	       ((string-equal (file-notify--test-library) "kqueue")
-		'(created changed deleted stopped))
-	       (t '(created changed deleted deleted stopped)))
-	    (should (file-notify-valid-p file-notify--test-desc))
-	    (read-event nil nil 0.1)
-	    (write-region
-	     "any text" nil file-notify--test-tmpfile nil 'no-message)
-	    (read-event nil nil 0.1)
-	    (delete-directory temporary-file-directory t))
-	  ;; After deleting the parent directory, the descriptor must
-	  ;; not be valid anymore.
-	  (should-not (file-notify-valid-p file-notify--test-desc))))
+      (let ((temporary-file-directory
+	     (make-temp-file "file-notify-test-parent" t)))
+	(should
+	 (setq file-notify--test-tmpfile (file-notify--test-make-temp-name)
+	       file-notify--test-desc
+	       (file-notify-add-watch
+		temporary-file-directory
+		'(change) #'file-notify--test-event-handler)))
+	(file-notify--test-with-events
+	 (cond
+	  ;; w32notify does not raise `deleted' and `stopped' events
+	  ;; for the watched directory.
+	  ((string-equal (file-notify--test-library) "w32notify")
+	   '(created changed deleted))
+	  ;; cygwin recognizes only `deleted' and `stopped' events.
+	  ((eq system-type 'cygwin)
+	   '(deleted stopped))
+	  ;; There are two `deleted' events, for the file and for the
+	  ;; directory.  Except for kqueue.
+	  ((string-equal (file-notify--test-library) "kqueue")
+	   '(created changed deleted stopped))
+	  (t '(created changed deleted deleted stopped)))
+	 (should (file-notify-valid-p file-notify--test-desc))
+	 (read-event nil nil file-notify--test-read-event-timeout)
+	 (write-region
+	  "any text" nil file-notify--test-tmpfile nil 'no-message)
+	 (read-event nil nil file-notify--test-read-event-timeout)
+	 (delete-directory temporary-file-directory t))
+	;; After deleting the parent directory, the descriptor must
+	;; not be valid anymore.
+	(should-not (file-notify-valid-p file-notify--test-desc)))
 
     ;; Cleanup.
     (file-notify--test-cleanup)))
@@ -734,9 +746,9 @@ longer than timeout seconds for the events to be delivered."
 
   (unwind-protect
       (progn
-        (setq file-notify--test-tmpfile
-	      (file-name-as-directory (file-notify--test-make-temp-name)))
-        (make-directory file-notify--test-tmpfile)
+	(should
+	 (setq file-notify--test-tmpfile
+	       (make-temp-file "file-notify-test-parent" t)))
 	(should
 	 (setq file-notify--test-desc
 	       (file-notify-add-watch
@@ -745,7 +757,9 @@ longer than timeout seconds for the events to be delivered."
         (should (file-notify-valid-p file-notify--test-desc))
         ;; After removing the watch, the descriptor must not be valid
         ;; anymore.
+        (read-event nil nil file-notify--test-read-event-timeout)
         (file-notify-rm-watch file-notify--test-desc)
+        (read-event nil nil file-notify--test-read-event-timeout)
         (file-notify--wait-for-events
          (file-notify--test-timeout)
 	 (not (file-notify-valid-p file-notify--test-desc)))
@@ -755,13 +769,10 @@ longer than timeout seconds for the events to be delivered."
     (file-notify--test-cleanup))
 
   (unwind-protect
-      ;; The batch-mode operation of w32notify is fragile (there's no
-      ;; input threads to send the message to).
-      (unless (and noninteractive
-		   (string-equal (file-notify--test-library) "w32notify"))
-        (setq file-notify--test-tmpfile
-	      (file-name-as-directory (file-notify--test-make-temp-name)))
-        (make-directory file-notify--test-tmpfile)
+      (progn
+	(should
+	 (setq file-notify--test-tmpfile
+	       (make-temp-file "file-notify-test-parent" t)))
 	(should
 	 (setq file-notify--test-desc
 	       (file-notify-add-watch
@@ -770,7 +781,9 @@ longer than timeout seconds for the events to be delivered."
         (should (file-notify-valid-p file-notify--test-desc))
         ;; After deleting the directory, the descriptor must not be
         ;; valid anymore.
+        (read-event nil nil file-notify--test-read-event-timeout)
         (delete-directory file-notify--test-tmpfile t)
+        (read-event nil nil file-notify--test-read-event-timeout)
         (file-notify--wait-for-events
 	 (file-notify--test-timeout)
 	 (not (file-notify-valid-p file-notify--test-desc)))
@@ -789,13 +802,14 @@ longer than timeout seconds for the events to be delivered."
   ;; Under cygwin events arrive in random order.  Impossible to define a test.
   (skip-unless (not (eq system-type 'cygwin)))
 
-  (setq file-notify--test-tmpfile (file-notify--test-make-temp-name))
-  (make-directory file-notify--test-tmpfile)
+  (should
+   (setq file-notify--test-tmpfile
+	 (make-temp-file "file-notify-test-parent" t)))
   (should
    (setq file-notify--test-desc
 	 (file-notify-add-watch
 	  file-notify--test-tmpfile
-	  '(change) 'file-notify--test-event-handler)))
+	  '(change) #'file-notify--test-event-handler)))
   (unwind-protect
       (let ((n 1000)
             source-file-list target-file-list
@@ -803,7 +817,7 @@ longer than timeout seconds for the events to be delivered."
         (dotimes (i n)
 	  ;; It matters which direction we rename, at least for
 	  ;; kqueue.  This backend parses directories in alphabetic
-	  ;; order (x%d before y%d).  So we rename both directions.
+	  ;; order (x%d before y%d).  So we rename into both directions.
 	  (if (zerop (mod i 2))
 	      (progn
 		(push (expand-file-name (format "x%d" i)) source-file-list)
@@ -814,9 +828,9 @@ longer than timeout seconds for the events to be delivered."
           (let ((source-file-list source-file-list)
                 (target-file-list target-file-list))
             (while (and source-file-list target-file-list)
-              (read-event nil nil 0.1)
+              (read-event nil nil file-notify--test-read-event-timeout)
               (write-region "" nil (pop source-file-list) nil 'no-message)
-              (read-event nil nil 0.1)
+              (read-event nil nil file-notify--test-read-event-timeout)
               (write-region "" nil (pop target-file-list) nil 'no-message))))
         (file-notify--test-with-events
 	    (cond
@@ -829,14 +843,269 @@ longer than timeout seconds for the events to be delivered."
           (let ((source-file-list source-file-list)
                 (target-file-list target-file-list))
             (while (and source-file-list target-file-list)
+              (read-event nil nil file-notify--test-read-event-timeout)
               (rename-file (pop source-file-list) (pop target-file-list) t))))
         (file-notify--test-with-events (make-list n 'deleted)
           (dolist (file target-file-list)
-            (delete-file file))))
+            (read-event nil nil file-notify--test-read-event-timeout)
+            (delete-file file) file-notify--test-read-event-timeout)))
+
+    ;; Cleanup.
     (file-notify--test-cleanup)))
 
 (file-notify--deftest-remote file-notify-test06-many-events
    "Check that events are not dropped for remote directories.")
+
+(ert-deftest file-notify-test07-backup ()
+  "Check that backup keeps file notification."
+  (skip-unless (file-notify--test-local-enabled))
+
+  (unwind-protect
+      (progn
+        (setq file-notify--test-tmpfile (file-notify--test-make-temp-name))
+	(write-region "any text" nil file-notify--test-tmpfile nil 'no-message)
+	(should
+	 (setq file-notify--test-desc
+	       (file-notify-add-watch
+		file-notify--test-tmpfile
+		'(change) #'file-notify--test-event-handler)))
+        (should (file-notify-valid-p file-notify--test-desc))
+        (file-notify--test-with-events
+	    (cond
+             ;; For w32notify and in the remote case, there are two
+             ;; `changed' events.
+             ((or (string-equal (file-notify--test-library) "w32notify")
+                  (file-remote-p temporary-file-directory))
+              '(changed changed))
+             ;; gfilenotify raises one or two `changed' events
+             ;; randomly, no chance to test.  So we accept both cases.
+             ((string-equal "gfilenotify" (file-notify--test-library))
+              '((changed)
+                (changed changed)))
+             (t '(changed)))
+          ;; There shouldn't be any problem, because the file is kept.
+          (with-temp-buffer
+            (let ((buffer-file-name file-notify--test-tmpfile)
+                  (make-backup-files t)
+                  (backup-by-copying t)
+                  (kept-new-versions 1)
+                  (delete-old-versions t))
+              (insert "another text")
+              (save-buffer))))
+        ;; After saving the buffer, the descriptor is still valid.
+        (should (file-notify-valid-p file-notify--test-desc))
+	(delete-file file-notify--test-tmpfile))
+
+    ;; Cleanup.
+    (file-notify--test-cleanup))
+
+  (unwind-protect
+      (progn
+        ;; It doesn't work for kqueue, because we don't use an
+        ;; implicit directory monitor.
+        (unless (string-equal (file-notify--test-library) "kqueue")
+	  (setq file-notify--test-tmpfile (file-notify--test-make-temp-name))
+	  (write-region
+	   "any text" nil file-notify--test-tmpfile nil 'no-message)
+	  (should
+	   (setq file-notify--test-desc
+		 (file-notify-add-watch
+		  file-notify--test-tmpfile
+		  '(change) #'file-notify--test-event-handler)))
+	  (should (file-notify-valid-p file-notify--test-desc))
+	  (file-notify--test-with-events '(renamed created changed)
+	    ;; The file is renamed when creating a backup.  It shall
+	    ;; still be watched.
+	    (with-temp-buffer
+	      (let ((buffer-file-name file-notify--test-tmpfile)
+		    (make-backup-files t)
+		    (backup-by-copying nil)
+		    (backup-by-copying-when-mismatch nil)
+		    (kept-new-versions 1)
+		    (delete-old-versions t))
+		(insert "another text")
+		(save-buffer))))
+	  ;; After saving the buffer, the descriptor is still valid.
+	  (should (file-notify-valid-p file-notify--test-desc))
+	  (delete-file file-notify--test-tmpfile)))
+
+    ;; Cleanup.
+    (file-notify--test-cleanup)))
+
+(file-notify--deftest-remote file-notify-test07-backup
+  "Check that backup keeps file notification for remote files.")
+
+(ert-deftest file-notify-test08-watched-file-in-watched-dir ()
+  "Watches a directory and a file in that directory separately.
+Checks that the callbacks are only called with events with
+descriptors that were issued when registering the watches.  This
+test caters for the situation in bug#22736 where the callback for
+the directory received events for the file with the descriptor of
+the file watch."
+  :tags '(:expensive-test)
+  (skip-unless (file-notify--test-local-enabled))
+
+  ;; A directory to be watched.
+  (should
+   (setq file-notify--test-tmpfile
+         (make-temp-file "file-notify-test-parent" t)))
+  ;; A file to be watched.
+  (should
+   (setq file-notify--test-tmpfile1
+         (let ((temporary-file-directory file-notify--test-tmpfile))
+           (file-notify--test-make-temp-name))))
+  (write-region "any text" nil file-notify--test-tmpfile1 nil 'no-message)
+  (unwind-protect
+      (cl-flet (;; Directory monitor.
+                (dir-callback (event)
+                 (let ((file-notify--test-desc file-notify--test-desc1))
+                   (file-notify--test-event-handler event)))
+                ;; File monitor.
+                (file-callback (event)
+                 (let ((file-notify--test-desc file-notify--test-desc2))
+                   (file-notify--test-event-handler event))))
+        (should
+         (setq file-notify--test-desc1
+               (file-notify-add-watch
+                file-notify--test-tmpfile
+                '(change) #'dir-callback)))
+        (should
+         (setq file-notify--test-desc2
+               (file-notify-add-watch
+                file-notify--test-tmpfile1
+                '(change) #'file-callback)))
+        (should (file-notify-valid-p file-notify--test-desc1))
+        (should (file-notify-valid-p file-notify--test-desc2))
+        (should-not (equal file-notify--test-desc1 file-notify--test-desc2))
+        ;; gfilenotify raises one or two `changed' events randomly in
+        ;; the file monitor, no chance to test.
+        (unless (string-equal "gfilenotify" (file-notify--test-library))
+          (let ((n 100) events)
+            ;; Compute the expected events.
+            (dotimes (_i (/ n 2))
+              (setq events
+                    (append
+                     (append
+                      ;; Directory monitor and file monitor.
+                      (cond
+                       ;; In the remote case, there are two `changed'
+                       ;; events.
+		       ((file-remote-p temporary-file-directory)
+                        '(changed changed changed changed))
+                       ;; The directory monitor in kqueue does not
+                       ;; raise any `changed' event.  Just the file
+                       ;; monitor event is received.
+                       ((string-equal (file-notify--test-library) "kqueue")
+                        '(changed))
+                       ;; Otherwise, both monitors report the
+                       ;; `changed' event.
+                       (t '(changed changed)))
+                      ;; Just the directory monitor.
+                      (cond
+                       ;; In kqueue, there is an additional `changed'
+                       ;; event.  Why?
+                       ((string-equal (file-notify--test-library) "kqueue")
+                        '(changed created changed))
+                       (t '(created changed))))
+                     events)))
+
+            ;; Run the test.
+            (file-notify--test-with-events events
+              (dotimes (i n)
+                (read-event nil nil file-notify--test-read-event-timeout)
+                (if (zerop (mod i 2))
+                    (write-region
+                     "any text" nil file-notify--test-tmpfile1 t 'no-message)
+                  (let ((temporary-file-directory file-notify--test-tmpfile))
+                    (write-region
+                     "any text" nil
+                     (file-notify--test-make-temp-name) nil 'no-message)))))))
+
+        ;; If we delete the file, the directory monitor shall still be
+        ;; active.  We receive the `deleted' event from both the
+        ;; directory and the file monitor.  The `stopped' event is
+        ;; from the file monitor.  It's undecided in which order the
+        ;; the directory and the file monitor are triggered.
+        (file-notify--test-with-events
+            '((deleted deleted stopped)
+              (deleted stopped deleted))
+          (delete-file file-notify--test-tmpfile1))
+        (should (file-notify-valid-p file-notify--test-desc1))
+        (should-not (file-notify-valid-p file-notify--test-desc2))
+
+        ;; Now we delete the directory.
+        (file-notify--test-with-events
+            (cond
+             ;; In kqueue, just one `deleted' event for the directory
+             ;; is received.
+             ((string-equal (file-notify--test-library) "kqueue")
+              '(deleted stopped))
+             (t (append
+                 ;; The directory monitor raises a `deleted' event for
+                 ;; every file contained in the directory, we must
+                 ;; count them.
+                 (make-list
+                  (length
+                   (directory-files
+                    file-notify--test-tmpfile nil
+                    directory-files-no-dot-files-regexp 'nosort))
+                  'deleted)
+                 ;; The events of the directory itself.
+                 (cond
+		  ;; w32notify does not raise `deleted' and `stopped'
+		  ;; events for the watched directory.
+                  ((string-equal (file-notify--test-library) "w32notify") '())
+                  (t '(deleted stopped))))))
+          (delete-directory file-notify--test-tmpfile 'recursive))
+        (should-not (file-notify-valid-p file-notify--test-desc1))
+        (should-not (file-notify-valid-p file-notify--test-desc2)))
+
+    ;; Cleanup.
+    (file-notify--test-cleanup)))
+
+(file-notify--deftest-remote file-notify-test08-watched-file-in-watched-dir
+  "Check `file-notify-test08-watched-file-in-watched-dir' for remote files.")
+
+(ert-deftest file-notify-test09-sufficient-ressources ()
+  "Check that file notification does not use too many ressources."
+  :tags '(:expensive-test)
+  (skip-unless (file-notify--test-local-enabled))
+  ;; This test is intended for kqueue only.
+  (skip-unless (string-equal (file-notify--test-library) "kqueue"))
+
+  (should
+   (setq file-notify--test-tmpfile
+	 (make-temp-file "file-notify-test-parent" t)))
+  (unwind-protect
+      (let ((temporary-file-directory file-notify--test-tmpfile)
+	    descs)
+	(should-error
+	 (while t
+	   ;; We watch directories, because we want to reach the upper
+	   ;; limit.  Watching a file might not be sufficient, because
+	   ;; most of the libraries implement this as watching the
+	   ;; upper directory.
+	   (setq file-notify--test-tmpfile1
+		 (make-temp-file "file-notify-test-parent" t)
+		 descs
+		 (cons
+		  (should
+		   (file-notify-add-watch
+		    file-notify--test-tmpfile1 '(change) #'ignore))
+		  descs)))
+	 :type 'file-notify-error)
+	;; Remove watches.  If we don't do it prior removing
+	;; directories, Emacs crashes in batch mode.
+	(dolist (desc descs)
+	 (file-notify-rm-watch desc))
+	;; Remove directories.
+        (delete-directory file-notify--test-tmpfile 'recursive))
+
+    ;; Cleanup.
+    (file-notify--test-cleanup)))
+
+(file-notify--deftest-remote file-notify-test09-sufficient-ressources
+  "Check `file-notify-test09-sufficient-ressources' for remote files.")
 
 (defun file-notify-test-all (&optional interactive)
   "Run all tests for \\[file-notify]."
@@ -847,7 +1116,12 @@ longer than timeout seconds for the events to be delivered."
 
 ;; TODO:
 
-;; * For w32notify, no stopped events arrive when a directory is removed.
+;; * kqueue does not send all expected `deleted' events.  Maybe due to
+;;   the missing directory monitor.
+;; * For w32notify, no `deleted' and `stopped' events arrive when a
+;;   directory is removed.
+;; * For w32notify, no `attribute-changed' events arrive.  Its sends
+;;   `changed' events instead.
 ;; * Check, why cygwin recognizes only `deleted' and `stopped' events.
 
 (provide 'file-notify-tests)

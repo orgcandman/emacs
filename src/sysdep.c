@@ -6,8 +6,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -18,14 +18,6 @@ You should have received a copy of the GNU General Public License
 along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include <config.h>
-
-/* If HYBRID_GET_CURRENT_DIR_NAME is defined in conf_post.h, then we
-   need the following before including unistd.h, in order to pick up
-   the right prototype for gget_current_dir_name.  */
-#ifdef HYBRID_GET_CURRENT_DIR_NAME
-#undef get_current_dir_name
-#define get_current_dir_name gget_current_dir_name
-#endif
 
 #include <execinfo.h>
 #include "sysstdio.h"
@@ -40,6 +32,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <utimens.h>
 
 #include "lisp.h"
+#include "sheap.h"
 #include "sysselect.h"
 #include "blockinput.h"
 
@@ -100,6 +93,8 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "cm.h"
 
 #include "gnutls.h"
+/* MS-Windows loads GnuTLS at run time, if available; we don't want to
+   do that during startup just to call gnutls_rnd.  */
 #if 0x020c00 <= GNUTLS_VERSION_NUMBER && !defined WINDOWSNT
 # include <gnutls/crypto.h>
 #else
@@ -135,14 +130,21 @@ static const int baud_convert[] =
     1800, 2400, 4800, 9600, 19200, 38400
   };
 
-#if !defined HAVE_GET_CURRENT_DIR_NAME || defined BROKEN_GET_CURRENT_DIR_NAME \
-  || (defined HYBRID_GET_CURRENT_DIR_NAME)
-/* Return the current working directory.  Returns NULL on errors.
-   Any other returned value must be freed with free. This is used
-   only when get_current_dir_name is not defined on the system.  */
+/* Return the current working directory.  The result should be freed
+   with 'free'.  Return NULL on errors.  */
 char *
-get_current_dir_name (void)
+emacs_get_current_dir_name (void)
 {
+# if HAVE_GET_CURRENT_DIR_NAME && !BROKEN_GET_CURRENT_DIR_NAME
+#  ifdef HYBRID_MALLOC
+  bool use_libc = bss_sbrk_did_unexec;
+#  else
+  bool use_libc = true;
+#  endif
+  if (use_libc)
+    return get_current_dir_name ();
+# endif
+
   char *buf;
   char *pwd = getenv ("PWD");
   struct stat dotstat, pwdstat;
@@ -190,7 +192,6 @@ get_current_dir_name (void)
     }
   return buf;
 }
-#endif
 
 
 /* Discard pending input on all input descriptors.  */
@@ -1407,6 +1408,12 @@ setup_pty (int fd)
 void
 init_system_name (void)
 {
+  if (!build_details)
+    {
+      /* Set system-name to nil so that the build is deterministic.  */
+      Vsystem_name = Qnil;
+      return;
+    }
   char *hostname_alloc = NULL;
   char *hostname;
 #ifndef HAVE_GETHOSTNAME

@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -586,6 +586,27 @@ ns_load_path (void)
 
 
 void
+ns_init_locale (void)
+/* OS X doesn't set any environment variables for the locale when run
+   from the GUI. Get the locale from the OS and set LANG. */
+{
+  NSLocale *locale = [NSLocale currentLocale];
+
+  NSTRACE ("ns_init_locale");
+
+  @try
+    {
+      /* Set LANG to locale, but not if LANG is already set. */
+      setenv("LANG", [[locale localeIdentifier] UTF8String], 0);
+    }
+  @catch (NSException *e)
+    {
+      NSLog (@"Locale detection failed: %@: %@", [e name], [e reason]);
+    }
+}
+
+
+void
 ns_release_object (void *obj)
 /* --------------------------------------------------------------------------
     Release an object (callable from C)
@@ -637,10 +658,11 @@ ns_menu_bar_should_be_hidden (void)
 
 static CGFloat
 ns_menu_bar_height (NSScreen *screen)
-/* The height of the menu bar, if visible. */
-{
-  //  NSTRACE ("ns_menu_bar_height");
+/* The height of the menu bar, if visible.
 
+   Note: Don't use this when fullscreen is enabled -- the screen
+   sometimes includes, sometimes excludes the menu bar area. */
+{
   CGFloat res;
 
   if (ns_menu_bar_should_be_hidden())
@@ -660,7 +682,7 @@ ns_menu_bar_height (NSScreen *screen)
 
     }
 
-  // NSTRACE_MSG (NSTRACE_FMT_RETURN "%.0f", res);
+  NSTRACE ("ns_menu_bar_height " NSTRACE_FMT_RETURN " %.0f", res);
 
   return res;
 }
@@ -714,7 +736,7 @@ ns_menu_bar_height (NSScreen *screen)
 //    Result: Menu bar visible, frame placed immediately below the menu.
 //
 
-static NSRect constrain_frame_rect(NSRect frameRect)
+static NSRect constrain_frame_rect(NSRect frameRect, bool isFullscreen)
 {
   NSTRACE ("constrain_frame_rect(" NSTRACE_FMT_RECT ")",
              NSTRACE_ARG_RECT (frameRect));
@@ -746,7 +768,11 @@ static NSRect constrain_frame_rect(NSRect frameRect)
         {
           multiscreenRect = NSUnionRect (multiscreenRect, scrRect);
 
-          menu_bar_height = max(menu_bar_height, ns_menu_bar_height (s));
+          if (!isFullscreen)
+            {
+              CGFloat screen_menu_bar_height = ns_menu_bar_height (s);
+              menu_bar_height = max(menu_bar_height, screen_menu_bar_height);
+            }
         }
     }
 
@@ -840,7 +866,7 @@ ns_constrain_all_frames (void)
           if (![view isFullscreen])
             {
               [[view window]
-                setFrame:constrain_frame_rect([[view window] frame])
+                setFrame:constrain_frame_rect([[view window] frame], false)
                  display:NO];
             }
         }
@@ -1161,11 +1187,27 @@ ns_clip_to_row (struct window *w, struct glyph_row *row,
 
 - (id)init;
 {
+  NSTRACE ("[EmacsBell init]");
   if ((self = [super init]))
     {
       nestCount = 0;
       isAttached = false;
+#ifdef NS_IMPL_GNUSTEP
+      // GNUstep doesn't provide named images.  This was reported in
+      // 2011, see https://savannah.gnu.org/bugs/?33396
+      //
+      // As a drop in replacement, a semitransparent gray square is used.
+      self.image = [[NSImage alloc] initWithSize:NSMakeSize(32 * 5, 32 * 5)];
+      [self.image lockFocus];
+      [[NSColor colorForEmacsRed:0.5 green:0.5 blue:0.5 alpha:0.5] set];
+      NSRectFill(NSMakeRect(0, 0, 32, 32));
+      [self.image unlockFocus];
+#else
       self.image = [NSImage imageNamed:NSImageNameCaution];
+      [self.image setScalesWhenResized:YES];
+      [self.image setSize:NSMakeSize(self.image.size.width * 5,
+                                     self.image.size.height * 5)];
+#endif
     }
   return self;
 }
@@ -1572,7 +1614,6 @@ x_set_window_size (struct frame *f,
   NSRect wr = [window frame];
   int tb = FRAME_EXTERNAL_TOOL_BAR (f);
   int pixelwidth, pixelheight;
-  int rows, cols;
   int orig_height = wr.size.height;
 
   NSTRACE ("x_set_window_size");
@@ -1590,15 +1631,11 @@ x_set_window_size (struct frame *f,
     {
       pixelwidth = FRAME_TEXT_TO_PIXEL_WIDTH (f, width);
       pixelheight = FRAME_TEXT_TO_PIXEL_HEIGHT (f, height);
-      cols = FRAME_PIXEL_WIDTH_TO_TEXT_COLS (f, pixelwidth);
-      rows = FRAME_PIXEL_HEIGHT_TO_TEXT_LINES (f, pixelheight);
     }
   else
     {
       pixelwidth =  FRAME_TEXT_COLS_TO_PIXEL_WIDTH   (f, width);
       pixelheight = FRAME_TEXT_LINES_TO_PIXEL_HEIGHT (f, height);
-      cols = width;
-      rows = height;
     }
 
   /* If we have a toolbar, take its height into account. */
@@ -2631,13 +2668,13 @@ ns_draw_fringe_bitmap (struct window *w, struct glyph_row *row,
         [img setXBMColor: bm_color];
       }
 
+#ifdef NS_IMPL_COCOA
       // Note: For periodic images, the full image height is "h + hd".
       // By using the height h, a suitable part of the image is used.
       NSRect fromRect = NSMakeRect(0, 0, p->wd, p->h);
 
       NSTRACE_RECT ("fromRect", fromRect);
 
-#ifdef NS_IMPL_COCOA
       [img drawInRect: r
               fromRect: fromRect
              operation: NSCompositeSourceOver
@@ -6357,7 +6394,6 @@ not_in_argv (NSString *arg)
   if (oldr != rows || oldc != cols || neww != oldw || newh != oldh)
     {
       NSView *view = FRAME_NS_VIEW (emacsframe);
-      NSWindow *win = [view window];
 
       change_frame_size (emacsframe,
                          FRAME_PIXEL_TO_TEXT_WIDTH (emacsframe, neww),
@@ -6643,7 +6679,7 @@ not_in_argv (NSString *arg)
   NSString *name;
 
   NSTRACE ("[EmacsView initFrameFromEmacs:]");
-  NSTRACE_MSG ("cols:%d lines:%d\n", f->text_cols, f->text_lines);
+  NSTRACE_MSG ("cols:%d lines:%d", f->text_cols, f->text_lines);
 
   windowClosing = NO;
   processingCompose = NO;
@@ -7092,14 +7128,25 @@ not_in_argv (NSString *arg)
 
 - (BOOL)isFullscreen
 {
-  NSTRACE ("[EmacsView isFullscreen]");
+  BOOL res;
 
-  if (! fs_is_native) return nonfs_window != nil;
+  if (! fs_is_native)
+    {
+      res = (nonfs_window != nil);
+    }
+  else
+    {
 #ifdef HAVE_NATIVE_FS
-  return ([[self window] styleMask] & NSFullScreenWindowMask) != 0;
+      res = (([[self window] styleMask] & NSFullScreenWindowMask) != 0);
 #else
-  return NO;
+      res = NO;
 #endif
+    }
+
+  NSTRACE ("[EmacsView isFullscreen] " NSTRACE_FMT_RETURN " %d",
+           (int) res);
+
+  return res;
 }
 
 #ifdef HAVE_NATIVE_FS
@@ -7765,7 +7812,8 @@ not_in_argv (NSString *arg)
 #endif
 #endif
 
-  return constrain_frame_rect(frameRect);
+  return constrain_frame_rect(frameRect,
+                              [(EmacsView *)[self delegate] isFullscreen]);
 }
 
 
@@ -7778,8 +7826,6 @@ not_in_argv (NSString *arg)
 
 - (void)zoom:(id)sender
 {
-  struct frame * f = SELECTED_FRAME ();
-
   NSTRACE ("[EmacsWindow zoom:]");
 
   ns_update_auto_hide_menu_bar();

@@ -822,8 +822,10 @@ skips all prompting."
 (deffoo nnir-request-update-mark (group article mark)
   (let ((artgroup (nnir-article-group article))
 	(artnumber (nnir-article-number article)))
-    (when (and artgroup artnumber)
-      (gnus-request-update-mark artgroup artnumber mark))))
+    (or (and artgroup
+	     artnumber
+	     (gnus-request-update-mark artgroup artnumber mark))
+	mark)))
 
 (deffoo nnir-request-set-mark (group actions &optional server)
   (nnir-possibly-change-group group server)
@@ -926,9 +928,10 @@ ready to be added to the list of search results."
 
     ;; Set group to dirnam without any leading dots or slashes,
     ;; and with all subsequent slashes replaced by dots
-    (let ((group (gnus-replace-in-string
-                 (gnus-replace-in-string dirnam "^[./\\]" "" t)
-                 "[/\\]" "." t)))
+    (let ((group (replace-regexp-in-string
+		  "[/\\]" "."
+		  (replace-regexp-in-string "^[./\\]" "" dirnam nil t)
+		  nil t)))
 
     (vector (gnus-group-full-name group server)
 	    (if (string-match "\\`nnmaildir:" (gnus-group-server server))
@@ -1338,9 +1341,10 @@ Tested with swish-e-2.0.1 on Windows NT 4.0."
 	    ;; eliminate all ".", "/", "\" from beginning. Always matches.
             (string-match "^[./\\]*\\(.*\\)$" dirnam)
             ;; "/" -> "."
-            (setq group (gnus-replace-in-string (match-string 1 dirnam) "/" "."))
+            (setq group (replace-regexp-in-string
+			 "/" "." (match-string 1 dirnam)))
             ;; Windows "\\" -> "."
-            (setq group (gnus-replace-in-string group "\\\\" "."))
+            (setq group (replace-regexp-in-string "\\\\" "." group))
 
             (push (vector (gnus-group-full-name group server)
                           (string-to-number artno)
@@ -1412,7 +1416,7 @@ Tested with swish-e-2.0.1 on Windows NT 4.0."
 	(when (string-match prefix dirnam)
 	  (setq dirnam (replace-match "" t t dirnam)))
 	(push (vector (gnus-group-full-name
-                       (gnus-replace-in-string dirnam "/" ".") server)
+                       (replace-regexp-in-string "/" "." dirnam) server)
 		      (string-to-number artno)
 		      (string-to-number score))
 	      artlist))
@@ -1610,9 +1614,9 @@ actually)."
 				  group
 				(if (file-directory-p
 				     (setq group
-					   (gnus-replace-in-string
-					    group
-					    "\\." "/" t)))
+					   (replace-regexp-in-string
+					    "\\." "/"
+					    group nil t)))
 				    group))))))
 		     (unless group
 		       (error "Cannot locate directory for group"))
@@ -1665,7 +1669,7 @@ actually)."
 	     (server (cadr (gnus-server-to-method srv)))
 	     (groupspec (mapconcat
 			 (lambda (x)
-			   (if (gnus-string-match-p "gmane" x)
+			   (if (string-match-p "gmane" x)
 			       (format "group:%s" (gnus-group-short-name x))
 			     (error "Can't search non-gmane groups: %s" x)))
 			   groups " "))
@@ -1686,8 +1690,8 @@ actually)."
 	    (mm-url-encode-www-form-urlencoded
 	     `(("query" . ,search)
 	       ("HITSPERPAGE" . "999")))))
-	  (unless (featurep 'xemacs) (set-buffer-multibyte t))
-	  (mm-decode-coding-region (point-min) (point-max) 'utf-8)
+	  (set-buffer-multibyte t)
+	  (decode-coding-region (point-min) (point-max) 'utf-8)
 	  (goto-char (point-min))
 	  (forward-line 1)
 	  (while (not (eobp))
@@ -1703,7 +1707,7 @@ actually)."
 		      (string-to-number (match-string 2 xref)) xscore)
 		     artlist)))))
 	    (forward-line 1)))
-	(apply 'vector (nreverse (mm-delete-duplicates artlist)))))
+	(apply 'vector (nreverse (delete-dups artlist)))))
 
 ;;; Util Code:
 
@@ -1785,7 +1789,7 @@ article came from is also searched."
 	  (list (list (gnus-method-to-server
 	   (gnus-find-method-for-group gnus-newsgroup-name)))))
 	 (registry-group (and
-			  (gnus-bound-and-true-p 'gnus-registry-enabled)
+			  (bound-and-true-p gnus-registry-enabled)
 			  (car (gnus-registry-get-id-key
 				(mail-header-id header) 'group))))
 	 (registry-server
@@ -1812,18 +1816,19 @@ article came from is also searched."
 	(if (eq (car method) 'nntp)
 	    (while (not (eobp))
 	      (ignore-errors
-		(push (mm-string-as-unibyte
+		(push (string-as-unibyte
 		       (gnus-group-full-name
 			(buffer-substring
 			 (point)
 			 (progn
 			   (skip-chars-forward "^ \t")
-			   (point))) method))
+			   (point)))
+			method))
 		      groups))
 	      (forward-line))
 	  (while (not (eobp))
 	    (ignore-errors
-	      (push (mm-string-as-unibyte
+	      (push (string-as-unibyte
 		     (if (eq (char-after) ?\")
 			 (gnus-group-full-name (read cur) method)
 		       (let ((p (point)) (name ""))
@@ -1857,7 +1862,7 @@ article came from is also searched."
   (when (eq (car (gnus-find-method-for-group gnus-newsgroup-name)) 'nnir)
     (setq gnus-summary-line-format
 	  (or nnir-summary-line-format gnus-summary-line-format))
-    (when (gnus-bound-and-true-p 'gnus-registry-enabled)
+    (when (bound-and-true-p gnus-registry-enabled)
       (remove-hook 'gnus-summary-article-delete-hook 'gnus-registry-action t)
       (remove-hook 'gnus-summary-article-move-hook 'gnus-registry-action t)
       (remove-hook 'gnus-summary-article-expire-hook 'gnus-registry-action t)

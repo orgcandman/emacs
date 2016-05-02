@@ -5,8 +5,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -51,9 +51,16 @@ char data_start[1] = { 1 };
 # endif
 #endif
 
-/* From gmalloc.c.  */
-extern void (* __after_morecore_hook) (void);
+#ifdef HAVE_MALLOC_H
+# include <malloc.h>
+#endif
+#ifndef __MALLOC_HOOK_VOLATILE
+# define __MALLOC_HOOK_VOLATILE volatile
+#endif
+#ifndef HAVE_MALLOC_H
 extern void *(*__morecore) (ptrdiff_t);
+extern void (*__MALLOC_HOOK_VOLATILE __after_morecore_hook) (void);
+#endif
 
 /* From ralloc.c.  */
 #ifdef REL_ALLOC

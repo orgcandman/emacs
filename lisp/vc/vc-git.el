@@ -714,7 +714,7 @@ It is based on `log-edit-mode', and has Git-specific extensions.")
      "cat-file" "blob" (concat (if rev rev "HEAD") ":" fullname))))
 
 (defun vc-git-find-ignore-file (file)
-  "Return the root directory of the repository of FILE."
+  "Return the git ignore file that controls FILE."
   (expand-file-name ".gitignore"
 		    (vc-git-root file)))
 
@@ -970,7 +970,9 @@ or BRANCH^ (where \"^\" can be repeated)."
     (goto-char (point-min))
     (unless (eobp)
       ;; Indent the expanded log entry.
-      (indent-region (point-min) (point-max) 2)
+      (while (re-search-forward "^  " nil t)
+        (replace-match "")
+        (forward-line))
       (buffer-string))))
 
 (defun vc-git-region-history (file buffer lfrom lto)

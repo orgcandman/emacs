@@ -122,7 +122,6 @@ This variable can be a list of select methods which Gnus will query with
 the `ask-server' method in addition to the primary, secondary, and archive
 servers.
 
-
 E.g.:
   (setq gnus-check-new-newsgroups
 	\\='((nntp \"some.server\") (nntp \"other.server\")))
@@ -863,12 +862,9 @@ If REGEXP is given, lines that match it will be deleted."
 	    (goto-char (match-beginning 0))
 	    (delete-region (point-at-bol) end))))
       (goto-char (point-max))
-      (insert string "\n")
-      ;; This has been commented by Josh Huber <huber@alum.wpi.edu>
-      ;; It causes problems with both XEmacs and Emacs 21, and doesn't
-      ;; seem to be of much value. (FIXME: remove this after we make sure
-      ;; it's not needed).
-      ;; (set-window-point (get-buffer-window (current-buffer)) (point-max))
+      ;; Make sure that each dribble entry is a single line, so that
+      ;; the "remove" code above works.
+      (insert (replace-regexp-in-string "\n" "\\\\n" string) "\n")
       (bury-buffer gnus-dribble-buffer)
       (with-current-buffer gnus-group-buffer
 	(gnus-group-set-mode-line))
@@ -892,9 +888,7 @@ If REGEXP is given, lines that match it will be deleted."
       (setq buffer-file-name dribble-file)
       ;; The buffer may be shrunk a lot when deleting old entries.
       ;; It caused the auto-saving to stop.
-      (if (featurep 'emacs)
-	  (set (make-local-variable 'auto-save-include-big-deletions) t)
-	(set (make-local-variable 'disable-auto-save-when-buffer-shrinks) nil))
+      (set (make-local-variable 'auto-save-include-big-deletions) t)
       (auto-save-mode t)
       (buffer-disable-undo)
       (bury-buffer (current-buffer))
@@ -1673,10 +1667,11 @@ backend check whether the group actually exists."
 	(push (setq method-group-list (list method method-type nil nil))
 	      type-cache))
       ;; Only add groups that need updating.
-      (if (funcall (if one-level #'= #'<=) (gnus-info-level info)
-	      (if (eq (cadr method-group-list) 'foreign)
-		  foreign-level
-		alevel))
+      (if (or (and foreign-level (null (numberp foreign-level)))
+	   (funcall (if one-level #'= #'<=) (gnus-info-level info)
+		    (if (eq (cadr method-group-list) 'foreign)
+			foreign-level
+		      alevel)))
 	  (setcar (nthcdr 2 method-group-list)
 		  (cons info (nth 2 method-group-list)))
 	;; The group is inactive, so we nix out the number of unread articles.
@@ -1995,7 +1990,7 @@ backend check whether the group actually exists."
     (while lists
       (setq killed (car lists))
       (while killed
-	(gnus-sethash (mm-string-as-unibyte (car killed)) nil hashtb)
+	(gnus-sethash (string-as-unibyte (car killed)) nil hashtb)
 	(setq killed (cdr killed)))
       (setq lists (cdr lists)))))
 
@@ -2391,8 +2386,8 @@ If FORCE is non-nil, the .newsrc file is read."
 
               (funcall func convert-to)))
           (gnus-dribble-enter
-           (gnus-format-message ";Converted gnus from version `%s' to `%s'."
-				gnus-newsrc-file-version gnus-version)))))))
+           (format-message ";Converted gnus from version `%s' to `%s'."
+			   gnus-newsrc-file-version gnus-version)))))))
 
 (defun gnus-convert-mark-converter-prompt (converter no-prompt)
   "Indicate whether CONVERTER requires gnus-convert-old-newsrc to
@@ -2458,7 +2453,7 @@ If FORCE is non-nil, the .newsrc file is read."
     (dolist (elem gnus-newsrc-alist)
       ;; Protect against broken .newsrc.el files.
       (when (car elem)
-	(setcar elem (mm-string-as-unibyte (car elem)))))
+	(setcar elem (string-as-unibyte (car elem)))))
     (gnus-make-hashtable-from-newsrc-alist)
     (when (file-newer-than-file-p file ding-file)
       ;; Old format quick file
@@ -3030,7 +3025,7 @@ If FORCE is non-nil, the .newsrc file is read."
 (defun gnus-slave-save-newsrc ()
   (with-current-buffer gnus-dribble-buffer
     (let ((slave-name
-	   (mm-make-temp-file (concat gnus-current-startup-file "-slave-")))
+	   (make-temp-file (concat gnus-current-startup-file "-slave-")))
 	  (modes (ignore-errors
 		   (file-modes (concat gnus-current-startup-file ".eld")))))
       (let ((coding-system-for-write gnus-ding-file-coding-system))
@@ -3162,8 +3157,8 @@ If FORCE is non-nil, the .newsrc file is read."
 			  (gnus-parameter-charset name)
 			  gnus-default-charset)))
 		;; Fixme: Don't decode in unibyte mode.
-		(when (and str charset (featurep 'mule))
-		  (setq str (mm-decode-coding-string str charset)))
+		(when (and str charset)
+		  (setq str (decode-coding-string str charset)))
 		(set group str)))
 	    (forward-line 1))))
       (gnus-message 5 "Reading descriptions file...done")
@@ -3201,26 +3196,7 @@ If this variable is nil, don't do anything."
 
 (defun gnus-check-reasonable-setup ()
   ;; Check whether nnml and nnfolder share a directory.
-  (let ((display-warn
-	 (if (fboundp 'display-warning)
-	     'display-warning
-	   (lambda (type message)
-	     (if noninteractive
-		 (message "Warning (%s): %s" type message)
-	       (let (window)
-		 (with-current-buffer (get-buffer-create "*Warnings*")
-		   (goto-char (point-max))
-		   (unless (bolp)
-		     (insert "\n"))
-		   (insert (format "Warning (%s): %s\n" type message))
-		   (setq window (display-buffer (current-buffer)))
-		   (set-window-start
-		    window
-		    (prog2
-			(forward-line (- 1 (window-height window)))
-			(point)
-		      (goto-char (point-max))))))))))
-	method active actives match)
+  (let (method active actives match)
     (dolist (server gnus-server-alist)
       (setq method (gnus-server-to-method server)
 	    active (intern (format "%s-active-file" (car method))))
@@ -3228,11 +3204,11 @@ If this variable is nil, don't do anything."
 		 (gnus-server-opened method)
 		 (boundp active))
 	(when (setq match (assoc (symbol-value active) actives))
-	  (funcall display-warn 'gnus-server
-		   (format "%s and %s share the same active file %s"
-			   (car method)
-			   (cadr match)
-			   (car match))))
+	  (display-warning 'gnus-server
+			   (format "%s and %s share the same active file %s"
+				   (car method)
+				   (cadr match)
+				   (car match))))
 	(push (list (symbol-value active) method) actives)))))
 
 (provide 'gnus-start)

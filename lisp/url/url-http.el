@@ -590,15 +590,7 @@ should be shown to the user."
 	    ;; We do not support agent-driven negotiation, so we just
 	    ;; redirect to the preferred URI if one is provided.
 	    nil)
-	   ((or `moved-permanently `found `temporary-redirect) ; 301 302 307
-	    ;; If the 301|302 status code is received in response to a
-	    ;; request other than GET or HEAD, the user agent MUST NOT
-	    ;; automatically redirect the request unless it can be
-	    ;; confirmed by the user, since this might change the
-	    ;; conditions under which the request was issued.
-	    (unless (member url-http-method '("HEAD" "GET"))
-	      (setq redirect-uri nil)))
-	   (`see-other			; 303
+           (`see-other			; 303
 	    ;; The response to the request can be found under a different
 	    ;; URI and SHOULD be retrieved using a GET method on that
 	    ;; resource.
@@ -1218,6 +1210,7 @@ The return value of this function is the retrieval buffer."
 				 (and (boundp 'url-http-noninteractive)
 				      url-http-noninteractive)))
 	 (connection (url-http-find-free-connection host port gateway-method))
+         (mime-accept-string url-mime-accept-string)
 	 (buffer (or retry-buffer
 		     (generate-new-buffer
                       (format " *http %s:%d*" host port)))))
@@ -1253,6 +1246,7 @@ The return value of this function is the retrieval buffer."
 		       url-http-target-url
 		       url-http-no-retry
 		       url-http-connection-opened
+                       url-mime-accept-string
 		       url-http-proxy))
 	  (set (make-local-variable var) nil))
 
@@ -1270,6 +1264,7 @@ The return value of this function is the retrieval buffer."
 	      url-http-target-url url-current-object
 	      url-http-no-retry retry-buffer
 	      url-http-connection-opened nil
+              url-mime-accept-string mime-accept-string
 	      url-http-proxy url-using-proxy)
 
 	(set-process-buffer connection buffer)

@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -204,7 +204,7 @@ smc_save_yourself_CB (SmcConn smcConn,
   props[props_idx]->vals[0].value = SDATA (user_login_name);
   ++props_idx;
 
-  char *cwd = get_current_dir_name ();
+  char *cwd = emacs_get_current_dir_name ();
   if (cwd)
     {
       props[props_idx] = &prop_ptr[props_idx];
@@ -401,7 +401,7 @@ x_session_initialize (struct x_display_info *dpyinfo)
   ptrdiff_t name_len = 0;
 
   /* libSM seems to crash if pwd is missing - see bug#18851.  */
-  if (! get_current_dir_name ())
+  if (! emacs_get_current_dir_name ())
     {
       fprintf (stderr, "Disabling session management due to pwd error: %s\n",
                emacs_strerror (errno));

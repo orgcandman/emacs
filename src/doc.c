@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -138,6 +138,9 @@ get_doc_string (Lisp_Object filepos, bool unibyte, bool definition)
 #endif
       if (fd < 0)
 	{
+	  if (errno == EMFILE || errno == ENFILE)
+	    report_file_error ("Read error on documentation file", file);
+
 	  SAFE_FREE ();
 	  AUTO_STRING (cannot_open, "Cannot open doc string file \"");
 	  AUTO_STRING (quote_nl, "\"\n");
@@ -716,7 +719,7 @@ is not on any keys.
 Each substring of the form \\=\\{MAPVAR} is replaced by a summary of
 the value of MAPVAR as a keymap.  This summary is similar to the one
 produced by `describe-bindings'.  The summary ends in two newlines
-(used by the helper function `help-make-xrefs' to find the end of the
+\(used by the helper function `help-make-xrefs' to find the end of the
 summary).
 
 Each substring of the form \\=\\<MAPVAR> specifies the use of MAPVAR
@@ -865,16 +868,14 @@ Otherwise, return a new string.  */)
 	 \<foo> just sets the keymap used for \[cmd].  */
       else if (strp[0] == '\\' && (strp[1] == '{' || strp[1] == '<'))
 	{
-	  struct buffer *oldbuf;
-	  ptrdiff_t start_idx;
+	 {
 	  /* This is for computing the SHADOWS arg for describe_map_tree.  */
 	  Lisp_Object active_maps = Fcurrent_active_maps (Qnil, Qnil);
-	  Lisp_Object earlier_maps;
 	  ptrdiff_t count = SPECPDL_INDEX ();
 
 	  strp += 2;		/* skip \{ or \< */
 	  start = strp;
-	  start_idx = start - SDATA (string);
+	  ptrdiff_t start_idx = start - SDATA (string);
 
 	  while ((strp - SDATA (string) < SBYTES (string))
 		 && *strp != '}' && *strp != '>')
@@ -904,7 +905,7 @@ Otherwise, return a new string.  */)
 	    }
 
 	  /* Now switch to a temp buffer.  */
-	  oldbuf = current_buffer;
+	  struct buffer *oldbuf = current_buffer;
 	  set_buffer_internal (XBUFFER (Vprin1_to_string_buffer));
 	  /* This is for an unusual case where some after-change
 	     function uses 'format' or 'prin1' or something else that
@@ -929,7 +930,8 @@ Otherwise, return a new string.  */)
 	    {
 	      /* Get the list of active keymaps that precede this one.
 		 If this one's not active, get nil.  */
-	      earlier_maps = Fcdr (Fmemq (tem, Freverse (active_maps)));
+	      Lisp_Object earlier_maps
+		= Fcdr (Fmemq (tem, Freverse (active_maps)));
 	      describe_map_tree (tem, 1, Fnreverse (earlier_maps),
 				 Qnil, 0, 1, 0, 0, 1);
 	    }
@@ -937,6 +939,7 @@ Otherwise, return a new string.  */)
 	  Ferase_buffer ();
 	  set_buffer_internal (oldbuf);
 	  unbind_to (count, Qnil);
+	 }
 
 	subst_string:
 	  start = SDATA (tem);

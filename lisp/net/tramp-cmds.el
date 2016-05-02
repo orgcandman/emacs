@@ -145,7 +145,7 @@ This includes password cache, file cache, connection cache, buffers."
   "Kill all remote buffers."
   (interactive)
 
-  ;; Remove all Tramp related buffers.
+  ;; Remove all Tramp related connections.
   (tramp-cleanup-all-connections)
 
   ;; Remove all buffers with a remote default-directory.
@@ -209,7 +209,7 @@ Before reproducing the bug, you might apply
 
   M-x tramp-cleanup-all-connections
 
-This allows to investigate from a clean environment.  Another
+This allows us to investigate from a clean environment.  Another
 useful thing to do is to put
 
   (setq tramp-verbose 9)

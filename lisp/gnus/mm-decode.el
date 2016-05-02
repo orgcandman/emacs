@@ -28,8 +28,6 @@
 (eval-when-compile (require 'cl))
 
 (autoload 'gnus-map-function "gnus-util")
-(autoload 'gnus-replace-in-string "gnus-util")
-(autoload 'gnus-read-shell-command "gnus-util")
 
 (autoload 'mm-inline-partial "mm-partial")
 (autoload 'mm-inline-external-body "mm-extern")
@@ -145,12 +143,18 @@ nil    : use external viewer (default web browser)."
 		 (function))
   :group 'mime-display)
 
-(defcustom mm-inline-text-html-with-images nil
-  "If non-nil, Gnus will allow retrieving images in HTML that has <img> tags.
-See also the documentation for the `mm-w3m-safe-url-regexp'
-variable."
-  :version "22.1"
+(defcustom mm-html-inhibit-images nil
+  "Non-nil means inhibit displaying of images inline in the article body."
+  :version "25.1"
   :type 'boolean
+  :group 'mime-display)
+
+(defcustom mm-html-blocked-images ""
+  "Regexp matching image URLs to be blocked, or nil meaning not to block.
+Note that cid images that are embedded in a message won't be blocked."
+  :version "25.1"
+  :type '(choice (const :tag "Allow all" nil)
+		 (regexp :tag "Regular expression"))
   :group 'mime-display)
 
 (defcustom mm-w3m-safe-url-regexp "\\`cid:"
@@ -284,10 +288,7 @@ before the external MIME handler is invoked."
 	      (mm-insert-part handle)
 	      (let ((image
 		     (ignore-errors
-		       (if (fboundp 'create-image)
-			   (create-image (buffer-string) 'imagemagick 'data-p)
-			 (mm-create-image-xemacs
-			  (mm-handle-media-subtype handle))))))
+		       (create-image (buffer-string) 'imagemagick 'data-p))))
 		(when image
 		  (setcar (cdr handle) (list "image/imagemagick"))
 		  (mm-image-fit-p handle)))))))
@@ -381,12 +382,7 @@ enables you to choose manually one of two types those mails include."
   :type '(repeat regexp) ;; See `mm-preferred-alternative-precedence'.
   :group 'mime-display)
 
-(defcustom mm-tmp-directory
-  (if (fboundp 'temp-directory)
-      (temp-directory)
-    (if (boundp 'temporary-file-directory)
-	temporary-file-directory
-      "/tmp/"))
+(defcustom mm-tmp-directory temporary-file-directory
   "Where mm will store its temporary files."
   :type 'directory
   :group 'mime-display)
@@ -543,7 +539,7 @@ into
 
 \(a 1 b 2 c 3)
 
-The original alist is not modified.  See also `destructive-alist-to-plist'."
+The original alist is not modified."
   (let (plist)
     (while alist
       (let ((el (car alist)))
@@ -771,7 +767,7 @@ MIME-Version header before proceeding."
     (with-current-buffer
           (generate-new-buffer " *mm*")
       ;; Preserve the data's unibyteness (for url-insert-file-contents).
-      (mm-set-buffer-multibyte mb)
+      (set-buffer-multibyte mb)
       (insert-buffer-substring obuf beg)
       (current-buffer))))
 
@@ -855,7 +851,7 @@ external if displayed external."
 				      (concat
 				       "using external program \""
 				       (format method filename) "\"")
-				    (gnus-format-message
+				    (format-message
 				     "by calling `%s' on the contents)" method))
 				  "? "))))))
 	    (if external
@@ -886,7 +882,7 @@ external if displayed external."
 		  (select-window win)))
 	      (switch-to-buffer (generate-new-buffer " *mm*")))
 	    (buffer-disable-undo)
-	    (mm-set-buffer-file-coding-system mm-binary-coding-system)
+	    (set-buffer-file-coding-system mm-binary-coding-system)
 	    (insert-buffer-substring cur)
 	    (goto-char (point-min))
 	    (when method
@@ -913,7 +909,7 @@ external if displayed external."
 	;; The function is a string to be executed.
 	(mm-insert-part handle)
 	(mm-add-meta-html-tag handle)
-	(let* ((dir (mm-make-temp-file
+	(let* ((dir (make-temp-file
 		     (expand-file-name "emm." mm-tmp-directory) 'dir))
 	       (filename (or
 			  (mail-content-type-get
@@ -943,8 +939,8 @@ external if displayed external."
 		;; `mailcap-mime-extensions'.
 		(setq suffix (car (rassoc (mm-handle-media-type handle)
 					  mailcap-mime-extensions))))
-	      (setq file (mm-make-temp-file (expand-file-name "mm." dir)
-					    nil suffix))))
+	      (setq file (make-temp-file (expand-file-name "mm." dir)
+					 nil suffix))))
 	  (let ((coding-system-for-write mm-binary-coding-system))
 	    (write-region (point-min) (point-max) file nil 'nomesg))
 	  ;; The file is deleted after the viewer exists.  If the users edits
@@ -1142,9 +1138,6 @@ external if displayed external."
       (ignore-errors
 	(cond
 	 ;; Internally displayed part.
-	 ((mm-annotationp object)
-          (if (featurep 'xemacs)
-              (delete-annotation object)))
 	 ((or (functionp object)
 	      (and (listp object)
 		   (eq (car object) 'lambda)))
@@ -1308,7 +1301,7 @@ are ignored."
 		     (with-current-buffer (mm-handle-buffer handle)
 		       (buffer-string)))
 		    ((mm-multibyte-p)
-		     (mm-string-to-multibyte (mm-get-part handle no-cache)))
+		     (string-to-multibyte (mm-get-part handle no-cache)))
 		    (t
 		     (mm-get-part handle no-cache)))))
     (save-restriction
@@ -1354,12 +1347,12 @@ string if you do not like underscores."
 
 (defun mm-file-name-delete-control (filename)
   "Delete control characters from FILENAME."
-  (gnus-replace-in-string filename "[\x00-\x1f\x7f]" ""))
+  (replace-regexp-in-string "[\x00-\x1f\x7f]" "" filename))
 
 (defun mm-file-name-delete-gotchas (filename)
   "Delete shell gotchas from FILENAME."
-  (setq filename (gnus-replace-in-string filename "[<>|]" ""))
-  (gnus-replace-in-string filename "^[.-]+" ""))
+  (setq filename (replace-regexp-in-string "[<>|]" "" filename))
+  (replace-regexp-in-string "^[.-]+" "" filename))
 
 (defun mm-save-part (handle &optional prompt)
   "Write HANDLE to a file.
@@ -1452,7 +1445,7 @@ text/\\(\\sw+\\)\\(?:;\\s-*charset=\\([^\"'>]+\\)\\)?[^>]*>" nil t)
 Use CMD as the process."
   (let ((name (mail-content-type-get (mm-handle-type handle) 'name))
 	(command (or cmd
-		     (gnus-read-shell-command
+		     (read-shell-command
 		      "Shell command on MIME part: " mm-last-shell-command))))
     (mm-with-unibyte-buffer
       (mm-insert-part handle)
@@ -1568,40 +1561,11 @@ be determined."
 	  (prog1
 	      (setq spec
 		    (ignore-errors
-		      ;; Avoid testing `make-glyph' since W3 may define
-		      ;; a bogus version of it.
-		      (if (fboundp 'create-image)
-			  (create-image (buffer-string)
-					(or (mm-image-type-from-buffer)
-					    (intern type))
-					'data-p)
-			(mm-create-image-xemacs type))))
+		      (create-image (buffer-string)
+				    (or (mm-image-type-from-buffer)
+					(intern type))
+				    'data-p)))
 	    (mm-handle-set-cache handle spec))))))
-
-(defun mm-create-image-xemacs (type)
-  (when (featurep 'xemacs)
-    (cond
-     ((equal type "xbm")
-      ;; xbm images require special handling, since
-      ;; the only way to create glyphs from these
-      ;; (without a ton of work) is to write them
-      ;; out to a file, and then create a file
-      ;; specifier.
-      (let ((file (mm-make-temp-file
-		   (expand-file-name "emm" mm-tmp-directory)
-		   nil ".xbm")))
-	(unwind-protect
-	    (progn
-	      (write-region (point-min) (point-max) file)
-	      (make-glyph (list (cons 'x file))))
-	  (ignore-errors
-	    (delete-file file)))))
-     (t
-      (make-glyph
-       (vector
-	(or (mm-image-type-from-buffer)
-	    (intern type))
-	:data (buffer-string)))))))
 
 (declare-function image-size "image.c" (spec &optional pixels frame))
 
@@ -1609,32 +1573,17 @@ be determined."
   "Say whether the image in HANDLE will fit the current window."
   (let ((image (mm-get-image handle)))
     (or (not image)
-	(if (featurep 'xemacs)
-	    ;; XEmacs's glyphs can actually tell us about their width, so
-	    ;; let's be nice and smart about them.
-	    (or mm-inline-large-images
-		(and (<= (glyph-width image) (window-pixel-width))
-		     (<= (glyph-height image) (window-pixel-height))))
-	  (let* ((size (image-size image))
-		 (w (car size))
-		 (h (cdr size)))
-	    (or mm-inline-large-images
-		(and (<= h (1- (window-height))) ; Don't include mode line.
-		     (<= w (window-width)))))))))
+	(let* ((size (image-size image))
+	       (w (car size))
+	       (h (cdr size)))
+	  (or mm-inline-large-images
+	      (and (<= h (1- (window-height))) ; Don't include mode line.
+		   (<= w (window-width))))))))
 
 (defun mm-valid-image-format-p (format)
   "Say whether FORMAT can be displayed natively by Emacs."
-  (cond
-   ;; Handle XEmacs
-   ((fboundp 'valid-image-instantiator-format-p)
-    (valid-image-instantiator-format-p format))
-   ;; Handle Emacs
-   ((fboundp 'image-type-available-p)
-    (and (display-graphic-p)
-	 (image-type-available-p format)))
-   ;; Nobody else can do images yet.
-   (t
-    nil)))
+  (and (display-graphic-p)
+       (image-type-available-p format)))
 
 (defun mm-valid-and-fit-image-p (format handle)
   "Say whether FORMAT can be displayed natively and HANDLE fits the window."
@@ -1828,15 +1777,11 @@ If RECURSIVE, search recursively."
 (declare-function shr-insert-document "shr" (dom))
 (defvar shr-blocked-images)
 (defvar shr-use-fonts)
-(defvar gnus-inhibit-images)
-(autoload 'gnus-blocked-images "gnus-art")
 
 (defun mm-shr (handle)
   ;; Require since we bind its variables.
   (require 'shr)
-  (let ((article-buffer (current-buffer))
-	(shr-width (if (and (boundp 'shr-use-fonts)
-			    shr-use-fonts)
+  (let ((shr-width (if shr-use-fonts
 		       nil
 		     fill-column))
 	(shr-content-function (lambda (id)
@@ -1844,15 +1789,9 @@ If RECURSIVE, search recursively."
 				  (when handle
 				    (mm-with-part handle
 				      (buffer-string))))))
-	shr-inhibit-images shr-blocked-images charset char)
-    (if (and (boundp 'gnus-summary-buffer)
-	     (bufferp gnus-summary-buffer)
-	     (buffer-name gnus-summary-buffer))
-	(with-current-buffer gnus-summary-buffer
-	  (setq shr-inhibit-images gnus-inhibit-images
-		shr-blocked-images (gnus-blocked-images)))
-      (setq shr-inhibit-images gnus-inhibit-images
-	    shr-blocked-images (gnus-blocked-images)))
+	(shr-inhibit-images mm-html-inhibit-images)
+	(shr-blocked-images mm-html-blocked-images)
+	charset char)
     (unless handle
       (setq handle (mm-dissect-buffer t)))
     (setq charset (mail-content-type-get (mm-handle-type handle) 'charset))
@@ -1866,8 +1805,8 @@ If RECURSIVE, search recursively."
 				    (mm-charset-to-coding-system charset
 								 nil t))
 			      (not (eq charset 'ascii)))
-			 (mm-decode-coding-string (buffer-string) charset)
-		       (mm-string-as-multibyte (buffer-string)))
+			 (decode-coding-string (buffer-string) charset)
+		       (string-as-multibyte (buffer-string)))
 		   (erase-buffer)
 		   (mm-enable-multibyte)))
 	 (goto-char (point-min))
@@ -1896,6 +1835,7 @@ If RECURSIVE, search recursively."
 			   ,(point-max-marker))))))))
 
 (defvar shr-map)
+(defvar shr-image-map)
 
 (autoload 'widget-convert-button "wid-edit")
 
@@ -1909,7 +1849,8 @@ If RECURSIVE, search recursively."
 	(widget-convert-button
 	 'url-link start end
 	 :help-echo (get-text-property start 'help-echo)
-	 :keymap shr-map
+	 ;;; FIXME Should only use the image map on images.
+	 :keymap shr-image-map
 	 (get-text-property start 'shr-url))
 	(put-text-property start end 'local-map nil)
 	(dolist (overlay (overlays-at start))

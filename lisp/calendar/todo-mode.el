@@ -2262,9 +2262,8 @@ made in the number or names of categories."
 		 (mlist (append tmn-array nil))
 		 (tma-array todo-month-abbrev-array)
 		 (mablist (append tma-array nil))
-		 (yy (and oyear (unless (string= oyear "*")
-				  (string-to-number oyear))))
-		 (mm (or (and omonth (unless (string= omonth "*")
+		 (yy (and oyear (string-to-number oyear))) ; 0 if year is "*".
+		 (mm (or (and omonth (if (string= omonth "*") 13
 				       (string-to-number omonth)))
 			 (1+ (- (length mlist)
 				(length (or (member omonthname mlist)
@@ -2330,12 +2329,11 @@ made in the number or names of categories."
 			     (if omonth
 				 (number-to-string mm)
 			       (aref tma-array (1- mm))))))
-		(let ((yy (string-to-number year)) ; 0 if year is "*".
-		      ;; When mm is 13 (corresponding to "*" as value
-		      ;; of month), this raises an args-out-of-range
-		      ;; error in calendar-last-day-of-month, so use 1
-		      ;; (corresponding to January) to get 31 days.
-		      (mm (if (= mm 13) 1 mm)))
+                ;; Since the number corresponding to the arbitrary
+                ;; month name "*" is out of the range of
+                ;; calendar-last-day-of-month, set it to 1
+                ;; (corresponding to January) to allow 31 days.
+                (let ((mm (if (= mm 13) 1 mm)))
 		  (if (> (string-to-number day)
 			 (calendar-last-day-of-month mm yy))
 		      (user-error "%s %s does not have %s days"
@@ -2347,7 +2345,7 @@ made in the number or names of categories."
 		      monthname omonthname
 		      day (cond
 			   ((not current-prefix-arg)
-			    (todo-read-date 'day mm oyear))
+			    (todo-read-date 'day mm yy))
 			   ((string= oday "*")
 			    (user-error "Cannot increment *"))
 			   ((or (string= omonth "*") (string= omonthname "*"))
@@ -4654,13 +4652,15 @@ name in `todo-directory'.  See also the documentation string of
 		    (goto-char (match-beginning 0))
 		  (goto-char (point-max)))
 		(backward-char)
-		(when (looking-back "\\[\\([^][]+\\)\\]")
+		(when (looking-back "\\[\\([^][]+\\)\\]"
+                                    (line-beginning-position))
 		  (setq cat (match-string 1))
 		  (goto-char (match-beginning 0))
 		  (replace-match ""))
 		;; If the item ends with a non-comment parenthesis not
 		;; followed by a period, we lose (but we inherit that
 		;; problem from the legacy code).
+                ;; FIXME: fails on multiline comment
 		(when (looking-back "(\\(.*\\)) " (line-beginning-position))
 		  (setq comment (match-string 1))
 		  (replace-match "")
@@ -5230,7 +5230,8 @@ Also preserve category display, if applicable."
   (with-current-buffer buffer
     (widen)
     (let ((todo-category-number (cdr (assq 'catnum misc))))
-      (todo-category-select))))
+      (todo-category-select)
+      (current-buffer))))
 
 (add-to-list 'desktop-buffer-mode-handlers
 	     '(todo-mode . todo-restore-desktop-buffer))
@@ -5930,7 +5931,7 @@ number of the last the day of the month."
     (and day (setq day (if (eq day '*)
 			   (symbol-name '*)
 			 (number-to-string day))))
-    (and month (setq month (if (eq month '*)
+    (and month (setq month (if (= month 13)
 			       (symbol-name '*)
 			     (number-to-string month))))
     (if arg
@@ -6579,8 +6580,7 @@ Added to `window-configuration-change-hook' in Todo mode."
   "Make some settings that apply to multiple Todo modes."
   (add-to-invisibility-spec 'todo)
   (setq buffer-read-only t)
-  (when (and (boundp 'desktop-save-mode) desktop-save-mode)
-    (setq-local desktop-save-buffer 'todo-desktop-save-buffer))
+  (setq-local desktop-save-buffer 'todo-desktop-save-buffer)
   (when (boundp 'hl-line-range-function)
     (setq-local hl-line-range-function
 		(lambda() (save-excursion

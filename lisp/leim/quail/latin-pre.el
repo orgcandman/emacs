@@ -188,6 +188,7 @@
   diaeresis  |   \"    | \"i -> ï   \"\" -> ¨
     tilde    |   ~    | ~n -> ñ
    cedilla   |   ~    | ~c -> ç
+  middle dot |   ~    | ~. -> ·
    symbol    |   ~    | ~> -> »   ~< -> «   ~! -> ¡   ~? -> ¿
 " nil t nil nil nil nil nil nil nil nil t)
 
@@ -223,6 +224,7 @@
  ("~<" ?\«)
  ("~!" ?¡)
  ("~?" ?¿)
+ ("~." ?·)
  ("~ " ?~)
 )
 
@@ -707,7 +709,7 @@ Key translation rules are:
  "polish-slash" "Polish" "PL>" nil
  "Polish diacritics and slash character are input as `/[acelnosxzACELNOSXZ/]'.
 For example, the character named `aogonek' is obtained by `/a'."
- nil t t t nil nil nil nil nil nil t)
+ nil t t nil nil nil nil nil nil nil t)
 
 (quail-define-rules
  ("//" ?/)

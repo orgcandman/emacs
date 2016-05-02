@@ -1463,6 +1463,7 @@ Defaults to the server buffer."
        (concat "\C-l\\|\\(^" (regexp-quote (erc-prompt)) "\\)"))
   (set (make-local-variable 'paragraph-start)
        (concat "\\(" (regexp-quote (erc-prompt)) "\\)"))
+  (setq-local completion-ignore-case t)
   (add-hook 'completion-at-point-functions 'erc-complete-word-at-point nil t))
 
 ;; activation
@@ -3580,7 +3581,7 @@ the message given by REASON."
 
 (defun erc-cmd-SV ()
   "Say the current ERC and Emacs version into channel."
-  (erc-send-message (format "I'm using ERC with %s %s (%s%s) of %s."
+  (erc-send-message (format "I'm using ERC with %s %s (%s%s)%s."
                             (if (featurep 'xemacs) "XEmacs" "GNU Emacs")
                             emacs-version
                             system-configuration
@@ -3601,7 +3602,9 @@ the message given by REASON."
                                                       x-toolkit-scroll-bars)))
                                "")
                              (if (featurep 'multi-tty) ", multi-tty" ""))
-                            erc-emacs-build-time))
+                            (if erc-emacs-build-time
+                                (concat " of " erc-emacs-build-time)
+                              "")))
   t)
 
 (defun erc-cmd-SM ()
@@ -4830,7 +4833,7 @@ channel."
 			((pred (eq op-ch))    op)
 			((pred (eq adm-ch))   admin)
 			((pred (eq own-ch))   owner)
-			(_ (error "Unknown prefix char `%S'" ch) voice))
+			(_ (message "Unknown prefix char `%S'" ch) voice))
 		      'on)))
           (when updatep
 	    ;; If we didn't issue the NAMES request (consider two clients
@@ -6088,13 +6091,15 @@ If it doesn't exist, create it."
   (or (file-accessible-directory-p dir) (error "Cannot access %s" dir)))
 
 (defun erc-kill-query-buffers (process)
-  "Kill all buffers of PROCESS."
+  "Kill all buffers of PROCESS.
+Does nothing if PROCESS is not a process object."
   ;; here, we only want to match the channel buffers, to avoid
   ;; "selecting killed buffers" b0rkage.
-  (erc-with-all-buffers-of-server process
-    (lambda ()
-      (not (erc-server-buffer-p)))
-    (kill-buffer (current-buffer))))
+  (when (processp process)
+    (erc-with-all-buffers-of-server process
+      (lambda ()
+	(not (erc-server-buffer-p)))
+      (kill-buffer (current-buffer)))))
 
 (defun erc-nick-at-point ()
   "Give information about the nickname at `point'.

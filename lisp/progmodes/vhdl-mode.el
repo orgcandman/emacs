@@ -266,9 +266,14 @@ Overrides local variable `indent-tabs-mode'."
     ;; WARNING[2]: test.vhd(85): Possible infinite loop
     ;; ** Warning: [4] ../src/emacsvsim.vhd(43): An abstract ...
     ;; ** Error: adder.vhd(190): Unknown identifier: ctl_numb
+    ;; ** Error: counter_rtl.vhd(18): Nonresolved signal 'hallo' has multiple sources.
+    ;;  Drivers:
+    ;;    counter_rtl.vhd(27):Conditional signal assignment line__27
+    ;;    counter_rtl.vhd(29):Conditional signal assignment line__29
     ("ModelSim" "vcom" "-93 -work \\1" "make" "-f \\1"
      nil "vlib \\1; vmap \\2 \\1" "./" "work/" "Makefile" "modelsim"
-     ("^\\(ERROR\\|WARNING\\|\\*\\* Error\\|\\*\\* Warning\\)[^:]*:\\( *\\[[0-9]+]\\)? \\([^ \t\n]+\\)(\\([0-9]+\\)):" 3 4 nil) ("" 0)
+     ("\\(ERROR:\\|WARNING\\[[0-9]+\\]:\\|\\*\\* Error:\\|\\*\\* Warning: \\[[0-9]+\\]\\| +\\) \\([^ ]+\\)(\\([0-9]+\\)):" 2 3 nil)
+     ("" 0)
      ("\\1/_primary.dat" "\\2/\\1.dat" "\\1/_primary.dat"
       "\\1/_primary.dat" "\\1/body.dat" downcase))
     ;; ProVHDL, Synopsys LEDA: provhdl -w work -f test.vhd
@@ -4422,8 +4427,8 @@ Usage:
     according to option `vhdl-argument-list-indent'.
 
       If option `vhdl-indent-tabs-mode' is nil, spaces are used instead of
-    tabs.  `\\[tabify]' and `\\[untabify]' allow to convert spaces to tabs
-    and vice versa.
+    tabs.  `\\[tabify]' and `\\[untabify]' allow the conversion of spaces to
+    tabs and vice versa.
 
       Syntax-based indentation can be very slow in large files.  Option
     `vhdl-indent-syntax-based' allows you to use faster but simpler indentation.

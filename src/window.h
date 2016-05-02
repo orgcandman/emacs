@@ -6,8 +6,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -213,6 +213,11 @@ struct window
     /* The pixel size of the window.  */
     int pixel_width;
     int pixel_height;
+
+    /* The pixel sizes of the window at the last time
+       `window-size-change-functions' was run.  */
+    int pixel_width_before_size_change;
+    int pixel_height_before_size_change;
 
     /* The size of the window.  */
     int total_cols;
@@ -499,15 +504,17 @@ wset_next_buffers (struct window *w, Lisp_Object val)
 #define WINDOW_LEAF_P(W) \
   (BUFFERP ((W)->contents))
 
-/* True if W is a member of horizontal combination.  */
+/* Non-nil if W is internal.  */
+#define WINDOW_INTERNAL_P(W) \
+  (WINDOWP ((W)->contents))
 
+/* True if W is a member of horizontal combination.  */
 #define WINDOW_HORIZONTAL_COMBINATION_P(W) \
-  (WINDOWP ((W)->contents) && (W)->horizontal)
+  (WINDOW_INTERNAL_P (W) && (W)->horizontal)
 
 /* True if W is a member of vertical combination.  */
-
 #define WINDOW_VERTICAL_COMBINATION_P(W) \
-  (WINDOWP ((W)->contents) && !(W)->horizontal)
+  (WINDOW_INTERNAL_P (W) && !(W)->horizontal)
 
 /* WINDOW's XFRAME.  */
 #define WINDOW_XFRAME(W) (XFRAME (WINDOW_FRAME ((W))))
@@ -1013,7 +1020,7 @@ extern void grow_mini_window (struct window *, int, bool);
 extern void shrink_mini_window (struct window *, bool);
 extern int window_relative_x_coord (struct window *, enum window_part, int);
 
-void run_window_configuration_change_hook (struct frame *f);
+void run_window_size_change_functions (Lisp_Object);
 
 /* Make WINDOW display BUFFER.  RUN_HOOKS_P means it's allowed
    to run hooks.  See make_frame for a case where it's not allowed.  */

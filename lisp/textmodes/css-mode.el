@@ -54,6 +54,14 @@
   '("charset" "font-face" "import" "media" "namespace" "page")
   "Identifiers that appear in the form @foo.")
 
+(defconst css-bang-ids
+  '("important")
+  "Identifiers that appear in the form !foo.")
+
+(defconst scss-bang-ids
+  '("default" "global" "optional")
+  "Additional identifiers that appear in the form !foo in SCSS.")
+
 (defconst css-descriptor-ids
   '("ascent" "baseline" "bbox" "cap-height" "centerline" "definition-src"
     "descent" "font-family" "font-size" "font-stretch" "font-style"
@@ -78,14 +86,14 @@
     "list-style" "list-style-image" "list-style-position"
     "list-style-type" "margin" "margin-bottom" "margin-left"
     "margin-right" "margin-top" "max-height" "max-width" "min-height"
-    "min-width" "orphans" "padding" "padding-bottom" "padding-left"
+    "min-width" "padding" "padding-bottom" "padding-left"
     "padding-right" "padding-top" "page-break-after"
     "page-break-before" "page-break-inside" "pause" "pause-after"
     "pause-before" "pitch" "pitch-range" "play-during" "position"
     "quotes" "richness" "right" "speak" "speak-header" "speak-numeral"
     "speak-punctuation" "speech-rate" "stress" "table-layout" "top"
     "unicode-bidi" "vertical-align" "visibility" "voice-family" "volume"
-    "widows" "width" "z-index"
+    "width" "z-index"
 
     ;; CSS Animations
     ;; (http://www.w3.org/TR/css3-animations/#property-index)
@@ -135,6 +143,20 @@
     "font-variant-alternates" "font-variant-caps"
     "font-variant-east-asian" "font-variant-ligatures"
     "font-variant-numeric" "font-variant-position" "font-weight"
+
+    ;; CSS Fragmentation Module Level 3
+    ;; (https://www.w3.org/TR/css-break-3/#property-index)
+    "box-decoration-break" "break-after" "break-before" "break-inside"
+    "orphans" "widows"
+
+    ;; CSS Multi-column Layout Module
+    ;; (https://www.w3.org/TR/css3-multicol/#property-index)
+    ;; "break-after", "break-before", and "break-inside" are left out
+    ;; below, because they're already included in CSS Fragmentation
+    ;; Module Level 3.
+    "column-count" "column-fill" "column-gap" "column-rule"
+    "column-rule-color" "column-rule-style" "column-rule-width"
+    "column-span" "column-width" "columns"
 
     ;; CSS Overflow Module Level 3
     ;; (http://www.w3.org/TR/css-overflow-3/#property-index)
@@ -215,7 +237,7 @@
 (defconst css-escapes-re
   "\\\\\\(?:[^\000-\037\177]\\|[0-9a-fA-F]+[ \n\t\r\f]?\\)")
 (defconst css-nmchar-re (concat "\\(?:[-[:alnum:]]\\|" css-escapes-re "\\)"))
-(defconst css-nmstart-re (concat "\\(?:--\\)?\\(?:[[:alpha:]]\\|" css-escapes-re "\\)"))
+(defconst css-nmstart-re (concat "\\(?:[[:alpha:]]\\|" css-escapes-re "\\)"))
 (defconst css-ident-re ;; (concat css-nmstart-re css-nmchar-re "*")
   ;; Apparently, "at rules" names can start with a dash, e.g. @-moz-keyframes.
   (concat css-nmchar-re "+"))
@@ -236,8 +258,8 @@
 
 (defun css--font-lock-keywords (&optional sassy)
   `((,(concat "!\\s-*"
-              (regexp-opt (append (if sassy '("global"))
-                                  '("important"))))
+              (regexp-opt (append (if sassy scss-bang-ids)
+                                  css-bang-ids)))
      (0 font-lock-builtin-face))
     ;; Atrules keywords.  IDs not in css-at-ids are valid (ignored).
     ;; In fact the regexp should probably be
@@ -246,6 +268,8 @@
     ;; Since "An at-rule consists of everything up to and including the next
     ;; semicolon (;) or the next block, whichever comes first."
     (,(concat "@" css-ident-re) (0 font-lock-builtin-face))
+    ;; Variables.
+    (,(concat "--" css-ident-re) (0 font-lock-variable-name-face))
     ;; Selectors.
     ;; FIXME: attribute selectors don't work well because they may contain
     ;; strings which have already been highlighted as f-l-string-face and
@@ -523,6 +547,8 @@ pseudo-classes, and at-rules."
   (let ((st (make-syntax-table css-mode-syntax-table)))
     (modify-syntax-entry ?/ ". 124" st)
     (modify-syntax-entry ?\n ">" st)
+    ;; Variable names are prefixed by $.
+    (modify-syntax-entry ?$ "'" st)
     st))
 
 (defvar scss-font-lock-keywords

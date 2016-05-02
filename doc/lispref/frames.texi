@@ -714,9 +714,12 @@ Sizes}) or splitting (@pxref{Splitting Windows}) windows.
 
 @cindex line height
 @cindex column width
-The term @dfn{line height} is sometimes used instead of ``default
-character height''.  Similarly, the term @dfn{column width} is used as
-shorthand for ``default character width''.
+@cindex canonical character height
+@cindex canonical character width
+The terms @dfn{line height} and @dfn{canonical character height} are
+sometimes used instead of ``default character height''.  Similarly, the
+terms @dfn{column width} and @dfn{canonical character width} are used
+instead of ``default character width''.
 
 @defun frame-char-height &optional frame
 @defunx frame-char-width &optional frame
@@ -844,7 +847,7 @@ With some window managers you may have to set this to non-@code{nil} in
 order to make a frame appear truly maximized or full-screen.
 @end defopt
 
-@defun set-frame-size frame width height pixelwise
+@defun set-frame-size frame width height &optional pixelwise
 This function sets the size of the text area of @var{frame}, measured in
 terms of the canonical height and width of a character on @var{frame}
 (@pxref{Frame Font}).
@@ -2233,7 +2236,7 @@ parameters.  @xref{Management Parameters}.
 terminal frames.  On each text terminal, only the top frame is
 displayed at any one time.
 
-@defun tty-top-frame terminal
+@defun tty-top-frame &optional terminal
 This function returns the top frame on @var{terminal}.  @var{terminal}
 should be a terminal object, a frame (meaning that frame's terminal),
 or @code{nil} (meaning the selected frame's terminal).  If it does not
@@ -2403,8 +2406,8 @@ The resulting mouse position is not constrained to the native frame of
 The return value is not significant.
 @end defun
 
-On a graphical terminal the following two functions allow to retrieve
-and set the absolute position of the mouse cursor.
+On a graphical terminal the following two functions allow the absolute
+position of the mouse cursor to be retrieved and set.
 
 @defun mouse-absolute-pixel-position
 This function returns a cons cell (@var{x} . @var{y}) of the coordinates
@@ -2426,7 +2429,7 @@ This predicate function returns non-@code{nil} if the mouse pointer
 displayed on @var{frame} is visible; otherwise it returns @code{nil}.
 @var{frame} omitted or @code{nil} means the selected frame.  This is
 useful when @code{make-pointer-invisible} is set to @code{t}: it
-allows to know if the pointer has been hidden.
+allows you to know if the pointer has been hidden.
 @xref{Mouse Avoidance,,,emacs, The Emacs Manual}.
 @end defun
 

@@ -224,6 +224,7 @@ The remaining arguments to `defcustom' should have the form
 The following keywords are meaningful:
 
 :type	VALUE should be a widget type for editing the symbol's value.
+	Every `defcustom' should specify a value for this keyword.
 :options VALUE should be a list of valid members of the widget type.
 :initialize
 	VALUE should be a function used to initialize the
@@ -410,8 +411,7 @@ In the ATTS property list, possible attributes are `:family',
 
 See Info node `(elisp) Faces' in the Emacs Lisp manual for more
 information."
-  (declare (doc-string 3)
-           (indent 1))
+  (declare (doc-string 3))
   ;; It is better not to use backquote in this file,
   ;; because that makes a bootstrapping problem
   ;; if you need to recompile all the Lisp files using interpreted code.
@@ -464,7 +464,7 @@ are not usually written so.
 MEMBERS should be an alist of the form ((NAME WIDGET)...) where
 NAME is a symbol and WIDGET is a widget for editing that symbol.
 Useful widgets are `custom-variable' for editing variables,
-`custom-face' for edit faces, and `custom-group' for editing groups.
+`custom-face' for editing faces, and `custom-group' for editing groups.
 
 The remaining arguments should have the form
 

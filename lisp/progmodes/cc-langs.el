@@ -228,6 +228,12 @@ the evaluated constant value at compile time."
     ;; with the group symbol for each group and should return non-nil
     ;; if that group is to be included.
     ;;
+    ;; OP-FILTER selects the operators.  It is either t to select all
+    ;; operators, a string to select all operators for which `string-match'
+    ;; matches the operator with the string, or a function which will be
+    ;; called with the operator and should return non-nil when the operator
+    ;; is to be selected.
+    ;;
     ;; If XLATE is given, it's a function which is called for each
     ;; matching operator and its return value is collected instead.
     ;; If it returns a list, the elements are spliced directly into
@@ -612,6 +618,11 @@ This is of the form that fits inside [ ] in a regexp."
   t    (concat c-alnum "_$")
   objc (concat c-alnum "_$@"))
 (c-lang-defvar c-symbol-chars (c-lang-const c-symbol-chars))
+
+(c-lang-defconst c-symbol-char-key
+  "Regexp matching a sequence of at least one identifier character."
+  t (concat "[" (c-lang-const c-symbol-chars) "]+"))
+(c-lang-defvar c-symbol-char-key (c-lang-const c-symbol-char-key))
 
 (c-lang-defconst c-symbol-key
   "Regexp matching identifiers and keywords (with submatch 0).  Assumed
@@ -1237,7 +1248,6 @@ operators."
 		    t
 		    "\\`<."
 		    (lambda (op) (substring op 1)))))
-
 (c-lang-defvar c-<-op-cont-regexp (c-lang-const c-<-op-cont-regexp))
 
 (c-lang-defconst c->-op-cont-tokens
@@ -1256,7 +1266,6 @@ operators."
   ;; Regexp matching the second and subsequent characters of all
   ;; multicharacter tokens that begin with ">".
   t (c-make-keywords-re nil (c-lang-const c->-op-cont-tokens)))
-
 (c-lang-defvar c->-op-cont-regexp (c-lang-const c->-op-cont-regexp))
 
 (c-lang-defconst c->-op-without->-cont-regexp
@@ -1271,9 +1280,18 @@ operators."
 		     "\\`>>"
 		     (lambda (op) (substring op 1)))
        :test 'string-equal)))
-
 (c-lang-defvar c->-op-without->-cont-regexp
   (c-lang-const c->-op-without->-cont-regexp))
+
+(c-lang-defconst c-multichar->-op-not->>-regexp
+  ;; Regexp matching multichar tokens containing ">", except ">>"
+  t (c-make-keywords-re nil
+      (delete ">>"
+	      (c-filter-ops (c-lang-const c-all-op-syntax-tokens)
+			    t
+			    "\\(.>\\|>.\\)"))))
+(c-lang-defvar c-multichar->-op-not->>-regexp
+  (c-lang-const c-multichar->-op-not->>-regexp))
 
 (c-lang-defconst c-stmt-delim-chars
   ;; The characters that should be considered to bound statements.  To
@@ -1972,8 +1990,8 @@ will be handled."
 	 ;; In CORBA CIDL:
 	 "bindsTo" "delegatesTo" "implements" "proxy" "storedOn")
   ;; Note: "const" is not used in Java, but it's still a reserved keyword.
-  java '("abstract" "const" "final" "native" "private" "protected" "public"
-	 "static" "strictfp" "synchronized" "transient" "volatile")
+  java '("abstract" "const" "default" "final" "native" "private" "protected"
+	 "public" "static" "strictfp" "synchronized" "transient" "volatile")
   pike '("final" "inline" "local" "nomask" "optional" "private" "protected"
 	 "public" "static" "variant"))
 
@@ -3078,6 +3096,20 @@ expression is considered to be a type."
   java t)	    ; 2008-10-19.  This is crude.  The syntax for java
 		    ; generics is not yet coded in CC Mode.
 (c-lang-defvar c-recognize-<>-arglists (c-lang-const c-recognize-<>-arglists))
+
+(c-lang-defconst c-<>-notable-chars-re
+  "A regexp matching any single character notable inside a <...> construct.
+This must include \"<\" and \">\", and should include \",\", and
+any character which cannot be valid inside such a construct.
+This is used in `c-forward-<>-arglist-recur' to try to detect
+sequences of tokens which cannot be a template/generic construct.
+When \"(\" is present, that defun will attempt to parse a
+parenthesized expression inside the template.  When \")\" is
+present it will treat an unbalanced closing paren as a sign of
+the invalidity of the putative template construct."
+  t "[<;{},|+&->)]"
+  c++ "[<;{},>()]")
+(c-lang-defvar c-<>-notable-chars-re (c-lang-const c-<>-notable-chars-re))
 
 (c-lang-defconst c-enums-contain-decls
   "Non-nil means that an enum structure can contain declarations."

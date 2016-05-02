@@ -368,34 +368,7 @@ messages will be shown to indicate the current status."
   :type '(choice (const :tag "infinite" nil)
                  (number :tag "count")))
 
-(define-widget 'nnmail-lazy 'default
-  "Base widget for recursive data structures.
-
-This is copy of the `lazy' widget in Emacs 22.1 provided for compatibility."
-  :format "%{%t%}: %v"
-  :convert-widget 'widget-value-convert-widget
-  :value-create (lambda (widget)
-                  (let ((value (widget-get widget :value))
-                        (type (widget-get widget :type)))
-                    (widget-put widget :children
-                                (list (widget-create-child-value
-                                       widget (widget-convert type) value)))))
-  :value-delete 'widget-children-value-delete
-  :value-get (lambda (widget)
-               (widget-value (car (widget-get widget :children))))
-  :value-inline (lambda (widget)
-                  (widget-apply (car (widget-get widget :children))
-                                :value-inline))
-  :default-get (lambda (widget)
-                 (widget-default-get
-                  (widget-convert (widget-get widget :type))))
-  :match (lambda (widget value)
-           (widget-apply (widget-convert (widget-get widget :type))
-                         :match value))
-  :validate (lambda (widget)
-              (widget-apply (car (widget-get widget :children)) :validate)))
-
-(define-widget 'nnmail-split-fancy 'nnmail-lazy
+(define-widget 'nnmail-split-fancy 'lazy
   "Widget for customizing splits in the variable of the same name."
   :tag "Split"
   :type '(menu-choice :value (any ".*value.*" "misc")
@@ -628,14 +601,7 @@ using different case (i.e. mailing-list@domain vs Mailing-List@Domain)."
   mm-text-coding-system
   "Coding system used in reading inbox")
 
-(defvar nnmail-pathname-coding-system
-  ;; This causes Emacs 22.2 and 22.3 to issue a useless warning.
-  ;;(if (and (featurep 'xemacs) (featurep 'file-coding))
-  (if (featurep 'xemacs)
-      (if (featurep 'file-coding)
-	  ;; Work around a bug in many XEmacs 21.5 betas.
-	  ;; Cf. http://thread.gmane.org/gmane.emacs.gnus.general/68134
-	  (setq file-name-coding-system (coding-system-aliasee 'file-name))))
+(defvar nnmail-pathname-coding-system nil
   "*Coding system for file name.")
 
 (defun nnmail-find-file (file)
@@ -697,7 +663,7 @@ nn*-request-list should have been called before calling this function."
 	      (setq group (symbol-name group)))
 	    (if (and (numberp (setq max (read buffer)))
 		     (numberp (setq min (read buffer))))
-		(push (list (mm-string-as-unibyte group) (cons min max))
+		(push (list (string-as-unibyte group) (cons min max))
 		      group-assoc)))
 	(error nil))
       (widen)
@@ -1173,7 +1139,7 @@ FUNC will be called with the group name to determine the article number."
 			5 "Error in `nnmail-split-methods'; using `bogus' mail group: %S" error-info)
 		       (sit-for 1)
 		       '("bogus")))))
-	      (setq split (mm-delete-duplicates split))
+	      (setq split (delete-dups split))
 	      ;; The article may be "cross-posted" to `junk'.  What
 	      ;; to do?  Just remove the `junk' spec.  Don't really
 	      ;; see anything else to do...
@@ -1279,9 +1245,9 @@ Return the number of characters in the body."
     (insert (format "Xref: %s" (system-name)))
     (while group-alist
       (insert (if (mm-multibyte-p)
-		  (mm-string-as-multibyte
+		  (string-as-multibyte
 		   (format " %s:%d" (caar group-alist) (cdar group-alist)))
-		(mm-string-as-unibyte
+		(string-as-unibyte
 		 (format " %s:%d" (caar group-alist) (cdar group-alist)))))
       (setq group-alist (cdr group-alist)))
     (insert "\n")))
@@ -1957,10 +1923,8 @@ If TIME is nil, then return the cutoff time for oldness instead."
        ((and (equal header 'to-from)
 	     (or (string-match (cadr regexp-target-pair) from)
 		 (and (string-match (cadr regexp-target-pair) to)
-		      (let* ((mail-dont-reply-to-names
-			      (message-dont-reply-to-names))
-			     (rmail-dont-reply-to-names ; obsolete since 24.1
-			      mail-dont-reply-to-names))
+		      (let ((mail-dont-reply-to-names
+			     (message-dont-reply-to-names)))
 			(equal (if (fboundp 'rmail-dont-reply-to)
 				   (rmail-dont-reply-to from)
 				 (mail-dont-reply-to from)) "")))))
@@ -2054,13 +2018,13 @@ If TIME is nil, then return the cutoff time for oldness instead."
     (error "No current split history"))
   (with-output-to-temp-buffer "*nnmail split history*"
     (with-current-buffer standard-output
-      (fundamental-mode))		; for Emacs 20.4+
-      (dolist (elem nnmail-split-history)
-	(princ (mapconcat (lambda (ga)
-			    (concat (car ga) ":" (int-to-string (cdr ga))))
-			  elem
-			  ", "))
-	(princ "\n"))))
+      (fundamental-mode))
+    (dolist (elem nnmail-split-history)
+      (princ (mapconcat (lambda (ga)
+			  (concat (car ga) ":" (int-to-string (cdr ga))))
+			elem
+			", "))
+      (princ "\n"))))
 
 (defun nnmail-purge-split-history (group)
   "Remove all instances of GROUP from `nnmail-split-history'."

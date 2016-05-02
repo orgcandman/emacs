@@ -7,8 +7,8 @@ This file is part of GNU Emacs.
 
 GNU Emacs is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+the Free Software Foundation, either version 3 of the License, or (at
+your option) any later version.
 
 GNU Emacs is distributed in the hope that it will be useful,
 but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -65,7 +65,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "character.h"
 #include "buffer.h"
 #include "window.h"
-
+#include "xwidget.h"
 #include "atimer.h"
 #include "blockinput.h"
 #include "syssignal.h"
@@ -79,6 +79,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "composite.h"
 #include "dispextern.h"
 #include "regex.h"
+#include "sheap.h"
 #include "syntax.h"
 #include "sysselect.h"
 #include "systime.h"
@@ -127,25 +128,13 @@ Lisp_Object Vlibrary_cache;
 bool initialized;
 
 /* Set to true if this instance of Emacs might dump.  */
+#ifndef DOUG_LEA_MALLOC
+static
+#endif
 bool might_dump;
 
 #ifdef DARWIN_OS
 extern void unexec_init_emacs_zone (void);
-#endif
-
-#ifdef DOUG_LEA_MALLOC
-/* Preserves a pointer to the memory allocated that copies that
-   static data inside glibc's malloc.  */
-static void *malloc_state_ptr;
-/* From glibc, a routine that returns a copy of the malloc internal state.  */
-extern void *malloc_get_state (void);
-/* From glibc, a routine that overwrites the malloc internal state.  */
-extern int malloc_set_state (void *);
-/* True if the MALLOC_CHECK_ environment variable was set while
-   dumping.  Used to work around a bug in glibc's malloc.  */
-static bool malloc_using_checking;
-#elif defined HAVE_PTHREAD && !defined SYSTEM_MALLOC && !defined HYBRID_MALLOC
-extern void malloc_enable_thread (void);
 #endif
 
 /* If true, Emacs should not attempt to use a window-specific code,
@@ -164,11 +153,6 @@ bool display_arg;
 /* An address near the bottom of the stack.
    Tells GC how to save a copy of the stack.  */
 char *stack_bottom;
-
-#if defined (DOUG_LEA_MALLOC) || defined (GNU_LINUX)
-/* The address where the heap starts (from the first sbrk (0) call).  */
-static void *my_heap_start;
-#endif
 
 #ifdef GNU_LINUX
 /* The gap between BSS end and heap start as far as we can tell.  */
@@ -196,6 +180,9 @@ bool noninteractive;
 
 /* True means remove site-lisp directories from load-path.  */
 bool no_site_lisp;
+
+/* True means put details like time stamps into builds.  */
+bool build_details;
 
 /* Name for the server started by the daemon.*/
 static char *daemon_name;
@@ -238,6 +225,7 @@ Initialization options:\n\
 --display, -d DISPLAY       use X server DISPLAY\n\
 ",
     "\
+--no-build-details          do not add build details such as time stamps\n\
 --no-desktop                do not load a saved desktop\n\
 --no-init-file, -q          load neither ~/.emacs nor default.el\n\
 --no-loadup, -nl            do not load loadup.el into bare Emacs\n\
@@ -654,51 +642,6 @@ argmatch (char **argv, int argc, const char *sstr, const char *lstr,
     }
 }
 
-#ifdef DOUG_LEA_MALLOC
-
-/* malloc can be invoked even before main (e.g. by the dynamic
-   linker), so the dumped malloc state must be restored as early as
-   possible using this special hook.  */
-
-static void
-malloc_initialize_hook (void)
-{
-  if (initialized)
-    {
-      if (!malloc_using_checking)
-	/* Work around a bug in glibc's malloc.  MALLOC_CHECK_ must be
-	   ignored if the heap to be restored was constructed without
-	   malloc checking.  Can't use unsetenv, since that calls malloc.  */
-	{
-	  char **p;
-
-	  for (p = environ; p && *p; p++)
-	    if (strncmp (*p, "MALLOC_CHECK_=", 14) == 0)
-	      {
-		do
-		  *p = p[1];
-		while (*++p);
-		break;
-	      }
-	}
-
-      malloc_set_state (malloc_state_ptr);
-#ifndef XMALLOC_OVERRUN_CHECK
-      free (malloc_state_ptr);
-#endif
-    }
-  else
-    {
-      if (my_heap_start == 0)
-        my_heap_start = sbrk (0);
-      malloc_using_checking = getenv ("MALLOC_CHECK_") != NULL;
-    }
-}
-
-void (*__malloc_initialize_hook) (void) EXTERNALLY_VISIBLE = malloc_initialize_hook;
-
-#endif /* DOUG_LEA_MALLOC */
-
 /* Close standard output and standard error, reporting any write
    errors as best we can.  This is intended for use with atexit.  */
 static void
@@ -746,10 +689,8 @@ main (int argc, char **argv)
 #ifdef GNU_LINUX
   if (!initialized)
     {
-      if (my_heap_start == 0)
-        my_heap_start = sbrk (0);
-
-      heap_bss_diff = (char *)my_heap_start - max (my_endbss, my_endbss_static);
+      char *heap_start = my_heap_start ();
+      heap_bss_diff = heap_start - max (my_endbss, my_endbss_static);
     }
 #endif
 
@@ -839,7 +780,7 @@ main (int argc, char **argv)
       filename_from_ansi (ch_to_dir, newdir);
       ch_to_dir = newdir;
 #endif
-      original_pwd = get_current_dir_name ();
+      original_pwd = emacs_get_current_dir_name ();
       if (chdir (ch_to_dir) != 0)
         {
           fprintf (stderr, "%s: Can't chdir to %s: %s\n",
@@ -1252,6 +1193,9 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   no_site_lisp
     = argmatch (argv, argc, "-nsl", "--no-site-lisp", 11, NULL, &skip_args);
 
+  build_details = ! argmatch (argv, argc, "-no-build-details",
+			      "--no-build-details", 7, NULL, &skip_args);
+
 #ifdef HAVE_NS
   ns_pool = ns_alloc_autorelease_pool ();
 #ifdef NS_IMPL_GNUSTEP
@@ -1378,6 +1322,11 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   init_ntproc (dumping); /* must precede init_editfns.  */
 #endif
 
+#ifdef HAVE_NS
+  /* Initialize the locale from user defaults.  */
+  ns_init_locale ();
+#endif
+
   /* Initialize and GC-protect Vinitial_environment and
      Vprocess_environment before set_initial_environment fills them
      in.  */
@@ -1492,6 +1441,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
       syms_of_xfns ();
       syms_of_xmenu ();
       syms_of_fontset ();
+      syms_of_xwidget ();
       syms_of_xsettings ();
 #ifdef HAVE_X_SM
       syms_of_xsmfns ();
@@ -1695,6 +1645,7 @@ static const struct standard_args standard_args[] =
   { "-help", "--help", 90, 0 },
   { "-nl", "--no-loadup", 70, 0 },
   { "-nsl", "--no-site-lisp", 65, 0 },
+  { "-no-build-details", "--no-build-details", 63, 0 },
   /* -d must come last before the options handled in startup.el.  */
   { "-d", "--display", 60, 1 },
   { "-display", 0, 60, 1 },
@@ -2137,6 +2088,17 @@ You must run Emacs in batch mode in order to dump it.  */)
   tem = Vpurify_flag;
   Vpurify_flag = Qnil;
 
+#ifdef HYBRID_MALLOC
+  {
+    static char const fmt[] = "%d of %d static heap bytes used";
+    char buf[sizeof fmt + 2 * (INT_STRLEN_BOUND (int) - 2)];
+    int max_usage = max_bss_sbrk_ptr - bss_sbrk_buffer;
+    sprintf (buf, fmt, max_usage, STATIC_HEAP_SIZE);
+    /* Don't log messages, because at this point buffers cannot be created.  */
+    message1_nolog (buf);
+  }
+#endif
+
   fflush (stdout);
   /* Tell malloc where start of impure now is.  */
   /* Also arrange for warnings when nearly out of space.  */
@@ -2147,15 +2109,12 @@ You must run Emacs in batch mode in order to dump it.  */)
   memory_warnings (my_edata, malloc_warning);
 #endif /* not WINDOWSNT */
 #endif /* not SYSTEM_MALLOC and not HYBRID_MALLOC */
-#ifdef DOUG_LEA_MALLOC
-  malloc_state_ptr = malloc_get_state ();
-#endif
+
+  alloc_unexec_pre ();
 
   unexec (SSDATA (filename), !NILP (symfile) ? SSDATA (symfile) : 0);
 
-#ifdef DOUG_LEA_MALLOC
-  free (malloc_state_ptr);
-#endif
+  alloc_unexec_post ();
 
 #ifdef WINDOWSNT
   Vlibrary_cache = Qnil;
@@ -2190,7 +2149,7 @@ synchronize_locale (int category, Lisp_Object *plocale, Lisp_Object desired_loca
     {
       *plocale = desired_locale;
 #ifdef WINDOWSNT
-      /* Changing categories like LC_TIME usually requires to specify
+      /* Changing categories like LC_TIME usually requires specifying
 	 an encoding suitable for the new locale, but MS-Windows's
 	 'setlocale' will only switch the encoding when LC_ALL is
 	 specified.  So we ignore CATEGORY, use LC_ALL instead, and
@@ -2460,8 +2419,8 @@ Special values:
   `ms-dos'       compiled as an MS-DOS application.
   `windows-nt'   compiled as a native W32 application.
   `cygwin'       compiled using the Cygwin library.
-Anything else (in Emacs 24.1, the possibilities are: aix, berkeley-unix,
-hpux, irix, usg-unix-v) indicates some sort of Unix system.  */);
+Anything else (in Emacs 26, the possibilities are: aix, berkeley-unix,
+hpux, usg-unix-v) indicates some sort of Unix system.  */);
   Vsystem_type = intern_c_string (SYSTEM_TYPE);
   /* See configure.ac for the possible SYSTEM_TYPEs.  */
 

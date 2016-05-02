@@ -78,6 +78,7 @@ AC_DEFUN([gl_EARLY],
   # Code from module fdatasync:
   # Code from module fdopendir:
   # Code from module filemode:
+  # Code from module filevercmp:
   # Code from module fpending:
   # Code from module fstatat:
   # Code from module fsync:
@@ -126,6 +127,7 @@ AC_DEFUN([gl_EARLY],
   # Code from module ssize_t:
   # Code from module stat:
   # Code from module stat-time:
+  # Code from module std-gnu11:
   # Code from module stdalign:
   # Code from module stddef:
   # Code from module stdint:
@@ -436,7 +438,8 @@ AC_DEFUN([gl_INIT],
   {
     if ! $gl_gnulib_enabled_dirfd; then
       gl_FUNC_DIRFD
-      if test $ac_cv_func_dirfd = no && test $gl_cv_func_dirfd_macro = no; then
+      if test $ac_cv_func_dirfd = no && test $gl_cv_func_dirfd_macro = no \
+         || test $REPLACE_DIRFD = 1; then
         AC_LIBOBJ([dirfd])
         gl_PREREQ_DIRFD
       fi
@@ -887,6 +890,8 @@ AC_DEFUN([gl_FILE_LIST], [
   lib/fdopendir.c
   lib/filemode.c
   lib/filemode.h
+  lib/filevercmp.c
+  lib/filevercmp.h
   lib/fpending.c
   lib/fpending.h
   lib/fstatat.c
@@ -1051,6 +1056,7 @@ AC_DEFUN([gl_FILE_LIST], [
   m4/st_dm_mode.m4
   m4/stat-time.m4
   m4/stat.m4
+  m4/std-gnu11.m4
   m4/stdalign.m4
   m4/stddef_h.m4
   m4/stdint.m4

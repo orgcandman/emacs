@@ -29,6 +29,7 @@
 
 (require 'gnus)
 (require 'gnus-sum)
+(require 'gnus-art)
 (require 'gnus-range)
 (require 'gnus-win)
 (require 'message)
@@ -739,6 +740,8 @@ current score file."
       (with-current-buffer gnus-summary-buffer
 	(gnus-score-load-file current-score-file)))))
 
+(autoload 'appt-select-lowest-window "appt")
+
 (defun gnus-score-insert-help (string alist idx)
   (setq gnus-score-help-winconf (current-window-configuration))
   (with-current-buffer (gnus-get-buffer-create "*Score Help*")
@@ -773,7 +776,7 @@ current score file."
 	(setq i (1+ i))))
     (goto-char (point-min))
     ;; display ourselves in a small window at the bottom
-    (gnus-select-lowest-window)
+    (appt-select-lowest-window)
     (if (< (/ (window-height) 2) window-min-height)
 	(switch-to-buffer "*Score Help*")
       (split-window)
@@ -1428,7 +1431,7 @@ If FORMAT, also format the current score file."
 		(and (file-exists-p file)
 		     (not (file-writable-p file))))
 	    ()
-	  (setq score (setcdr entry (gnus-delete-alist 'touched score)))
+	  (setq score (setcdr entry (assq-delete-all 'touched score)))
 	  (erase-buffer)
 	  (let (emacs-lisp-mode-hook)
 	    (if (and (not gnus-adaptive-pretty-print)
@@ -1724,7 +1727,7 @@ score in `gnus-newsgroup-scored' by SCORE."
   nil)
 
 (defun gnus-score-decode-text-parts ()
-  (gmm-labels
+  (cl-labels
       ((mm-text-parts
 	(handle)
 	(cond ((stringp (car handle))
@@ -1748,7 +1751,7 @@ score in `gnus-newsgroup-scored' by SCORE."
 	    (mm-display-inline handle)
 	    (goto-char (point-max))))))
 
-    (let (;(mm-text-html-renderer 'w3m-standalone)
+    (let (		      ;(mm-text-html-renderer 'w3m-standalone)
 	  (handles (mm-dissect-buffer t)))
       (save-excursion
 	(article-goto-body)
@@ -3048,19 +3051,12 @@ If ADAPT, return the home adaptive file instead."
 
 (defun gnus-decay-score (score)
   "Decay SCORE according to `gnus-score-decay-constant' and `gnus-score-decay-scale'."
-  (let ((n (- score
-	      (* (if (< score 0) -1 1)
-		 (min (abs score)
-		      (max gnus-score-decay-constant
-			   (* (abs score)
-			      gnus-score-decay-scale)))))))
-    (if (and (featurep 'xemacs)
-	     ;; XEmacs's floor can handle only the floating point
-	     ;; number below the half of the maximum integer.
-	     (> (abs n) (lsh -1 -2)))
-	(string-to-number
-	 (car (split-string (number-to-string n) "\\.")))
-      (floor n))))
+  (floor (- score
+	    (* (if (< score 0) -1 1)
+	       (min (abs score)
+		    (max gnus-score-decay-constant
+			 (* (abs score)
+			    gnus-score-decay-scale)))))))
 
 (defun gnus-decay-scores (alist day)
   "Decay non-permanent scores in ALIST."

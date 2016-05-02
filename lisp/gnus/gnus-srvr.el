@@ -156,7 +156,7 @@ If nil, a faster, but more primitive, buffer is used instead."
   (gnus-define-keys gnus-server-mode-map
     " " gnus-server-read-server-in-server-buffer
     "\r" gnus-server-read-server
-    gnus-mouse-2 gnus-server-pick-server
+    [mouse-2] gnus-server-pick-server
     "q" gnus-server-exit
     "l" gnus-server-list-servers
     "k" gnus-server-kill-server
@@ -280,10 +280,8 @@ The following commands are available:
   (buffer-disable-undo)
   (setq truncate-lines t)
   (setq buffer-read-only t)
-  (if (featurep 'xemacs)
-      (put 'gnus-server-mode 'font-lock-defaults '(gnus-server-font-lock-keywords t))
-    (set (make-local-variable 'font-lock-defaults)
-	 '(gnus-server-font-lock-keywords t)))
+  (set (make-local-variable 'font-lock-defaults)
+       '(gnus-server-font-lock-keywords t))
   (gnus-run-mode-hooks 'gnus-server-mode-hook))
 
 (defun gnus-server-insert-server-line (name method)
@@ -310,7 +308,7 @@ The following commands are available:
 			     " (cloud)"
 			   "")))
     (beginning-of-line)
-    (gnus-add-text-properties
+    (add-text-properties
      (point)
      (prog1 (1+ (point))
        ;; Insert the text.
@@ -389,7 +387,7 @@ The following commands are available:
       (when entry
 	(gnus-dribble-enter
 	 (concat "(gnus-server-set-info \"" server "\" '"
-		 (gnus-prin1-to-string (cdr entry)) ")\n")
+		 (gnus-prin1-to-string (cdr entry)) ")")
 	 (concat "^(gnus-server-set-info \"" (regexp-quote server) "\"")))
       (when (or entry oentry)
 	;; Buffer may be narrowed.
@@ -804,7 +802,7 @@ claim them."
 	      (while (not (eobp))
 		(ignore-errors
 		  (push (cons
-			 (mm-string-as-unibyte
+			 (string-as-unibyte
 			  (buffer-substring
 			   (point)
 			   (progn
@@ -817,7 +815,7 @@ claim them."
 	    (while (not (eobp))
 	      (ignore-errors
 		(push (cons
-		       (mm-string-as-unibyte
+		       (string-as-unibyte
 			(if (eq (char-after) ?\")
 			    (read cur)
 			  (let ((p (point)) (name ""))
@@ -865,7 +863,7 @@ claim them."
 	      (prefix (let ((gnus-select-method orig-select-method))
 			(gnus-group-prefixed-name "" method))))
 	  (while (setq group (pop groups))
-	    (gnus-add-text-properties
+	    (add-text-properties
 	     (point)
 	     (prog1 (1+ (point))
 	       (insert
@@ -882,10 +880,9 @@ claim them."
 			   (t ?K)))
 			(max 0 (- (1+ (cddr group)) (cadr group)))
 			;; Don't decode if name is ASCII
-			(if (and (fboundp 'detect-coding-string)
-				 (eq (detect-coding-string name t) 'undecided))
+			(if (eq (detect-coding-string name t) 'undecided)
 			    name
-			  (mm-decode-coding-string
+			  (decode-coding-string
 			   name
 			   (inline (gnus-group-name-charset method name)))))))
 	     (list 'gnus-group name)

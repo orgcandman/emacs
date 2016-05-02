@@ -1048,7 +1048,7 @@ entry does not exist, return nil."
 	 (replace-regexp-in-string "^tramp-" "" (symbol-name param))))
     (if (tramp-connection-property-p vec hash-entry)
 	;; We use the cached property.
-	(tramp-get-connection-property  vec hash-entry nil)
+	(tramp-get-connection-property vec hash-entry nil)
       ;; Use the static value from `tramp-methods'.
       (let ((methods-entry
 	     (assoc param (assoc (tramp-file-name-method vec) tramp-methods))))
@@ -1987,13 +1987,13 @@ Falls back to normal file name handler if no Tramp file name handler exists."
 		(tramp-replace-environment-variables
 		 (apply 'tramp-file-name-for-operation operation args)))
 	       (completion (tramp-completion-mode-p))
-	       (foreign (tramp-find-foreign-file-name-handler filename)))
+	       (foreign (tramp-find-foreign-file-name-handler filename))
+	       result)
 	  (with-parsed-tramp-file-name filename nil
 	    ;; Call the backend function.
 	    (if foreign
 		(tramp-condition-case-unless-debug err
-		    (let ((sf (symbol-function foreign))
-			  result)
+		    (let ((sf (symbol-function foreign)))
 		      ;; Some packages set the default directory to a
 		      ;; remote path, before respective Tramp packages
 		      ;; are already loaded.  This results in
@@ -2057,8 +2057,13 @@ Falls back to normal file name handler if no Tramp file name handler exists."
 		    ;; Propagate the error.
 		    (t (signal (car err) (cdr err))))))
 
-	      ;; Nothing to do for us.
-	      (tramp-run-real-handler operation args)))))
+	      ;; Nothing to do for us.  However, since we are in
+	      ;; `tramp-mode', we must suppress the volume letter on
+	      ;; MS Windows.
+	      (setq result (tramp-run-real-handler operation args))
+	      (if (stringp result)
+		  (tramp-drop-volume-letter result)
+		result)))))
 
     ;; When `tramp-mode' is not enabled, we don't do anything.
     (tramp-run-real-handler operation args)))
@@ -2624,17 +2629,18 @@ User is always nil."
    (tramp-parse-group
     (concat "^\\(" tramp-ipv6-regexp "\\|" tramp-host-regexp "\\)") 1 " \t"))
 
-;; For su-alike methods it would be desirable to return "root@localhost"
-;; as default.  Unfortunately, we have no information whether any user name
-;; has been typed already.  So we use `tramp-current-user' as indication,
-;; assuming it is set in `tramp-completion-handle-file-name-all-completions'.
 ;;;###tramp-autoload
 (defun tramp-parse-passwd (filename)
   "Return a list of (user host) tuples allowed to access.
 Host is always \"localhost\"."
-  (if (zerop (length tramp-current-user))
-      '(("root" nil))
-    (tramp-parse-file filename 'tramp-parse-passwd-group)))
+  (with-tramp-connection-property nil "parse-passwd"
+    (if (executable-find "getent")
+	(with-temp-buffer
+	  (when (zerop (tramp-call-process nil "getent" nil t nil "passwd"))
+	    (goto-char (point-min))
+	    (loop while (not (eobp)) collect
+		  (tramp-parse-etc-group-group))))
+      (tramp-parse-file filename 'tramp-parse-passwd-group))))
 
 (defun tramp-parse-passwd-group ()
    "Return a (user host) tuple allowed to access.
@@ -2650,7 +2656,14 @@ Host is always \"localhost\"."
 (defun tramp-parse-etc-group (filename)
   "Return a list of (group host) tuples allowed to access.
 Host is always \"localhost\"."
-  (tramp-parse-file filename 'tramp-parse-etc-group-group))
+  (with-tramp-connection-property nil "parse-group"
+    (if (executable-find "getent")
+	(with-temp-buffer
+	  (when (zerop (tramp-call-process nil "getent" nil t nil "group"))
+	    (goto-char (point-min))
+	    (loop while (not (eobp)) collect
+		  (tramp-parse-etc-group-group))))
+      (tramp-parse-file filename 'tramp-parse-etc-group-group))))
 
 (defun tramp-parse-etc-group-group ()
    "Return a (group host) tuple allowed to access.
@@ -2686,12 +2699,13 @@ User may be nil."
   "Return a list of (user host) tuples allowed to access.
 User is always nil."
   (if (memq system-type '(windows-nt))
-      (with-temp-buffer
-	(when (zerop (tramp-call-process
-		      nil "reg" nil t nil "query" registry-or-dirname))
-	  (goto-char (point-min))
-	  (loop while (not (eobp)) collect
-		(tramp-parse-putty-group registry-or-dirname))))
+      (with-tramp-connection-property nil "parse-putty"
+	(with-temp-buffer
+	  (when (zerop (tramp-call-process
+			nil "reg" nil t nil "query" registry-or-dirname))
+	    (goto-char (point-min))
+	    (loop while (not (eobp)) collect
+		  (tramp-parse-putty-group registry-or-dirname)))))
     ;; UNIX case.
     (tramp-parse-shostkeys-sknownhosts
      registry-or-dirname (concat "^\\(" tramp-host-regexp "\\)$"))))
@@ -2860,7 +2874,8 @@ User is always nil."
     (when (tramp-tramp-file-p filename)
       (let* ((v (tramp-dissect-file-name filename))
 	     (p (tramp-get-connection-process v))
-	     (c (and p (processp p) (memq (process-status p) '(run open)))))
+	     (c (and p (processp p) (memq (process-status p) '(run open))
+		     (tramp-get-connection-property p "connected" nil))))
 	;; We expand the file name only, if there is already a connection.
 	(with-parsed-tramp-file-name
 	    (if c (expand-file-name filename) filename) nil

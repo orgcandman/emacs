@@ -27,6 +27,9 @@
 
 (require 'gnus-util)
 (require 'epg)
+(require 'epa)
+(require 'password-cache)
+(require 'mm-encode)
 
 (autoload 'mail-strip-quoted-names "mail-utils")
 (autoload 'mml2015-sign "mml2015")
@@ -43,6 +46,8 @@
 (autoload 'mml-smime-verify "mml-smime")
 (autoload 'mml-smime-verify-test "mml-smime")
 (autoload 'epa--select-keys "epa")
+(autoload 'message-options-get "message")
+(autoload 'message-options-set "message")
 
 (defvar mml-sign-alist
   '(("smime"     mml-smime-sign-buffer     mml-smime-sign-query)
@@ -110,20 +115,14 @@ details."
   :group 'message
   :type 'boolean)
 
-(defcustom mml-secure-cache-passphrase
-  (if (boundp 'password-cache)
-      password-cache
-    t)
+(defcustom mml-secure-cache-passphrase password-cache
   "If t, cache OpenPGP or S/MIME passphrases inside Emacs.
 Passphrase caching in Emacs is NOT recommended.  Use gpg-agent instead.
 See Info node `(message) Security'."
   :group 'message
   :type 'boolean)
 
-(defcustom mml-secure-passphrase-cache-expiry
-  (if (boundp 'password-cache-expiry)
-      password-cache-expiry
-    16)
+(defcustom mml-secure-passphrase-cache-expiry password-cache-expiry
   "How many seconds the passphrase is cached.
 Whether the passphrase is cached at all is controlled by
 `mml-secure-cache-passphrase'."
@@ -555,7 +554,7 @@ Return keys."
   (let* ((usage-prefs (mml-secure-cust-usage-lookup context usage))
 	 (curr-fprs (cdr (assoc name (cdr usage-prefs))))
 	 (key-fprs (mapcar 'mml-secure-fingerprint keys))
-	 (new-fprs (gnus-union curr-fprs key-fprs :test 'equal)))
+	 (new-fprs (cl-union curr-fprs key-fprs :test 'equal)))
     (if curr-fprs
 	(setcdr (assoc name (cdr usage-prefs)) new-fprs)
       (setcdr usage-prefs (cons (cons name new-fprs) (cdr usage-prefs))))
@@ -623,7 +622,7 @@ Passphrase caching in Emacs is NOT recommended.  Use gpg-agent instead."
 The passphrase is read and cached."
   ;; Based on mml2015-epg-passphrase-callback.
   (if (eq key-id 'SYM)
-      (epg-passphrase-callback-function context key-id nil)
+      (epa-passphrase-callback-function context key-id nil)
     (let* ((password-cache-key-id
 	    (if (eq key-id 'PIN)
 		"PIN"
@@ -655,10 +654,10 @@ The passphrase is read and cached."
     (catch 'break
       (dolist (uid uids nil)
 	(if (and (stringp (epg-user-id-string uid))
-		 (equal (car (mail-header-parse-address
-			      (epg-user-id-string uid)))
-			(car (mail-header-parse-address
-			      recipient)))
+		 (equal (downcase (car (mail-header-parse-address
+					(epg-user-id-string uid))))
+			(downcase (car (mail-header-parse-address
+					recipient))))
 		 (not (memq (epg-user-id-validity uid)
 			    '(revoked expired))))
 	    (throw 'break t))))))
@@ -702,9 +701,9 @@ be present in the keyring."
 		       ;; In contrast, signing requires secret key.
 		       (mml-secure-secret-key-exists-p context subkey))
 		   (or (not fingerprint)
-		       (gnus-string-match-p (concat fingerprint "$") fpr)
-		       (gnus-string-match-p (concat fingerprint "$")
-					    (epg-sub-key-fingerprint subkey))))
+		       (string-match-p (concat fingerprint "$") fpr)
+		       (string-match-p (concat fingerprint "$")
+				       (epg-sub-key-fingerprint subkey))))
 	      (throw 'break t)))))))
 
 (defun mml-secure-find-usable-keys (context name usage &optional justone)
@@ -907,10 +906,10 @@ If no one is selected, symmetric encryption will be performed.  "
 	 cipher signers)
     (when sign
       (setq signers (mml-secure-signers context signer-names))
-      (epg-context-set-signers context signers))
+      (setf (epg-context-signers context) signers))
     (when (eq 'OpenPGP protocol)
-      (epg-context-set-armor context t)
-      (epg-context-set-textmode context t))
+      (setf (epg-context-armor context) t)
+      (setf (epg-context-textmode context) t))
     (when (mml-secure-cache-passphrase-p protocol)
       (epg-context-set-passphrase-callback
        context
@@ -935,9 +934,9 @@ If no one is selected, symmetric encryption will be performed.  "
 	 (signers (mml-secure-signers context signer-names))
 	 signature micalg)
     (when (eq 'OpenPGP protocol)
-      (epg-context-set-armor context t)
-      (epg-context-set-textmode context t))
-    (epg-context-set-signers context signers)
+      (setf (epg-context-armor context) t)
+      (setf (epg-context-textmode context) t))
+    (setf (epg-context-signers context) signers)
     (when (mml-secure-cache-passphrase-p protocol)
       (epg-context-set-passphrase-callback
        context
@@ -947,8 +946,9 @@ If no one is selected, symmetric encryption will be performed.  "
 	      (if (eq 'OpenPGP protocol)
 		  (epg-sign-string context (buffer-string) mode)
 		(epg-sign-string context
-				 (mm-replace-in-string (buffer-string)
-						       "\n" "\r\n") t))
+				 (replace-regexp-in-string
+				  "\n" "\r\n" (buffer-string))
+				 t))
 	      mml-secure-secret-key-id-list nil)
       (error
        (mml-secure-clear-secret-key-id-list)
