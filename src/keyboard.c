@@ -430,10 +430,9 @@ kset_system_key_syms (struct kboard *kb, Lisp_Object val)
 static bool
 echo_keystrokes_p (void)
 {
-  return (!cursor_in_echo_area)
-	 && (FLOATP (Vecho_keystrokes) ? XFLOAT_DATA (Vecho_keystrokes) > 0.0
-	     : INTEGERP (Vecho_keystrokes) ? XINT (Vecho_keystrokes) > 0
-             : false);
+  return (FLOATP (Vecho_keystrokes) ? XFLOAT_DATA (Vecho_keystrokes) > 0.0
+	  : INTEGERP (Vecho_keystrokes) ? XINT (Vecho_keystrokes) > 0
+          : false);
 }
 
 /* Add C to the echo string, without echoing it immediately.  C can be
@@ -681,6 +680,14 @@ recursive_edit_1 (void)
      edit will be unwound.  The outcome should therefore be safe.  */
   specbind (Qinhibit_redisplay, Qnil);
   redisplaying_p = 0;
+
+  /* This variable stores buffers that have changed so that an undo
+     boundary can be added. specbind this so that changes in the
+     recursive edit will not result in undo boundaries in buffers
+     changed before we entered there recursive edit.
+     See Bug #23632.
+  */
+  specbind (Qundo_auto__undoably_changed_buffers, Qnil);
 
   val = command_loop ();
   if (EQ (val, Qt))
@@ -2123,7 +2130,7 @@ read_event_from_main_queue (struct timespec *end_time,
 {
   Lisp_Object c = Qnil;
   sys_jmp_buf save_jump;
-  KBOARD *kb IF_LINT (= NULL);
+  KBOARD *kb;
 
  start:
 
@@ -2194,8 +2201,8 @@ read_decoded_event_from_main_queue (struct timespec *end_time,
                                     Lisp_Object prev_event,
                                     bool *used_mouse_menu)
 {
-#define MAX_ENCODED_BYTES 16
 #ifndef WINDOWSNT
+#define MAX_ENCODED_BYTES 16
   Lisp_Object events[MAX_ENCODED_BYTES];
   int n = 0;
 #endif
@@ -2313,7 +2320,7 @@ read_char (int commandflag, Lisp_Object map,
 	   Lisp_Object prev_event,
 	   bool *used_mouse_menu, struct timespec *end_time)
 {
-  Lisp_Object c;
+  Lisp_Object NONVOLATILE c;
   ptrdiff_t jmpcount;
   sys_jmp_buf local_getcjmp;
   sys_jmp_buf save_jump;
@@ -2530,7 +2537,7 @@ read_char (int commandflag, Lisp_Object map,
   if (KEYMAPP (map) && INTERACTIVE
       && !NILP (prev_event) && ! EVENT_HAS_PARAMETERS (prev_event)
       /* Don't bring up a menu if we already have another event.  */
-      && NILP (Vunread_command_events)
+      && !CONSP (Vunread_command_events)
       && !detect_input_pending_run_timers (0))
     {
       c = read_char_minibuf_menu_prompt (commandflag, map);
@@ -2661,7 +2668,7 @@ read_char (int commandflag, Lisp_Object map,
       && !EQ (XCAR (prev_event), Qmenu_bar)
       && !EQ (XCAR (prev_event), Qtool_bar)
       /* Don't bring up a menu if we already have another event.  */
-      && NILP (Vunread_command_events))
+      && !CONSP (Vunread_command_events))
     {
       c = read_char_x_menu_prompt (map, prev_event, used_mouse_menu);
 
@@ -2835,10 +2842,19 @@ read_char (int commandflag, Lisp_Object map,
       last_input_event = c;
       call4 (Qcommand_execute, tem, Qnil, Fvector (1, &last_input_event), Qt);
 
-      if (CONSP (c) && EQ (XCAR (c), Qselect_window) && !end_time)
+      if (CONSP (c)
+          && (EQ (XCAR (c), Qselect_window)
+#ifdef HAVE_DBUS
+	      || EQ (XCAR (c), Qdbus_event)
+#endif
+#ifdef USE_FILE_NOTIFY
+	      || EQ (XCAR (c), Qfile_notify)
+#endif
+	      || EQ (XCAR (c), Qconfig_changed_event))
+          && !end_time)
 	/* We stopped being idle for this event; undo that.  This
 	   prevents automatic window selection (under
-	   mouse_autoselect_window from acting as a real input event, for
+	   mouse-autoselect-window) from acting as a real input event, for
 	   example banishing the mouse under mouse-avoidance-mode.  */
 	timer_resume_idle ();
 
@@ -3885,6 +3901,16 @@ kbd_buffer_get_event (KBOARD **kbp,
 	  kbd_fetch_ptr = event + 1;
 	}
 #endif
+
+#ifdef HAVE_NTGUI
+      else if (event->kind == END_SESSION_EVENT)
+	{
+	  /* Make an event (end-session).  */
+	  obj = list1 (Qend_session);
+	  kbd_fetch_ptr = event + 1;
+	}
+#endif
+
 #if defined (HAVE_X11) || defined (HAVE_NTGUI) \
     || defined (HAVE_NS)
       else if (event->kind == ICONIFY_EVENT)
@@ -6871,7 +6897,10 @@ tty_read_avail_input (struct terminal *terminal,
      the kbd_buffer can really hold.  That may prevent loss
      of characters on some systems when input is stuffed at us.  */
   unsigned char cbuf[KBD_BUFFER_SIZE - 1];
-  int n_to_read, i;
+#ifndef WINDOWSNT
+  int n_to_read;
+#endif
+  int i;
   struct tty_display_info *tty = terminal->display_info.tty;
   int nread = 0;
 #ifdef subprocesses
@@ -8820,7 +8849,7 @@ read_key_sequence (Lisp_Object *keybuf, int bufsize, Lisp_Object prompt,
 
   /* The length of the echo buffer when we started reading, and
      the length of this_command_keys when we started reading.  */
-  ptrdiff_t echo_start IF_LINT (= 0);
+  ptrdiff_t echo_start UNINIT;
   ptrdiff_t keys_start;
 
   Lisp_Object current_binding = Qnil;
@@ -8868,7 +8897,7 @@ read_key_sequence (Lisp_Object *keybuf, int bufsize, Lisp_Object prompt,
      While we're reading, we keep the event here.  */
   Lisp_Object delayed_switch_frame;
 
-  Lisp_Object original_uppercase IF_LINT (= Qnil);
+  Lisp_Object original_uppercase UNINIT;
   int original_uppercase_position = -1;
 
   /* Gets around Microsoft compiler limitations.  */
@@ -8901,7 +8930,9 @@ read_key_sequence (Lisp_Object *keybuf, int bufsize, Lisp_Object prompt,
           if (!echo_keystrokes_p ())
 	    current_kboard->immediate_echo = false;
 	}
-      else if (echo_keystrokes_p ())
+      else if (cursor_in_echo_area /* FIXME: Not sure why we test this here,
+                                      maybe we should just drop this test.  */
+	       && echo_keystrokes_p ())
 	/* This doesn't put in a dash if the echo buffer is empty, so
 	   you don't always see a dash hanging out in the minibuffer.  */
 	echo_dash ();
@@ -8976,7 +9007,7 @@ read_key_sequence (Lisp_Object *keybuf, int bufsize, Lisp_Object prompt,
 	 while those allow us to restart the entire key sequence,
 	 echo_local_start and keys_local_start allow us to throw away
 	 just one key.  */
-      ptrdiff_t echo_local_start IF_LINT (= 0);
+      ptrdiff_t echo_local_start UNINIT;
       int keys_local_start;
       Lisp_Object new_binding;
 
@@ -9876,7 +9907,7 @@ clear_input_pending (void)
 bool
 requeued_events_pending_p (void)
 {
-  return (!NILP (Vunread_command_events));
+  return (CONSP (Vunread_command_events));
 }
 
 DEFUN ("input-pending-p", Finput_pending_p, Sinput_pending_p, 0, 1, 0,
@@ -9887,7 +9918,7 @@ if there is a doubt, the value is t.
 If CHECK-TIMERS is non-nil, timers that are ready to run will do so.  */)
   (Lisp_Object check_timers)
 {
-  if (!NILP (Vunread_command_events)
+  if (CONSP (Vunread_command_events)
       || !NILP (Vunread_post_input_method_events)
       || !NILP (Vunread_input_method_events))
     return (Qt);
@@ -10957,6 +10988,8 @@ syms_of_keyboard (void)
   DEFSYM (Qpost_command_hook, "post-command-hook");
 
   DEFSYM (Qundo_auto__add_boundary, "undo-auto--add-boundary");
+  DEFSYM (Qundo_auto__undoably_changed_buffers,
+          "undo-auto--undoably-changed-buffers");
 
   DEFSYM (Qdeferred_action_function, "deferred-action-function");
   DEFSYM (Qdelayed_warnings_hook, "delayed-warnings-hook");
@@ -10974,6 +11007,7 @@ syms_of_keyboard (void)
 
 #ifdef HAVE_NTGUI
   DEFSYM (Qlanguage_change, "language-change");
+  DEFSYM (Qend_session, "end-session");
 #endif
 
 #ifdef HAVE_DBUS
@@ -11748,6 +11782,10 @@ keys_of_keyboard (void)
 
   initial_define_lispy_key (Vspecial_event_map, "delete-frame",
 			    "handle-delete-frame");
+#ifdef HAVE_NTGUI
+  initial_define_lispy_key (Vspecial_event_map, "end-session",
+			    "kill-emacs");
+#endif
   initial_define_lispy_key (Vspecial_event_map, "ns-put-working-text",
 			    "ns-put-working-text");
   initial_define_lispy_key (Vspecial_event_map, "ns-unput-working-text",

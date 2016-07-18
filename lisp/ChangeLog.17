@@ -1254,7 +1254,7 @@
 2015-03-01  Lars Magne Ingebrigtsen  <larsi@gnus.org>
 
 	* net/shr.el (shr-insert): Remove soft hyphens.
-	(shr-insert): Also remove soft hypens from non-folded text.
+	(shr-insert): Also remove soft hyphens from non-folded text.
 
 2015-02-28  Eli Zaretskii  <eliz@gnu.org>
 
@@ -3737,7 +3737,7 @@
 	* net/tramp.el (tramp-read-passwd): Ignore errors from `auth-source-*'.
 
 	* net/tramp-sh.el (tramp-do-copy-or-rename-file-out-of-band): Use "\n"
-	as end-of-line delimeter for passwords, when running on MS Windows.
+	as end-of-line delimiter for passwords, when running on MS Windows.
 
 2014-12-27  Stefan Monnier  <monnier@iro.umontreal.ca>
 
@@ -6835,7 +6835,7 @@
 	console as well (bug#18629).
 	* w32-common-fns.el: Remove.
 	* loadup.el: Don't load w32-common-fns.el.
-	* w32-fns.elc: Don't require w32-common-fns.
+	* w32-fns.el: Don't require w32-common-fns.
 
 	* icomplete.el: Move Iswitchb autoload here.  Much simpler.
 	* obsolete/iswitchb.el (iswitchb-mode): Use normal autoload cookie.

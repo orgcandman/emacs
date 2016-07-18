@@ -42,12 +42,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #endif /* HAVE_WINDOW_SYSTEM */
 
 #ifdef HAVE_NTGUI
-# ifdef NTGUI_UNICODE
-# define unicode_append_menu AppendMenuW
-# else /* !NTGUI_UNICODE */
 extern AppendMenuW_Proc unicode_append_menu;
-# endif /* NTGUI_UNICODE */
-extern HMENU current_popup_menu;
 #endif /* HAVE_NTGUI  */
 
 #include "menu.h"
@@ -408,7 +403,7 @@ single_menu_item (Lisp_Object key, Lisp_Object item, Lisp_Object dummy, void *sk
 
       if (prefix)
 	{
-	  AUTO_STRING (prefix_obj, prefix);
+	  AUTO_STRING_WITH_LEN (prefix_obj, prefix, 4);
 	  item_string = concat2 (prefix_obj, item_string);
 	}
   }

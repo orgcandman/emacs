@@ -20,6 +20,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 
+#include <errno.h>
 #include <stdio.h>
 #include <limits.h>		/* For CHAR_BIT.  */
 #include <signal.h>		/* For SIGABRT, SIGDANGER.  */
@@ -150,7 +151,8 @@ malloc_initialize_hook (void)
 		}
 	}
 
-      malloc_set_state (malloc_state_ptr);
+      if (malloc_set_state (malloc_state_ptr) != 0)
+	emacs_abort ();
 # ifndef XMALLOC_OVERRUN_CHECK
       alloc_unexec_post ();
 # endif
@@ -174,6 +176,8 @@ alloc_unexec_pre (void)
 {
 #ifdef DOUG_LEA_MALLOC
   malloc_state_ptr = malloc_get_state ();
+  if (!malloc_state_ptr)
+    fatal ("malloc_get_state: %s", strerror (errno));
 #endif
 #ifdef HYBRID_MALLOC
   bss_sbrk_did_unexec = true;
@@ -485,7 +489,7 @@ static void *pure_alloc (size_t, int);
 /* Return PTR rounded up to the next multiple of ALIGNMENT.  */
 
 static void *
-ALIGN (void *ptr, int alignment)
+pointer_align (void *ptr, int alignment)
 {
   return (void *) ROUNDUP ((uintptr_t) ptr, alignment);
 }
@@ -1174,16 +1178,18 @@ struct ablock
     char payload[BLOCK_BYTES];
     struct ablock *next_free;
   } x;
-  /* `abase' is the aligned base of the ablocks.  */
-  /* It is overloaded to hold the virtual `busy' field that counts
-     the number of used ablock in the parent ablocks.
-     The first ablock has the `busy' field, the others have the `abase'
-     field.  To tell the difference, we assume that pointers will have
-     integer values larger than 2 * ABLOCKS_SIZE.  The lowest bit of `busy'
-     is used to tell whether the real base of the parent ablocks is `abase'
-     (if not, the word before the first ablock holds a pointer to the
-     real base).  */
+
+  /* ABASE is the aligned base of the ablocks.  It is overloaded to
+     hold a virtual "busy" field that counts twice the number of used
+     ablock values in the parent ablocks, plus one if the real base of
+     the parent ablocks is ABASE (if the "busy" field is even, the
+     word before the first ablock holds a pointer to the real base).
+     The first ablock has a "busy" ABASE, and the others have an
+     ordinary pointer ABASE.  To tell the difference, the code assumes
+     that pointers, when cast to uintptr_t, are at least 2 *
+     ABLOCKS_SIZE + 1.  */
   struct ablocks *abase;
+
   /* The padding of all but the last ablock is unused.  The padding of
      the last ablock in an ablocks is not allocated.  */
 #if BLOCK_PADDING
@@ -1202,18 +1208,18 @@ struct ablocks
 
 #define ABLOCK_ABASE(block) \
   (((uintptr_t) (block)->abase) <= (1 + 2 * ABLOCKS_SIZE)	\
-   ? (struct ablocks *)(block)					\
+   ? (struct ablocks *) (block)					\
    : (block)->abase)
 
 /* Virtual `busy' field.  */
-#define ABLOCKS_BUSY(abase) ((abase)->blocks[0].abase)
+#define ABLOCKS_BUSY(a_base) ((a_base)->blocks[0].abase)
 
 /* Pointer to the (not necessarily aligned) malloc block.  */
 #ifdef USE_ALIGNED_ALLOC
 #define ABLOCKS_BASE(abase) (abase)
 #else
 #define ABLOCKS_BASE(abase) \
-  (1 & (intptr_t) ABLOCKS_BUSY (abase) ? abase : ((void **)abase)[-1])
+  (1 & (intptr_t) ABLOCKS_BUSY (abase) ? abase : ((void **) (abase))[-1])
 #endif
 
 /* The list of free ablock.   */
@@ -1239,7 +1245,7 @@ lisp_align_malloc (size_t nbytes, enum mem_type type)
   if (!free_ablock)
     {
       int i;
-      intptr_t aligned; /* int gets warning casting to 64-bit pointer.  */
+      bool aligned;
 
 #ifdef DOUG_LEA_MALLOC
       if (!mmap_lisp_allowed_p ())
@@ -1250,7 +1256,7 @@ lisp_align_malloc (size_t nbytes, enum mem_type type)
       abase = base = aligned_alloc (BLOCK_ALIGN, ABLOCKS_BYTES);
 #else
       base = malloc (ABLOCKS_BYTES);
-      abase = ALIGN (base, BLOCK_ALIGN);
+      abase = pointer_align (base, BLOCK_ALIGN);
 #endif
 
       if (base == 0)
@@ -1295,13 +1301,14 @@ lisp_align_malloc (size_t nbytes, enum mem_type type)
 	  abase->blocks[i].x.next_free = free_ablock;
 	  free_ablock = &abase->blocks[i];
 	}
-      ABLOCKS_BUSY (abase) = (struct ablocks *) aligned;
+      intptr_t ialigned = aligned;
+      ABLOCKS_BUSY (abase) = (struct ablocks *) ialigned;
 
-      eassert (0 == ((uintptr_t) abase) % BLOCK_ALIGN);
+      eassert ((uintptr_t) abase % BLOCK_ALIGN == 0);
       eassert (ABLOCK_ABASE (&abase->blocks[3]) == abase); /* 3 is arbitrary */
       eassert (ABLOCK_ABASE (&abase->blocks[0]) == abase);
       eassert (ABLOCKS_BASE (abase) == base);
-      eassert (aligned == (intptr_t) ABLOCKS_BUSY (abase));
+      eassert ((intptr_t) ABLOCKS_BUSY (abase) == aligned);
     }
 
   abase = ABLOCK_ABASE (free_ablock);
@@ -1337,12 +1344,14 @@ lisp_align_free (void *block)
   ablock->x.next_free = free_ablock;
   free_ablock = ablock;
   /* Update busy count.  */
-  ABLOCKS_BUSY (abase)
-    = (struct ablocks *) (-2 + (intptr_t) ABLOCKS_BUSY (abase));
+  intptr_t busy = (intptr_t) ABLOCKS_BUSY (abase) - 2;
+  eassume (0 <= busy && busy <= 2 * ABLOCKS_SIZE - 1);
+  ABLOCKS_BUSY (abase) = (struct ablocks *) busy;
 
-  if (2 > (intptr_t) ABLOCKS_BUSY (abase))
+  if (busy < 2)
     { /* All the blocks are free.  */
-      int i = 0, aligned = (intptr_t) ABLOCKS_BUSY (abase);
+      int i = 0;
+      bool aligned = busy;
       struct ablock **tem = &free_ablock;
       struct ablock *atop = &abase->blocks[aligned ? ABLOCKS_SIZE : ABLOCKS_SIZE - 1];
 
@@ -2174,89 +2183,96 @@ free_large_strings (void)
 static void
 compact_small_strings (void)
 {
-  struct sblock *b, *tb, *next;
-  sdata *from, *to, *end, *tb_end;
-  sdata *to_end, *from_end;
-
   /* TB is the sblock we copy to, TO is the sdata within TB we copy
      to, and TB_END is the end of TB.  */
-  tb = oldest_sblock;
-  tb_end = (sdata *) ((char *) tb + SBLOCK_SIZE);
-  to = tb->data;
-
-  /* Step through the blocks from the oldest to the youngest.  We
-     expect that old blocks will stabilize over time, so that less
-     copying will happen this way.  */
-  for (b = oldest_sblock; b; b = b->next)
+  struct sblock *tb = oldest_sblock;
+  if (tb)
     {
-      end = b->next_free;
-      eassert ((char *) end <= (char *) b + SBLOCK_SIZE);
+      sdata *tb_end = (sdata *) ((char *) tb + SBLOCK_SIZE);
+      sdata *to = tb->data;
 
-      for (from = b->data; from < end; from = from_end)
+      /* Step through the blocks from the oldest to the youngest.  We
+	 expect that old blocks will stabilize over time, so that less
+	 copying will happen this way.  */
+      struct sblock *b = tb;
+      do
 	{
-	  /* Compute the next FROM here because copying below may
-	     overwrite data we need to compute it.  */
-	  ptrdiff_t nbytes;
-	  struct Lisp_String *s = from->string;
+	  sdata *end = b->next_free;
+	  eassert ((char *) end <= (char *) b + SBLOCK_SIZE);
+
+	  for (sdata *from = b->data; from < end; )
+	    {
+	      /* Compute the next FROM here because copying below may
+		 overwrite data we need to compute it.  */
+	      ptrdiff_t nbytes;
+	      struct Lisp_String *s = from->string;
 
 #ifdef GC_CHECK_STRING_BYTES
-	  /* Check that the string size recorded in the string is the
-	     same as the one recorded in the sdata structure.  */
-	  if (s && string_bytes (s) != SDATA_NBYTES (from))
-	    emacs_abort ();
+	      /* Check that the string size recorded in the string is the
+		 same as the one recorded in the sdata structure.  */
+	      if (s && string_bytes (s) != SDATA_NBYTES (from))
+		emacs_abort ();
 #endif /* GC_CHECK_STRING_BYTES */
 
-	  nbytes = s ? STRING_BYTES (s) : SDATA_NBYTES (from);
-	  eassert (nbytes <= LARGE_STRING_BYTES);
+	      nbytes = s ? STRING_BYTES (s) : SDATA_NBYTES (from);
+	      eassert (nbytes <= LARGE_STRING_BYTES);
 
-	  nbytes = SDATA_SIZE (nbytes);
-	  from_end = (sdata *) ((char *) from + nbytes + GC_STRING_EXTRA);
+	      nbytes = SDATA_SIZE (nbytes);
+	      sdata *from_end = (sdata *) ((char *) from
+					   + nbytes + GC_STRING_EXTRA);
 
 #ifdef GC_CHECK_STRING_OVERRUN
-	  if (memcmp (string_overrun_cookie,
-		      (char *) from_end - GC_STRING_OVERRUN_COOKIE_SIZE,
-		      GC_STRING_OVERRUN_COOKIE_SIZE))
-	    emacs_abort ();
+	      if (memcmp (string_overrun_cookie,
+			  (char *) from_end - GC_STRING_OVERRUN_COOKIE_SIZE,
+			  GC_STRING_OVERRUN_COOKIE_SIZE))
+		emacs_abort ();
 #endif
 
-	  /* Non-NULL S means it's alive.  Copy its data.  */
-	  if (s)
-	    {
-	      /* If TB is full, proceed with the next sblock.  */
-	      to_end = (sdata *) ((char *) to + nbytes + GC_STRING_EXTRA);
-	      if (to_end > tb_end)
+	      /* Non-NULL S means it's alive.  Copy its data.  */
+	      if (s)
 		{
-		  tb->next_free = to;
-		  tb = tb->next;
-		  tb_end = (sdata *) ((char *) tb + SBLOCK_SIZE);
-		  to = tb->data;
-		  to_end = (sdata *) ((char *) to + nbytes + GC_STRING_EXTRA);
-		}
+		  /* If TB is full, proceed with the next sblock.  */
+		  sdata *to_end = (sdata *) ((char *) to
+					     + nbytes + GC_STRING_EXTRA);
+		  if (to_end > tb_end)
+		    {
+		      tb->next_free = to;
+		      tb = tb->next;
+		      tb_end = (sdata *) ((char *) tb + SBLOCK_SIZE);
+		      to = tb->data;
+		      to_end = (sdata *) ((char *) to + nbytes + GC_STRING_EXTRA);
+		    }
 
-	      /* Copy, and update the string's `data' pointer.  */
-	      if (from != to)
-		{
-		  eassert (tb != b || to < from);
-		  memmove (to, from, nbytes + GC_STRING_EXTRA);
-		  to->string->data = SDATA_DATA (to);
-		}
+		  /* Copy, and update the string's `data' pointer.  */
+		  if (from != to)
+		    {
+		      eassert (tb != b || to < from);
+		      memmove (to, from, nbytes + GC_STRING_EXTRA);
+		      to->string->data = SDATA_DATA (to);
+		    }
 
-	      /* Advance past the sdata we copied to.  */
-	      to = to_end;
+		  /* Advance past the sdata we copied to.  */
+		  to = to_end;
+		}
+	      from = from_end;
 	    }
+	  b = b->next;
 	}
+      while (b);
+
+      /* The rest of the sblocks following TB don't contain live data, so
+	 we can free them.  */
+      for (b = tb->next; b; )
+	{
+	  struct sblock *next = b->next;
+	  lisp_free (b);
+	  b = next;
+	}
+
+      tb->next_free = to;
+      tb->next = NULL;
     }
 
-  /* The rest of the sblocks following TB don't contain live data, so
-     we can free them.  */
-  for (b = tb->next; b; b = next)
-    {
-      next = b->next;
-      lisp_free (b);
-    }
-
-  tb->next_free = to;
-  tb->next = NULL;
   current_sblock = tb;
 }
 
@@ -3724,7 +3740,6 @@ make_save_ptr_int (void *a, ptrdiff_t b)
   return val;
 }
 
-#if ! (defined USE_X_TOOLKIT || defined USE_GTK)
 Lisp_Object
 make_save_ptr_ptr (void *a, void *b)
 {
@@ -3735,7 +3750,6 @@ make_save_ptr_ptr (void *a, void *b)
   p->data[1].pointer = b;
   return val;
 }
-#endif
 
 Lisp_Object
 make_save_funcptr_ptr_obj (void (*a) (void), void *b, Lisp_Object c)
@@ -5164,7 +5178,7 @@ pure_alloc (size_t size, int type)
     {
       /* Allocate space for a Lisp object from the beginning of the free
 	 space with taking account of alignment.  */
-      result = ALIGN (purebeg + pure_bytes_used_lisp, GCALIGNMENT);
+      result = pointer_align (purebeg + pure_bytes_used_lisp, GCALIGNMENT);
       pure_bytes_used_lisp = ((char *)result - (char *)purebeg) + size;
     }
   else
@@ -5658,7 +5672,7 @@ garbage_collect_1 (void *end)
     return Qnil;
 
   /* Record this function, so it appears on the profiler's backtraces.  */
-  record_in_backtrace (Qautomatic_gc, 0, 0);
+  record_in_backtrace (QAutomatic_GC, 0, 0);
 
   check_cons_list ();
 
@@ -6121,7 +6135,7 @@ mark_face_cache (struct face_cache *c)
       int i, j;
       for (i = 0; i < c->used; ++i)
 	{
-	  struct face *face = FACE_FROM_ID (c->f, i);
+	  struct face *face = FACE_FROM_ID_OR_NULL (c->f, i);
 
 	  if (face)
 	    {
@@ -7218,21 +7232,6 @@ die (const char *msg, const char *file, int line)
 
 #if defined (ENABLE_CHECKING) && USE_STACK_LISP_OBJECTS
 
-/* Debugging check whether STR is ASCII-only.  */
-
-const char *
-verify_ascii (const char *str)
-{
-  const unsigned char *ptr = (unsigned char *) str, *end = ptr + strlen (str);
-  while (ptr < end)
-    {
-      int c = STRING_CHAR_ADVANCE (ptr);
-      if (!ASCII_CHAR_P (c))
-	emacs_abort ();
-    }
-  return str;
-}
-
 /* Stress alloca with inconveniently sized requests and check
    whether all allocated areas may be used for Lisp_Object.  */
 
@@ -7388,7 +7387,7 @@ do hash-consing of the objects allocated to pure space.  */);
   DEFSYM (Qstring_bytes, "string-bytes");
   DEFSYM (Qvector_slots, "vector-slots");
   DEFSYM (Qheap, "heap");
-  DEFSYM (Qautomatic_gc, "Automatic GC");
+  DEFSYM (QAutomatic_GC, "Automatic GC");
 
   DEFSYM (Qgc_cons_threshold, "gc-cons-threshold");
   DEFSYM (Qchar_table_extra_slots, "char-table-extra-slots");

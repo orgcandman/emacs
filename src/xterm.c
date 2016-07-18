@@ -95,10 +95,6 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #endif
 
 #ifdef USE_X_TOOLKIT
-#if !defined (NO_EDITRES)
-#define HACK_EDITRES
-extern void _XEditResCheckMessages (Widget, XtPointer, XEvent *, Boolean *);
-#endif /* not NO_EDITRES */
 
 /* Include toolkit specific headers for the scroll bar widget.  */
 
@@ -1062,7 +1058,7 @@ x_draw_vertical_window_border (struct window *w, int x, int y0, int y1)
   struct frame *f = XFRAME (WINDOW_FRAME (w));
   struct face *face;
 
-  face = FACE_FROM_ID (f, VERTICAL_BORDER_FACE_ID);
+  face = FACE_FROM_ID_OR_NULL (f, VERTICAL_BORDER_FACE_ID);
   if (face)
     XSetForeground (FRAME_X_DISPLAY (f), f->output_data.x->normal_gc,
 		    face->foreground);
@@ -1081,9 +1077,11 @@ static void
 x_draw_window_divider (struct window *w, int x0, int x1, int y0, int y1)
 {
   struct frame *f = XFRAME (WINDOW_FRAME (w));
-  struct face *face = FACE_FROM_ID (f, WINDOW_DIVIDER_FACE_ID);
-  struct face *face_first = FACE_FROM_ID (f, WINDOW_DIVIDER_FIRST_PIXEL_FACE_ID);
-  struct face *face_last = FACE_FROM_ID (f, WINDOW_DIVIDER_LAST_PIXEL_FACE_ID);
+  struct face *face = FACE_FROM_ID_OR_NULL (f, WINDOW_DIVIDER_FACE_ID);
+  struct face *face_first
+    = FACE_FROM_ID_OR_NULL (f, WINDOW_DIVIDER_FIRST_PIXEL_FACE_ID);
+  struct face *face_last
+    = FACE_FROM_ID_OR_NULL (f, WINDOW_DIVIDER_LAST_PIXEL_FACE_ID);
   unsigned long color = face ? face->foreground : FRAME_FOREGROUND_PIXEL (f);
   unsigned long color_first = (face_first
 			       ? face_first->foreground
@@ -1505,7 +1503,7 @@ x_set_mouse_face_gc (struct glyph_string *s)
 
   /* What face has to be used last for the mouse face?  */
   face_id = MOUSE_HL_INFO (s->f)->mouse_face_face_id;
-  face = FACE_FROM_ID (s->f, face_id);
+  face = FACE_FROM_ID_OR_NULL (s->f, face_id);
   if (face == NULL)
     face = FACE_FROM_ID (s->f, MOUSE_FACE_ID);
 
@@ -2156,6 +2154,7 @@ static const XColor *
 x_color_cells (Display *dpy, int *ncells)
 {
   struct x_display_info *dpyinfo = x_display_info_for_display (dpy);
+  eassume (dpyinfo);
 
   if (dpyinfo->color_cells == NULL)
     {
@@ -2352,17 +2351,19 @@ x_alloc_nearest_color_1 (Display *dpy, Colormap cmap, XColor *color)
          equal to a cached pixel color recorded earlier, there was a
          change in the colormap, so clear the color cache.  */
       struct x_display_info *dpyinfo = x_display_info_for_display (dpy);
-      XColor *cached_color;
+      eassume (dpyinfo);
 
-      if (dpyinfo->color_cells
-	  && (cached_color = &dpyinfo->color_cells[color->pixel],
-	      (cached_color->red != color->red
-	       || cached_color->blue != color->blue
-	       || cached_color->green != color->green)))
+      if (dpyinfo->color_cells)
 	{
-	  xfree (dpyinfo->color_cells);
-	  dpyinfo->color_cells = NULL;
-	  dpyinfo->ncolor_cells = 0;
+	  XColor *cached_color = &dpyinfo->color_cells[color->pixel];
+	  if (cached_color->red != color->red
+	      || cached_color->blue != color->blue
+	      || cached_color->green != color->green)
+	    {
+	      xfree (dpyinfo->color_cells);
+	      dpyinfo->color_cells = NULL;
+	      dpyinfo->ncolor_cells = 0;
+	    }
 	}
     }
 
@@ -7605,7 +7606,7 @@ handle_one_xevent (struct x_display_info *dpyinfo,
 	    goto done;
           }
 
-#ifdef HACK_EDITRES
+#ifdef X_TOOLKIT_EDITRES
         if (event->xclient.message_type == dpyinfo->Xatom_editres)
           {
 	    f = any;
@@ -7614,7 +7615,7 @@ handle_one_xevent (struct x_display_info *dpyinfo,
 				      NULL, (XEvent *) event, NULL);
 	    goto done;
           }
-#endif /* HACK_EDITRES */
+#endif /* X_TOOLKIT_EDITRES */
 
         if (event->xclient.message_type == dpyinfo->Xatom_DONE
 	    || event->xclient.message_type == dpyinfo->Xatom_PAGE)
@@ -7895,10 +7896,6 @@ handle_one_xevent (struct x_display_info *dpyinfo,
             /* Force a redisplay sooner or later to update the
 	       frame titles in case this is the second frame.  */
             record_asynch_buffer_change ();
-
-#ifdef USE_GTK
-          xg_frame_resized (f, -1, -1);
-#endif
         }
       goto OTHER;
 
@@ -9392,7 +9389,7 @@ static char *error_msg;
 /* Handle the loss of connection to display DPY.  ERROR_MESSAGE is
    the text of an error message that lead to the connection loss.  */
 
-static void
+static _Noreturn void
 x_connection_closed (Display *dpy, const char *error_message, bool ioerror)
 {
   struct x_display_info *dpyinfo = x_display_info_for_display (dpy);
@@ -9490,9 +9487,6 @@ For details, see etc/PROBLEMS.\n",
   unbind_to (idx, Qnil);
   clear_waiting_for_input ();
 
-  /* Tell GCC not to suggest attribute 'noreturn' for this function.  */
-  IF_LINT (if (! terminal_list) return; )
-
   /* Here, we absolutely have to use a non-local exit (e.g. signal, throw,
      longjmp), because returning from this function would get us back into
      Xlib's code which will directly call `exit'.  */
@@ -9558,7 +9552,7 @@ x_error_quitter (Display *display, XErrorEvent *event)
    It kills all frames on the display that we lost touch with.
    If that was the only one, it prints an error message and kills Emacs.  */
 
-static int
+static _Noreturn int
 x_io_error_quitter (Display *display)
 {
   char buf[256];
@@ -9566,7 +9560,7 @@ x_io_error_quitter (Display *display)
   snprintf (buf, sizeof buf, "Connection lost to X server '%s'",
 	    DisplayString (display));
   x_connection_closed (display, buf, true);
-  return 0;
+  assume (false);
 }
 
 /* Changing the font of the frame.  */
@@ -10746,6 +10740,8 @@ x_set_window_size (struct frame *f, bool change_gravity,
   cancel_mouse_face (f);
 
   unblock_input ();
+
+  do_pending_window_change (false);
 }
 
 /* Move the mouse to position pixel PIX_X, PIX_Y relative to frame F.  */

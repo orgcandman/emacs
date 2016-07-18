@@ -925,8 +925,6 @@ See `sh-feature'.")
      (:weight bold)))
   "Face to show quoted execs like \\=`blabla\\=`."
   :group 'sh-indentation)
-(define-obsolete-face-alias 'sh-heredoc-face 'sh-heredoc "22.1")
-(defvar sh-heredoc-face 'sh-heredoc)
 
 (defface sh-escaped-newline '((t :inherit font-lock-string-face))
   "Face used for (non-escaped) backslash at end of a line in Shell-script mode."
@@ -1207,7 +1205,7 @@ subshells can nest."
     (if q
         (if (characterp q)
             (if (eq q ?\`) 'sh-quoted-exec font-lock-string-face)
-          sh-heredoc-face)
+          'sh-heredoc)
       font-lock-comment-face)))
 
 (defgroup sh-indentation nil
@@ -1225,9 +1223,10 @@ and command `sh-reset-indent-vars-to-global-values'."
   :type 'hook
   :group 'sh-script)
 
-(defcustom sh-mode-hook nil
+(defcustom sh-mode-hook '(sh-electric-here-document-mode)
   "Hook run by `sh-mode'."
   :type 'hook
+  :options '(sh-electric-here-document-mode)
   :group 'sh-script)
 
 (defcustom sh-learn-basic-offset nil
@@ -1616,7 +1615,8 @@ buffer indents as it currently is indented.
 \\[sh-execute-region]	 Have optional header and region be executed in a subshell.
 
 `sh-electric-here-document-mode' controls whether insertion of two
-unquoted < insert a here document.
+unquoted < insert a here document.  You can control this behavior by
+modifying `sh-mode-hook'.
 
 If you generally program a shell different from your login shell you can
 set `sh-shell-file' accordingly.  If your shell's file name doesn't correctly
@@ -1653,7 +1653,6 @@ with your script for an edit-interpret-debug cycle."
   (setq-local syntax-propertize-function #'sh-syntax-propertize-function)
   (add-hook 'syntax-propertize-extend-region-functions
             #'syntax-propertize-multiline 'append 'local)
-  (sh-electric-here-document-mode 1)
   (setq-local skeleton-pair-alist '((?` _ ?`)))
   (setq-local skeleton-pair-filter-function 'sh-quoted-p)
   (setq-local skeleton-further-elements
@@ -2197,7 +2196,7 @@ Returns the construct's token and moves point before it, if so."
 Point should be before the newline."
   (save-excursion
     (let ((tok (funcall smie-backward-token-function)))
-      (if (or (when (equal tok "not") (forward-word 1) t)
+      (if (or (when (equal tok "not") (forward-word-strictly 1) t)
               (and (zerop (length tok)) (eq (char-before) ?\))))
           (not (sh-smie--rc-after-special-arg-p))
         (sh-smie--newline-semi-p tok)))))
@@ -2901,7 +2900,7 @@ STRING	     This is ignored for the purposes of calculating
       ;;(This function never returns just t.)
       (cond
        ((or (nth 3 (syntax-ppss (point)))
-	    (eq (get-text-property (point) 'face) sh-heredoc-face))
+	    (eq (get-text-property (point) 'face) 'sh-heredoc))
 	;; String continuation -- don't indent
 	(setq result t)
 	(setq have-result t))
@@ -3107,8 +3106,7 @@ we go to the end of the previous line and do not check for continuations."
     (forward-comment (- (point-max)))
     (unless end (beginning-of-line))
     (when (and (not (bobp))
-	       (equal (get-text-property (1- (point)) 'face)
-		      sh-heredoc-face))
+	       (eq (get-text-property (1- (point)) 'face) 'sh-heredoc))
       (let ((p1 (previous-single-property-change (1- (point)) 'face)))
 	(when p1
 	  (goto-char p1)

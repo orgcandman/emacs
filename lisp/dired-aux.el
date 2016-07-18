@@ -39,7 +39,6 @@
 ;; We need macros in dired.el to compile properly,
 ;; and we call subroutines in it too.
 (require 'dired)
-(require 'cl-lib)  ; for cl-mapcan
 
 (defvar dired-create-files-failures nil
   "Variable where `dired-create-files' records failing file names.
@@ -730,26 +729,52 @@ can be produced by `dired-get-marked-files', for example."
 	 (command (if sequentially
 		      (substring command 0 (match-beginning 0))
 		    command))
+         (parallel-in-background
+          (and in-background (not sequentially) (not (eq system-type 'ms-dos))))
+         (w32-shell (and (fboundp 'w32-shell-dos-semantics)
+                         (w32-shell-dos-semantics)))
+         ;; The way to run a command in background in Windows shells
+         ;; is to use the START command.  The /B switch means not to
+         ;; create a new window for the command.
+         (cmd-prefix (if w32-shell "start /b " ""))
+         ;; Windows shells don't support chaining with ";", they use
+         ;; "&" instead.
+         (cmd-sep (if (and (not w32-shell) (not parallel-in-background))
+                      ";"
+                    "&"))
 	 (stuff-it
 	  (if (or (string-match-p dired-star-subst-regexp command)
 		  (string-match-p dired-quark-subst-regexp command))
 	      (lambda (x)
-		(let ((retval command))
+		(let ((retval (concat cmd-prefix command)))
 		  (while (string-match
 			  "\\(^\\|[ \t]\\)\\([*?]\\)\\([ \t]\\|$\\)" retval)
 		    (setq retval (replace-match x t t retval 2)))
 		  retval))
-	    (lambda (x) (concat command dired-mark-separator x)))))
+	    (lambda (x) (concat cmd-prefix command dired-mark-separator x)))))
     (concat
-     (if on-each
-	 (mapconcat stuff-it (mapcar 'shell-quote-argument file-list)
-		    (if (and in-background (not sequentially)) "&" ";"))
-       (let ((files (mapconcat 'shell-quote-argument
-			       file-list dired-mark-separator)))
-	 (if (> (length file-list) 1)
-	     (setq files (concat dired-mark-prefix files dired-mark-postfix)))
-	 (funcall stuff-it files)))
-     (if in-background "&" ""))))
+     (cond (on-each
+            (format "%s%s"
+                    (mapconcat stuff-it (mapcar 'shell-quote-argument file-list)
+                               cmd-sep)
+                    ;; POSIX shells running a list of commands in the background
+                    ;; (LIST = cmd_1 & [cmd_2 & ... cmd_i & ... cmd_N &])
+                    ;; return once cmd_N ends, i.e., the shell does not
+                    ;; wait for cmd_i to finish before executing cmd_i+1.
+                    ;; That means, running (shell-command LIST) may not show
+                    ;; the output of all the commands (Bug#23206).
+                    ;; Add 'wait' to force those POSIX shells to wait until
+                    ;; all commands finish.
+                    (or (and parallel-in-background (not w32-shell)
+                             "&wait")
+                        "")))
+           (t
+            (let ((files (mapconcat 'shell-quote-argument
+                                    file-list dired-mark-separator)))
+              (when (cdr file-list)
+                (setq files (concat dired-mark-prefix files dired-mark-postfix)))
+              (funcall stuff-it files))))
+     (or (and in-background "&") ""))))
 
 ;; This is an extra function so that it can be redefined by ange-ftp.
 ;;;###autoload
@@ -902,6 +927,7 @@ command with a prefix argument (the value does not matter)."
     ("\\.bz2\\'" "" "bunzip2")
     ("\\.xz\\'" "" "unxz")
     ("\\.zip\\'" "" "unzip -o -d %o %i")
+    ("\\.7z\\'" "" "7z x -aoa -o%o %i")
     ;; This item controls naming for compression.
     ("\\.tar\\'" ".tgz" nil)
     ;; This item controls the compression of directories
@@ -2487,8 +2513,8 @@ Lower levels are unaffected."
 	 (cur-dir (dired-current-directory))
 	 (cons (assoc-string cur-dir dired-switches-alist))
 	 buffer-read-only)
-    (if (equal cur-dir default-directory)
-	(error "Attempt to kill top level directory"))
+    (when (equal cur-dir (expand-file-name default-directory))
+      (error "Attempt to kill top level directory"))
     (prog1
 	(if remember-marks (dired-remember-marks beg end))
       (delete-region beg end)
@@ -2720,16 +2746,23 @@ with the command \\[tags-loop-continue]."
 
 ;;;###autoload
 (defun dired-do-find-regexp (regexp)
-  "Find all matches for REGEXP in all marked files, recursively."
+  "Find all matches for REGEXP in all marked files.
+For any marked directory, all of its files are searched recursively.
+However, files matching `grep-find-ignored-files' and subdirectories
+matching `grep-find-ignored-directories' are skipped in the marked
+directories.
+
+REGEXP should use constructs supported by your local `grep' command."
   (interactive "sSearch marked files (regexp): ")
   (require 'grep)
   (defvar grep-find-ignored-files)
+  (defvar grep-find-ignored-directories)
   (let* ((files (dired-get-marked-files))
          (ignores (nconc (mapcar
                           (lambda (s) (concat s "/"))
-                          vc-directory-exclusion-list)
+                          grep-find-ignored-directories)
                          grep-find-ignored-files))
-         (xrefs (cl-mapcan
+         (xrefs (mapcan
                  (lambda (file)
                    (xref-collect-matches regexp "*" file
                                          (and (file-directory-p file)
@@ -2741,7 +2774,13 @@ with the command \\[tags-loop-continue]."
 
 ;;;###autoload
 (defun dired-do-find-regexp-and-replace (from to)
-  "Replace matches of FROM with TO, in all marked files, recursively."
+  "Replace matches of FROM with TO, in all marked files.
+For any marked directory, matches in all of its files are replaced,
+recursively.  However, files matching `grep-find-ignored-files'
+and subdirectories matching `grep-find-ignored-directories' are skipped
+in the marked directories.
+
+REGEXP should use constructs supported by your local `grep' command."
   (interactive
    (let ((common
           (query-replace-read-args

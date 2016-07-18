@@ -146,8 +146,6 @@ xtzfree (timezone_t tz)
 static timezone_t
 tzlookup (Lisp_Object zone, bool settz)
 {
-  static char const tzbuf_format[] = "XXX%s%"pI"d:%02d:%02d";
-  char tzbuf[sizeof tzbuf_format + INT_STRLEN_BOUND (EMACS_INT)];
   char const *zone_string;
   timezone_t new_tz;
 
@@ -160,16 +158,53 @@ tzlookup (Lisp_Object zone, bool settz)
     }
   else
     {
+      static char const tzbuf_format[] = "<%+.*"pI"d>%s%"pI"d:%02d:%02d";
+      char const *trailing_tzbuf_format = tzbuf_format + sizeof "<%+.*"pI"d" - 1;
+      char tzbuf[sizeof tzbuf_format + 2 * INT_STRLEN_BOUND (EMACS_INT)];
+      bool plain_integer = INTEGERP (zone);
+
       if (EQ (zone, Qwall))
 	zone_string = 0;
       else if (STRINGP (zone))
-	zone_string = SSDATA (zone);
-      else if (INTEGERP (zone))
+	zone_string = SSDATA (ENCODE_SYSTEM (zone));
+      else if (plain_integer || (CONSP (zone) && INTEGERP (XCAR (zone))
+				 && CONSP (XCDR (zone))))
 	{
+	  Lisp_Object abbr;
+	  if (!plain_integer)
+	    {
+	      abbr = XCAR (XCDR (zone));
+	      zone = XCAR (zone);
+	    }
+
 	  EMACS_INT abszone = eabs (XINT (zone)), hour = abszone / (60 * 60);
-	  int min = (abszone / 60) % 60, sec = abszone % 60;
-	  sprintf (tzbuf, tzbuf_format, &"-"[XINT (zone) < 0], hour, min, sec);
-	  zone_string = tzbuf;
+	  int hour_remainder = abszone % (60 * 60);
+	  int min = hour_remainder / 60, sec = hour_remainder % 60;
+
+	  if (plain_integer)
+	    {
+	      int prec = 2;
+	      EMACS_INT numzone = hour;
+	      if (hour_remainder != 0)
+		{
+		  prec += 2, numzone = 100 * numzone + min;
+		  if (sec != 0)
+		    prec += 2, numzone = 100 * numzone + sec;
+		}
+	      sprintf (tzbuf, tzbuf_format, prec, numzone,
+		       &"-"[XINT (zone) < 0], hour, min, sec);
+	      zone_string = tzbuf;
+	    }
+	  else
+	    {
+	      AUTO_STRING (leading, "<");
+	      AUTO_STRING_WITH_LEN (trailing, tzbuf,
+				    sprintf (tzbuf, trailing_tzbuf_format,
+					     &"-"[XINT (zone) < 0],
+					     hour, min, sec));
+	      zone_string = SSDATA (concat3 (leading, ENCODE_SYSTEM (abbr),
+					     trailing));
+	    }
 	}
       else
 	xsignal2 (Qerror, build_string ("Invalid time zone specification"),
@@ -181,6 +216,7 @@ tzlookup (Lisp_Object zone, bool settz)
     {
       block_input ();
       emacs_setenv_TZ (zone_string);
+      tzset ();
       timezone_t old_tz = local_tz;
       local_tz = new_tz;
       tzfree (old_tz);
@@ -1456,7 +1492,7 @@ time_overflow (void)
   error ("Specified time is not representable");
 }
 
-static void
+static _Noreturn void
 invalid_time (void)
 {
   error ("Invalid time specification");
@@ -1848,7 +1884,9 @@ lisp_time_struct (Lisp_Object specified_time, int *plen)
   Lisp_Object high, low, usec, psec;
   struct lisp_time t;
   int len = disassemble_lisp_time (specified_time, &high, &low, &usec, &psec);
-  int val = len ? decode_time_components (high, low, usec, psec, &t, 0) : 0;
+  if (!len)
+    invalid_time ();
+  int val = decode_time_components (high, low, usec, psec, &t, 0);
   check_time_validity (val);
   *plen = len;
   return t;
@@ -1968,9 +2006,13 @@ DEFUN ("format-time-string", Fformat_time_string, Sformat_time_string, 1, 3, 0,
 TIME is specified as (HIGH LOW USEC PSEC), as returned by
 `current-time' or `file-attributes'.  The obsolete form (HIGH . LOW)
 is also still accepted.
+
 The optional ZONE is omitted or nil for Emacs local time, t for
 Universal Time, `wall' for system wall clock time, or a string as in
-`set-time-zone-rule' for a time zone rule.
+the TZ environment variable.  It can also be a list (as from
+`current-time-zone') or an integer (as from `decode-time') applied
+without consideration for daylight saving time.
+
 The value is a copy of FORMAT-STRING, but with certain constructs replaced
 by text that describes the specified date and time in TIME:
 
@@ -2040,7 +2082,6 @@ format_time_string (char const *format, ptrdiff_t formatlen,
   char *buf = buffer;
   ptrdiff_t size = sizeof buffer;
   size_t len;
-  Lisp_Object bufstring;
   int ns = t.tv_nsec;
   USE_SAFE_ALLOCA;
 
@@ -2072,9 +2113,11 @@ format_time_string (char const *format, ptrdiff_t formatlen,
     }
 
   xtzfree (tz);
-  bufstring = make_unibyte_string (buf, len);
+  AUTO_STRING_WITH_LEN (bufstring, buf, len);
+  Lisp_Object result = code_convert_string_norecord (bufstring,
+						     Vlocale_coding_system, 0);
   SAFE_FREE ();
-  return code_convert_string_norecord (bufstring, Vlocale_coding_system, 0);
+  return result;
 }
 
 DEFUN ("decode-time", Fdecode_time, Sdecode_time, 0, 2, 0,
@@ -2082,9 +2125,12 @@ DEFUN ("decode-time", Fdecode_time, Sdecode_time, 0, 2, 0,
 The optional SPECIFIED-TIME should be a list of (HIGH LOW . IGNORED),
 as from `current-time' and `file-attributes', or nil to use the
 current time.  The obsolete form (HIGH . LOW) is also still accepted.
+
 The optional ZONE is omitted or nil for Emacs local time, t for
 Universal Time, `wall' for system wall clock time, or a string as in
-`set-time-zone-rule' for a time zone rule.
+the TZ environment variable.  It can also be a list (as from
+`current-time-zone') or an integer (as from `decode-time') applied
+without consideration for daylight saving time.
 
 The list has the following nine members: SEC is an integer between 0
 and 60; SEC is 60 for a leap second, which only some operating systems
@@ -2131,27 +2177,27 @@ usage: (decode-time &optional TIME ZONE)  */)
 }
 
 /* Return OBJ - OFFSET, checking that OBJ is a valid fixnum and that
-   the result is representable as an int.  Assume OFFSET is small and
-   nonnegative.  */
+   the result is representable as an int.  */
 static int
 check_tm_member (Lisp_Object obj, int offset)
 {
-  EMACS_INT n;
   CHECK_NUMBER (obj);
-  n = XINT (obj);
-  if (! (INT_MIN + offset <= n && n - offset <= INT_MAX))
+  EMACS_INT n = XINT (obj);
+  int result;
+  if (INT_SUBTRACT_WRAPV (n, offset, &result))
     time_overflow ();
-  return n - offset;
+  return result;
 }
 
 DEFUN ("encode-time", Fencode_time, Sencode_time, 6, MANY, 0,
        doc: /* Convert SECOND, MINUTE, HOUR, DAY, MONTH, YEAR and ZONE to internal time.
 This is the reverse operation of `decode-time', which see.
+
 The optional ZONE is omitted or nil for Emacs local time, t for
 Universal Time, `wall' for system wall clock time, or a string as in
-`set-time-zone-rule' for a time zone rule.  It can also be a list (as
-from `current-time-zone') or an integer (as from `decode-time')
-applied without consideration for daylight saving time.
+the TZ environment variable.  It can also be a list (as from
+`current-time-zone') or an integer (as from `decode-time') applied
+without consideration for daylight saving time.
 
 You can pass more than 7 arguments; then the first six arguments
 are used as SECOND through YEAR, and the *last* argument is used as ZONE.
@@ -2181,8 +2227,6 @@ usage: (encode-time SECOND MINUTE HOUR DAY MONTH YEAR &optional ZONE)  */)
   tm.tm_year = check_tm_member (args[5], TM_YEAR_BASE);
   tm.tm_isdst = -1;
 
-  if (CONSP (zone))
-    zone = XCAR (zone);
   timezone_t tz = tzlookup (zone, false);
   value = emacs_mktime_z (tz, &tm);
   xtzfree (tz);
@@ -2211,7 +2255,9 @@ but this is considered obsolete.
 
 The optional ZONE is omitted or nil for Emacs local time, t for
 Universal Time, `wall' for system wall clock time, or a string as in
-`set-time-zone-rule' for a time zone rule.  */)
+the TZ environment variable.  It can also be a list (as from
+`current-time-zone') or an integer (as from `decode-time') applied
+without consideration for daylight saving time.  */)
   (Lisp_Object specified_time, Lisp_Object zone)
 {
   time_t value = lisp_seconds_argument (specified_time);
@@ -2287,8 +2333,12 @@ instead of using the current time.  The argument should have the form
 \(HIGH LOW . IGNORED).  Thus, you can use times obtained from
 `current-time' and from `file-attributes'.  SPECIFIED-TIME can also
 have the form (HIGH . LOW), but this is considered obsolete.
-Optional second arg ZONE is omitted or nil for the local time zone, or
-a string as in `set-time-zone-rule'.
+
+The optional ZONE is omitted or nil for Emacs local time, t for
+Universal Time, `wall' for system wall clock time, or a string as in
+the TZ environment variable.  It can also be a list (as from
+`current-time-zone') or an integer (as from `decode-time') applied
+without consideration for daylight saving time.
 
 Some operating systems cannot provide all this information to Emacs;
 in this case, `current-time-zone' returns a list containing nil for
@@ -2312,15 +2362,18 @@ the data it can't find.  */)
       zone_offset = make_number (offset);
       if (SCHARS (zone_name) == 0)
 	{
-	  /* No local time zone name is available; use "+-NNNN" instead.  */
-	  long int m = offset / 60;
-	  long int am = offset < 0 ? - m : m;
-	  long int hour = am / 60;
-	  int min = am % 60;
-	  char buf[sizeof "+00" + INT_STRLEN_BOUND (long int)];
-	  zone_name = make_formatted_string (buf, "%c%02ld%02d",
+	  /* No local time zone name is available; use numeric zone instead.  */
+	  long int hour = offset / 3600;
+	  int min_sec = offset % 3600;
+	  int amin_sec = min_sec < 0 ? - min_sec : min_sec;
+	  int min = amin_sec / 60;
+	  int sec = amin_sec % 60;
+	  int min_prec = min_sec ? 2 : 0;
+	  int sec_prec = sec ? 2 : 0;
+	  char buf[sizeof "+0000" + INT_STRLEN_BOUND (long int)];
+	  zone_name = make_formatted_string (buf, "%c%.2ld%.*d%.*d",
 					     (offset < 0 ? '-' : '+'),
-					     hour, min);
+					     hour, min_prec, min, sec_prec, sec);
 	}
     }
 
@@ -2329,8 +2382,11 @@ the data it can't find.  */)
 
 DEFUN ("set-time-zone-rule", Fset_time_zone_rule, Sset_time_zone_rule, 1, 1, 0,
        doc: /* Set the Emacs local time zone using TZ, a string specifying a time zone rule.
-If TZ is nil or `wall', use system wall clock time.  If TZ is t, use
-Universal Time.  If TZ is an integer, treat it as in `encode-time'.
+If TZ is nil or `wall', use system wall clock time; this differs from
+the usual Emacs convention where nil means current local time.  If TZ
+is t, use Universal Time.  If TZ is a list (as from
+`current-time-zone') or an integer (as from `decode-time'), use the
+specified time zone without consideration for daylight saving time.
 
 Instead of calling this function, you typically want something else.
 To temporarily use a different time zone rule for just one invocation
@@ -2403,23 +2459,24 @@ emacs_setenv_TZ (const char *tzstring)
       tzval[tzeqlen] = 0;
     }
 
-  if (new_tzvalbuf
-#ifdef WINDOWSNT
-      /* MS-Windows implementation of 'putenv' copies the argument
-	 string into a block it allocates, so modifying tzval string
-	 does not change the environment.  OTOH, the other threads run
-	 by Emacs on MS-Windows never call 'xputenv' or 'putenv' or
-	 'unsetenv', so the original cause for the dicey in-place
-	 modification technique doesn't exist there in the first
-	 place.  */
-      || 1
+
+#ifndef WINDOWSNT
+  /* Modifying *TZVAL merely requires calling tzset (which is the
+     caller's responsibility).  However, modifying TZVAL requires
+     calling putenv; although this is not thread-safe, in practice this
+     runs only on startup when there is only one thread.  */
+  bool need_putenv = new_tzvalbuf;
+#else
+  /* MS-Windows 'putenv' copies the argument string into a block it
+     allocates, so modifying *TZVAL will not change the environment.
+     However, the other threads run by Emacs on MS-Windows never call
+     'xputenv' or 'putenv' or 'unsetenv', so the original cause for the
+     dicey in-place modification technique doesn't exist there in the
+     first place.  */
+  bool need_putenv = true;
 #endif
-      )
-    {
-      /* Although this is not thread-safe, in practice this runs only
-	 on startup when there is only one thread.  */
-      xputenv (tzval);
-    }
+  if (need_putenv)
+    xputenv (tzval);
 
   return 0;
 }
@@ -2479,7 +2536,7 @@ insert1 (Lisp_Object arg)
 
 DEFUN ("insert", Finsert, Sinsert, 0, MANY, 0,
        doc: /* Insert the arguments, either strings or characters, at point.
-Point and before-insertion markers move forward to end up
+Point and after-insertion markers move forward to end up
  after the inserted text.
 Any other markers at the point of insertion remain before the text.
 
@@ -2503,7 +2560,7 @@ usage: (insert &rest ARGS)  */)
 DEFUN ("insert-and-inherit", Finsert_and_inherit, Sinsert_and_inherit,
    0, MANY, 0,
        doc: /* Insert the arguments at point, inheriting properties from adjoining text.
-Point and before-insertion markers move forward to end up
+Point and after-insertion markers move forward to end up
  after the inserted text.
 Any other markers at the point of insertion remain before the text.
 
@@ -2877,10 +2934,9 @@ DEFUN ("compare-buffer-substrings", Fcompare_buffer_substrings, Scompare_buffer_
        6, 6, 0,
        doc: /* Compare two substrings of two buffers; return result as number.
 Return -N if first string is less after N-1 chars, +N if first string is
-greater after N-1 chars, or 0 if strings match.  Each substring is
-represented as three arguments: BUFFER, START and END.  That makes six
-args in all, three for each substring.
-
+greater after N-1 chars, or 0 if strings match.
+The first substring is in BUFFER1 from START1 to END1 and the second
+is in BUFFER2 from START2 to END2.
 The value of `case-fold-search' in the current buffer
 determines whether case is significant or ignored.  */)
   (Lisp_Object buffer1, Lisp_Object start1, Lisp_Object end1, Lisp_Object buffer2, Lisp_Object start2, Lisp_Object end2)
@@ -3308,7 +3364,7 @@ It returns the number of characters changed.  */)
   ptrdiff_t size;		/* Size of translate table. */
   ptrdiff_t pos, pos_byte, end_pos;
   bool multibyte = !NILP (BVAR (current_buffer, enable_multibyte_characters));
-  bool string_multibyte IF_LINT (= 0);
+  bool string_multibyte UNINIT;
 
   validate_region (&start, &end);
   if (CHAR_TABLE_P (table))
@@ -3661,10 +3717,11 @@ In batch mode, the message is printed to the standard error stream,
 followed by a newline.
 
 The first argument is a format control string, and the rest are data
-to be formatted under control of the string.  See `format' for details.
+to be formatted under control of the string.  See `format-message' for
+details.
 
-Note: Use (message "%s" VALUE) to print the value of expressions and
-variables to avoid accidentally interpreting `%' as format specifiers.
+Note: (message "%s" VALUE) displays the string VALUE without
+interpreting format characters like `%', `\\=`', and `\\=''.
 
 If the first argument is nil or the empty string, the function clears
 any existing message; this lets the minibuffer contents show.  See
@@ -3692,7 +3749,8 @@ DEFUN ("message-box", Fmessage_box, Smessage_box, 1, MANY, 0,
        doc: /* Display a message, in a dialog box if possible.
 If a dialog box is not available, use the echo area.
 The first argument is a format control string, and the rest are data
-to be formatted under control of the string.  See `format' for details.
+to be formatted under control of the string.  See `format-message' for
+details.
 
 If the first argument is nil or the empty string, clear any existing
 message; let the minibuffer contents show.
@@ -3723,7 +3781,8 @@ If this command was invoked with the mouse, use a dialog box if
 `use-dialog-box' is non-nil.
 Otherwise, use the echo area.
 The first argument is a format control string, and the rest are data
-to be formatted under control of the string.  See `format' for details.
+to be formatted under control of the string.  See `format-message' for
+details.
 
 If the first argument is nil or the empty string, clear any existing
 message; let the minibuffer contents show.
@@ -3826,6 +3885,9 @@ precision specifier says how many decimal places to show; if zero, the
 decimal point itself is omitted.  For %s and %S, the precision
 specifier truncates the string to the given width.
 
+Text properties, if any, are copied from the format-string to the
+produced text.
+
 usage: (format STRING &rest OBJECTS)  */)
   (ptrdiff_t nargs, Lisp_Object *args)
 {
@@ -3860,7 +3922,7 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
   ptrdiff_t bufsize = sizeof initial_buffer;
   ptrdiff_t max_bufsize = STRING_BYTES_BOUND + 1;
   char *p;
-  ptrdiff_t buf_save_value_index IF_LINT (= 0);
+  ptrdiff_t buf_save_value_index UNINIT;
   char *format, *end;
   ptrdiff_t nchars;
   /* When we make a multibyte string, we must pay attention to the
@@ -4119,6 +4181,7 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 		      p += padding;
 		      nchars += padding;
 		    }
+                  info[n].start = nchars;
 
 		  if (p > buf
 		      && multibyte
@@ -4131,9 +4194,7 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 				  nbytes,
 				  STRING_MULTIBYTE (args[n]), multibyte);
 
-                  info[n].start = nchars;
 		  nchars += nchars_string;
-		  info[n].end = nchars;
 
 		  if (minus_flag)
 		    {
@@ -4141,6 +4202,7 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 		      p += padding;
 		      nchars += padding;
 		    }
+		  info[n].end = nchars;
 
 		  /* If this argument has text properties, record where
 		     in the result string it appears.  */
@@ -4358,6 +4420,7 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 			exponent_bytes = src + sprintf_bytes - e;
 		    }
 
+                  info[n].start = nchars;
 		  if (! minus_flag)
 		    {
 		      memset (p, ' ', padding);
@@ -4380,9 +4443,7 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 		  memcpy (p, src, exponent_bytes);
 		  p += exponent_bytes;
 
-                  info[n].start = nchars;
 		  nchars += leading_zeros + sprintf_bytes + trailing_zeros;
-		  info[n].end = nchars;
 
 		  if (minus_flag)
 		    {
@@ -4390,6 +4451,7 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 		      p += padding;
 		      nchars += padding;
 		    }
+		  info[n].end = nchars;
 
 		  continue;
 		}
@@ -4397,14 +4459,6 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 	}
       else
 	{
-	  /* Named constants for the UTF-8 encodings of U+2018 LEFT SINGLE
-	     QUOTATION MARK and U+2019 RIGHT SINGLE QUOTATION MARK.  */
-	  enum
-	  {
-	    uLSQM0 = 0xE2, uLSQM1 = 0x80, uLSQM2 = 0x98,
-	    /* uRSQM0 = 0xE2, uRSQM1 = 0x80, */ uRSQM2 = 0x99
-	  };
-
 	  unsigned char str[MAX_MULTIBYTE_LENGTH];
 
 	  if ((format_char == '`' || format_char == '\'')
@@ -4420,18 +4474,6 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 	    }
 	  else if (format_char == '`' && quoting_style == STRAIGHT_QUOTING_STYLE)
 	    convsrc = "'";
-	  else if (format_char == uLSQM0 && CURVE_QUOTING_STYLE < quoting_style
-		   && multibyte_format
-		   && (unsigned char) format[0] == uLSQM1
-		   && ((unsigned char) format[1] == uLSQM2
-		       || (unsigned char) format[1] == uRSQM2))
-	    {
-	      convsrc = (((unsigned char) format[1] == uLSQM2
-			  && quoting_style == GRAVE_QUOTING_STYLE)
-			 ? "`" : "'");
-	      format += 2;
-	      memset (&discarded[format0 + 1 - format_start], 2, 2);
-	    }
 	  else
 	    {
 	      /* Copy a single character from format to buf.  */
@@ -4589,7 +4631,7 @@ styled_format (ptrdiff_t nargs, Lisp_Object *args, bool message)
 	      len = make_number (SCHARS (args[i]));
 	      Lisp_Object new_len = make_number (info[i].end - info[i].start);
 	      props = text_property_list (args[i], make_number (0), len, Qnil);
-	      props = extend_property_ranges (props, new_len);
+	      props = extend_property_ranges (props, len, new_len);
 	      /* If successive arguments have properties, be sure that
 		 the value of `composition' property be the copy.  */
 	      if (1 < i && info[i - 1].end)

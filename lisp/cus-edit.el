@@ -197,10 +197,6 @@
   :link '(custom-manual "(emacs)Emulation")
   :group 'editing)
 
-(defgroup mouse nil
-  "Mouse support."
-  :group 'editing)
-
 (defgroup outlines nil
   "Support for hierarchical outlining."
   :group 'wp)
@@ -404,10 +400,6 @@
 
 (defgroup keyboard nil
   "Input from the keyboard."
-  :group 'environment)
-
-(defgroup mouse nil
-  "Input from the mouse."
   :group 'environment)
 
 (defgroup menu nil
@@ -1072,9 +1064,10 @@ are shown; the contents of those subgroups are initially hidden."
 
 ;;;###autoload
 (defun customize-mode (mode)
-  "Customize options related to the current major mode.
-If a prefix \\[universal-argument] was given (or if the current major mode has no known group),
-then prompt for the MODE to customize."
+  "Customize options related to a major or minor mode.
+By default the current major mode is used.  With a prefix
+argument or if the current major mode has no known group, prompt
+for the MODE to customize."
   (interactive
    (list
     (let ((completion-regexp-list '("-mode\\'"))
@@ -1083,8 +1076,8 @@ then prompt for the MODE to customize."
 	  major-mode
 	(intern
 	 (completing-read (if group
-			      (format "Major mode (default %s): " major-mode)
-			    "Major mode: ")
+			      (format "Mode (default %s): " major-mode)
+			    "Mode: ")
 			  obarray
 			  'custom-group-of-mode
 			  t nil nil (if group (symbol-name major-mode))))))))
@@ -1499,11 +1492,12 @@ Return non-nil if user chooses to customize, for use in
 (defcustom custom-buffer-style 'links
   "Control the presentation style for customization buffers.
 The value should be a symbol, one of:
-
-brackets: groups nest within each other with big horizontal brackets.
-links: groups have links to subgroups."
+`brackets': groups nest within each other with big horizontal brackets.
+`links': groups have links to subgroups.
+`tree': display groups as trees."
   :type '(radio (const brackets)
-		(const links))
+		(const links)
+                (const tree))
   :group 'custom-buffer)
 
 (defcustom custom-buffer-done-kill nil
@@ -1543,27 +1537,29 @@ not for everybody."
 	buf))))
 
 ;;;###autoload
-(defun custom-buffer-create (options &optional name description)
+(defun custom-buffer-create (options &optional name _description)
   "Create a buffer containing OPTIONS.
 Optional NAME is the name of the buffer.
 OPTIONS should be an alist of the form ((SYMBOL WIDGET)...), where
 SYMBOL is a customization option, and WIDGET is a widget for editing
 that option.
 DESCRIPTION is unused."
-  (pop-to-buffer-same-window (custom-get-fresh-buffer (or name "*Customization*")))
-  (custom-buffer-create-internal options description))
+  (pop-to-buffer-same-window
+   (custom-get-fresh-buffer (or name "*Customization*")))
+  (custom-buffer-create-internal options))
 
 ;;;###autoload
-(defun custom-buffer-create-other-window (options &optional name description)
+(defun custom-buffer-create-other-window (options &optional name _description)
   "Create a buffer containing OPTIONS, and display it in another window.
 The result includes selecting that window.
 Optional NAME is the name of the buffer.
 OPTIONS should be an alist of the form ((SYMBOL WIDGET)...), where
 SYMBOL is a customization option, and WIDGET is a widget for editing
-that option."
+that option.
+DESCRIPTION is unused."
   (unless name (setq name "*Customization*"))
   (switch-to-buffer-other-window (custom-get-fresh-buffer name))
-  (custom-buffer-create-internal options description))
+  (custom-buffer-create-internal options))
 
 (defcustom custom-reset-button-menu t
   "If non-nil, only show a single reset button in customize buffers.

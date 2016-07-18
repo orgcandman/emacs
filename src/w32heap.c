@@ -189,7 +189,7 @@ free_fn the_free_fn;
    claims for new memory.  Before dumping, we allocate space
    from the fixed size dumped_data[] array.
 */
-NTSTATUS NTAPI
+static NTSTATUS NTAPI
 dumped_data_commit (PVOID Base, PVOID *CommitAddress, PSIZE_T CommitSize)
 {
   /* This is used before dumping.
@@ -323,9 +323,9 @@ init_heap (void)
 
 /* FREEABLE_P checks if the block can be safely freed.  */
 #define FREEABLE_P(addr)						\
-    ((unsigned char *)(addr) > 0					\
-     && ((unsigned char *)(addr) < dumped_data				\
-	 || (unsigned char *)(addr) >= dumped_data + DUMPED_HEAP_SIZE))
+  ((DWORD_PTR)(unsigned char *)(addr) > 0				\
+   && ((unsigned char *)(addr) < dumped_data				\
+       || (unsigned char *)(addr) >= dumped_data + DUMPED_HEAP_SIZE))
 
 void *
 malloc_after_dump (size_t size)
@@ -708,19 +708,18 @@ mmap_realloc (void **var, size_t nbytes)
   if (memInfo.RegionSize < nbytes)
     {
       memset (&m2, 0, sizeof (m2));
-      if (VirtualQuery (*var + memInfo.RegionSize, &m2, sizeof(m2)) == 0)
+      if (VirtualQuery ((char *)*var + memInfo.RegionSize, &m2, sizeof(m2)) == 0)
         DebPrint (("mmap_realloc: VirtualQuery error = %ld\n",
 		   GetLastError ()));
       /* If there is enough room in the current reserved area, then
 	 commit more pages as needed.  */
       if (m2.State == MEM_RESERVE
+	  && m2.AllocationBase == memInfo.AllocationBase
 	  && nbytes <= memInfo.RegionSize + m2.RegionSize)
 	{
 	  void *p;
 
-	  p = VirtualAlloc (*var + memInfo.RegionSize,
-			    nbytes - memInfo.RegionSize,
-			    MEM_COMMIT, PAGE_READWRITE);
+	  p = VirtualAlloc (*var, nbytes, MEM_COMMIT, PAGE_READWRITE);
 	  if (!p /* && GetLastError() != ERROR_NOT_ENOUGH_MEMORY */)
 	    {
 	      DebPrint (("realloc enlarge: VirtualAlloc (%p + %I64x, %I64x) error %ld\n",
@@ -728,7 +727,8 @@ mmap_realloc (void **var, size_t nbytes)
 			 (uint64_t)(nbytes - memInfo.RegionSize),
 			 GetLastError ()));
 	      DebPrint (("next region: %p %p %I64x %x\n", m2.BaseAddress,
-			 m2.AllocationBase, m2.RegionSize, m2.AllocationProtect));
+			 m2.AllocationBase, (uint64_t)m2.RegionSize,
+			 m2.AllocationProtect));
 	    }
 	  else
 	    return *var;
@@ -778,7 +778,7 @@ mmap_realloc (void **var, size_t nbytes)
         }
 
       /* We still can decommit pages.  */
-      if (VirtualFree (*var + nbytes + get_page_size(),
+      if (VirtualFree ((char *)*var + nbytes + get_page_size(),
 		       memInfo.RegionSize - nbytes - get_page_size(),
 		       MEM_DECOMMIT) == 0)
         DebPrint (("mmap_realloc: VirtualFree error %ld\n", GetLastError ()));

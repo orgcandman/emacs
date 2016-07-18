@@ -145,18 +145,18 @@ nil means use goto-char using the second argument position.")
 			       &optional avoid-current
 			       extra-test-inclusive
 			       extra-test-exclusive)
-  "Test if BUFFER is a `next-error' capable buffer.
+  "Return non-nil if BUFFER is a `next-error' capable buffer.
+If AVOID-CURRENT is non-nil, and BUFFER is the current buffer,
+return nil.
 
-If AVOID-CURRENT is non-nil, treat the current buffer
-as an absolute last resort only.
+The function EXTRA-TEST-INCLUSIVE, if non-nil, is called if
+BUFFER would not normally qualify.  If it returns non-nil, BUFFER
+is considered `next-error' capable, anyway, and the function
+returns non-nil.
 
-The function EXTRA-TEST-INCLUSIVE, if non-nil, is called in each buffer
-that normally would not qualify.  If it returns t, the buffer
-in question is treated as usable.
-
-The function EXTRA-TEST-EXCLUSIVE, if non-nil, is called in each buffer
-that would normally be considered usable.  If it returns nil,
-that buffer is rejected."
+The function EXTRA-TEST-EXCLUSIVE, if non-nil, is called if the
+buffer would normally qualify.  If it returns nil, BUFFER is
+rejected, and the function returns nil."
   (and (buffer-name buffer)		;First make sure it's live.
        (not (and avoid-current (eq buffer (current-buffer))))
        (with-current-buffer buffer
@@ -408,15 +408,19 @@ A non-nil INTERACTIVE argument means to run the `post-self-insert-hook'."
          (last-command-event ?\n)
          ;; Don't auto-fill if we have a numeric argument.
          (auto-fill-function (if arg nil auto-fill-function))
+         (arg (prefix-numeric-value arg))
          (postproc
           ;; Do the rest in post-self-insert-hook, because we want to do it
           ;; *before* other functions on that hook.
           (lambda ()
-            (cl-assert (eq ?\n (char-before)))
+            ;; We are not going to insert any newlines if arg is
+            ;; non-positive.
+            (or (and (numberp arg) (<= arg 0))
+                (cl-assert (eq ?\n (char-before))))
             ;; Mark the newline(s) `hard'.
             (if use-hard-newlines
                 (set-hard-newline-properties
-                 (- (point) (prefix-numeric-value arg)) (point)))
+                 (- (point) arg) (point)))
             ;; If the newline leaves the previous line blank, and we
             ;; have a left margin, delete that from the blank line.
             (save-excursion
@@ -433,19 +437,21 @@ A non-nil INTERACTIVE argument means to run the `post-self-insert-hook'."
                 (move-to-left-margin nil t)))))
     (unwind-protect
         (if (not interactive)
-        ;; FIXME: For non-interactive uses, many calls actually just want
-        ;; (insert "\n"), so maybe we should do just that, so as to avoid
-        ;; the risk of filling or running abbrevs unexpectedly.
-        (let ((post-self-insert-hook (list postproc)))
-          (self-insert-command (prefix-numeric-value arg)))
-      (unwind-protect
-          (progn
-            (add-hook 'post-self-insert-hook postproc nil t)
-            (self-insert-command (prefix-numeric-value arg)))
-        ;; We first used let-binding to protect the hook, but that was naive
-        ;; since add-hook affects the symbol-default value of the variable,
-        ;; whereas the let-binding might only protect the buffer-local value.
-        (remove-hook 'post-self-insert-hook postproc t)))
+            ;; FIXME: For non-interactive uses, many calls actually
+            ;; just want (insert "\n"), so maybe we should do just
+            ;; that, so as to avoid the risk of filling or running
+            ;; abbrevs unexpectedly.
+            (let ((post-self-insert-hook (list postproc)))
+              (self-insert-command arg))
+          (unwind-protect
+              (progn
+                (add-hook 'post-self-insert-hook postproc nil t)
+                (self-insert-command arg))
+            ;; We first used let-binding to protect the hook, but that
+            ;; was naive since add-hook affects the symbol-default
+            ;; value of the variable, whereas the let-binding might
+            ;; only protect the buffer-local value.
+            (remove-hook 'post-self-insert-hook postproc t)))
       (cl-assert (not (member postproc post-self-insert-hook)))
       (cl-assert (not (member postproc (default-value 'post-self-insert-hook))))))
   nil)
@@ -596,24 +602,23 @@ buffer if the variable `delete-trailing-lines' is non-nil."
                    (list nil nil))))
   (save-match-data
     (save-excursion
-      (let ((end-marker (copy-marker (or end (point-max))))
-            (start (or start (point-min))))
-        (goto-char start)
-        (while (re-search-forward "\\s-$" end-marker t)
-          (skip-syntax-backward "-" (line-beginning-position))
+      (let ((end-marker (and end (copy-marker end))))
+        (goto-char (or start (point-min)))
+        (with-syntax-table (make-syntax-table (syntax-table))
           ;; Don't delete formfeeds, even if they are considered whitespace.
-          (if (looking-at-p ".*\f")
-              (goto-char (match-end 0)))
-          (delete-region (point) (match-end 0)))
-        ;; Delete trailing empty lines.
-        (goto-char end-marker)
-        (when (and (not end)
-		   delete-trailing-lines
-                   ;; Really the end of buffer.
-		   (= (point-max) (1+ (buffer-size)))
-                   (<= (skip-chars-backward "\n") -2))
-          (delete-region (1+ (point)) end-marker))
-        (set-marker end-marker nil))))
+          (modify-syntax-entry ?\f "_")
+          ;; Treating \n as non-whitespace makes things easier.
+          (modify-syntax-entry ?\n "_")
+          (while (re-search-forward "\\s-+$" end-marker t)
+            (delete-region (match-beginning 0) (match-end 0))))
+        (if end
+            (set-marker end-marker nil)
+          ;; Delete trailing empty lines.
+          (and delete-trailing-lines
+               ;; Really the end of buffer.
+               (= (goto-char (point-max)) (1+ (buffer-size)))
+               (<= (skip-chars-backward "\n") -2)
+               (delete-region (1+ (point)) (point-max)))))))
   ;; Return nil for the benefit of `write-file-functions'.
   nil)
 
@@ -1069,7 +1074,9 @@ that uses or sets the mark."
   (interactive)
   (push-mark (point))
   (push-mark (point-max) nil t)
-  (goto-char (point-min)))
+  ;; This is really `point-min' in most cases, but if we're in the
+  ;; minibuffer, this is at the end of the prompt.
+  (goto-char (minibuffer-prompt-end)))
 
 
 ;; Counting lines, one way or another.
@@ -1170,7 +1177,7 @@ END, without printing any message."
 	     (save-restriction
 	       (narrow-to-region start end)
 	       (goto-char (point-min))
-	       (while (forward-word 1)
+	       (while (forward-word-strictly 1)
 		 (setq words (1+ words)))))
 	   words))
 	((use-region-p)
@@ -1412,10 +1419,11 @@ If nil, don't change the value of `debug-on-error'."
   :version "21.1")
 
 (defun eval-expression-print-format (value)
-  "Format VALUE as a result of evaluated expression.
-Return a formatted string which is displayed in the echo area
-in addition to the value printed by prin1 in functions which
-display the result of expression evaluation."
+  "If VALUE in an integer, return a specially formatted string.
+This string will typically look like \" (#o1, #x1, ?\\C-a)\".
+If VALUE is not an integer, nil is returned.
+This function is used by functions like `prin1' that display the
+result of expression evaluation."
   (if (and (integerp value)
 	   (or (eq standard-output t)
 	       (zerop (prefix-numeric-value current-prefix-arg))))
@@ -1626,6 +1634,12 @@ If the value is non-nil and not a number, we wait 2 seconds."
                  (integer :tag "time" 2)
                  (other :tag "on")))
 
+(defcustom extended-command-suggest-shorter t
+  "If non-nil, show a shorter M-x invocation when there is one."
+  :group 'keyboard
+  :type 'boolean
+  :version "25.2")
+
 (defun execute-extended-command--shorter-1 (name length)
   (cond
    ((zerop length) (list ""))
@@ -1708,7 +1722,8 @@ invoking, give a prefix argument to `execute-extended-command'."
                         ((numberp suggest-key-bindings) suggest-key-bindings)
                         (t 2))))))
       (when (and waited (not (consp unread-command-events)))
-        (unless (or binding executing-kbd-macro (not (symbolp function))
+        (unless (or (not extended-command-suggest-shorter)
+                    binding executing-kbd-macro (not (symbolp function))
                     (<= (length (symbol-name function)) 2))
           ;; There's no binding for CMD.  Let's try and find the shortest
           ;; string to use in M-x.
@@ -2868,6 +2883,10 @@ REASON describes the reason that the boundary is being added; see
   "Check recently changed buffers and add a boundary if necessary.
 REASON describes the reason that the boundary is being added; see
 `undo-last-boundary' for more information."
+  ;; (Bug #23785) All commands should ensure that there is an undo
+  ;; boundary whether they have changed the current buffer or not.
+  (when (eq cause 'command)
+    (add-to-list 'undo-auto--undoably-changed-buffers (current-buffer)))
   (dolist (b undo-auto--undoably-changed-buffers)
           (when (buffer-live-p b)
             (with-current-buffer b
@@ -2890,9 +2909,7 @@ REASON describes the reason that the boundary is being added; see
 
 This list is maintained by `undo-auto--undoable-change' and
 `undo-auto--boundaries' and can be affected by changes to their
-default values.
-
-See also `undo-auto--buffer-undoably-changed'.")
+default values.")
 
 (defun undo-auto--add-boundary ()
   "Add an `undo-boundary' in appropriate buffers."
@@ -3218,11 +3235,11 @@ Noninteractive callers can specify coding systems by binding
 
 The optional second argument OUTPUT-BUFFER, if non-nil,
 says to put the output in some other buffer.
-If OUTPUT-BUFFER is a buffer or buffer name, put the output there.
-If OUTPUT-BUFFER is not a buffer and not nil,
-insert output in current buffer.  (This cannot be done asynchronously.)
-In either case, the buffer is first erased, and the output is
-inserted after point (leaving mark after it).
+If OUTPUT-BUFFER is a buffer or buffer name, erase that buffer
+and insert the output there.
+If OUTPUT-BUFFER is not a buffer and not nil, insert the output
+in current buffer after point leaving mark after it.
+This cannot be done asynchronously.
 
 If the command terminates without error, but generates output,
 and you did not specify \"insert it in the current buffer\",
@@ -3311,6 +3328,8 @@ the use of a shell (with its need to quote arguments)."
 				     (current-buffer)))))
 	;; Output goes in a separate buffer.
 	;; Preserve the match data in case called from a program.
+        ;; FIXME: It'd be ridiculous for an Elisp function to call
+        ;; shell-command and assume that it won't mess the match-data!
 	(save-match-data
 	  (if (string-match "[ \t]*&[ \t]*\\'" command)
 	      ;; Command ending with ampersand means asynchronous.
@@ -3487,10 +3506,10 @@ Command Output*' is deleted.
 
 Optional fourth arg OUTPUT-BUFFER specifies where to put the
 command's output.  If the value is a buffer or buffer name,
-put the output there.  If the value is nil, use the buffer
-`*Shell Command Output*'.  Any other value, excluding nil,
-means to insert the output in the current buffer.  In either case,
-the output is inserted after point (leaving mark after it).
+erase that buffer and insert the output there.
+If the value is nil, use the buffer `*Shell Command Output*'.
+Any other non-nil value means to insert the output in the
+current buffer after START.
 
 Optional fifth arg REPLACE, if non-nil, means to insert the
 output in place of text from START to END, putting point and mark
@@ -3736,6 +3755,7 @@ support pty association, if PROGRAM is nil."
 (define-derived-mode process-menu-mode tabulated-list-mode "Process Menu"
   "Major mode for listing the processes called by Emacs."
   (setq tabulated-list-format [("Process" 15 t)
+			       ("PID"      7 t)
 			       ("Status"   7 t)
 			       ("Buffer"  15 t)
 			       ("TTY"     12 t)
@@ -3767,6 +3787,7 @@ Also, delete any process that is exited or signaled."
 	       (process-query-on-exit-flag p))
 	   (let* ((buf (process-buffer p))
 		  (type (process-type p))
+		  (pid  (if (process-id p) (format "%d" (process-id p)) "--"))
 		  (name (process-name p))
 		  (status (symbol-name (process-status p)))
 		  (buf-label (if (buffer-live-p buf)
@@ -3802,7 +3823,7 @@ Also, delete any process that is exited or signaled."
 					 (format " at %s b/s" speed)
 				       "")))))
 		     (mapconcat 'identity (process-command p) " "))))
-	     (push (list p (vector name status buf-label tty cmd))
+	     (push (list p (vector name pid status buf-label tty cmd))
 		   tabulated-list-entries))))))
 
 (defun process-menu-visit-buffer (button)
@@ -4045,7 +4066,8 @@ Its arguments and return value are as specified for `filter-buffer-substring'.
 This respects the wrapper hook `filter-buffer-substring-functions',
 and the abnormal hook `buffer-substring-filters'.
 No filtering is done unless a hook says to."
-  (with-wrapper-hook filter-buffer-substring-functions (beg end delete)
+  (subr--with-wrapper-hook-no-warnings
+    filter-buffer-substring-functions (beg end delete)
     (cond
      ((or delete buffer-substring-filters)
       (save-excursion
@@ -5202,6 +5224,7 @@ store it in a Lisp variable.  Example:
 (defmacro save-mark-and-excursion (&rest body)
   "Like `save-excursion', but also save and restore the mark state.
 This macro does what `save-excursion' did before Emacs 25.1."
+  (declare (indent 0) (debug t))
   (let ((saved-marker-sym (make-symbol "saved-marker")))
     `(let ((,saved-marker-sym (save-mark-and-excursion--save)))
        (unwind-protect
@@ -5210,7 +5233,7 @@ This macro does what `save-excursion' did before Emacs 25.1."
 
 (defcustom use-empty-active-region nil
   "Whether \"region-aware\" commands should act on empty regions.
-If nil, region-aware commands treat empty regions as inactive.
+If nil, region-aware commands treat the empty region as inactive.
 If non-nil, region-aware commands treat the region as active as
 long as the mark is active, even if the region is empty.
 
@@ -5821,7 +5844,7 @@ The value is a floating-point number."
     (/ (float (- (nth 3 edges) (nth 1 edges))) dlh)))
 
 ;; Returns non-nil if partial move was done.
-(defun line-move-partial (arg noerror to-end)
+(defun line-move-partial (arg noerror &optional _to-end)
   (if (< arg 0)
       ;; Move backward (up).
       ;; If already vscrolled, reduce vscroll
@@ -5919,7 +5942,7 @@ The value is a floating-point number."
 	  ;; discrepancies between that and DLH.
 	  (if (and rowh rbot (>= (- (+ rowh rbot) winh) 1))
 	      (set-window-vscroll nil dlh t))
-	  (line-move-1 arg noerror to-end)
+	  (line-move-1 arg noerror)
 	  t)
 	 ;; If there are lines above the last line, scroll-up one line.
 	 ((and vpos (> vpos 0))
@@ -5936,7 +5959,7 @@ The value is a floating-point number."
 ;; scrolling with cursor motion.  But so far we don't have
 ;; a cleaner solution to the problem of making C-n do something
 ;; useful given a tall image.
-(defun line-move (arg &optional noerror to-end try-vscroll)
+(defun line-move (arg &optional noerror _to-end try-vscroll)
   "Move forward ARG lines.
 If NOERROR, don't signal an error if we can't move ARG lines.
 TO-END is unused.
@@ -5944,7 +5967,7 @@ TRY-VSCROLL controls whether to vscroll tall lines: if either
 `auto-window-vscroll' or TRY-VSCROLL is nil, this function will
 not vscroll."
   (if noninteractive
-      (line-move-1 arg noerror to-end)
+      (line-move-1 arg noerror)
     (unless (and auto-window-vscroll try-vscroll
 		 ;; Only vscroll for single line moves
 		 (= (abs arg) 1)
@@ -5954,7 +5977,7 @@ not vscroll."
 		 ;; But don't vscroll in a keyboard macro.
 		 (not defining-kbd-macro)
 		 (not executing-kbd-macro)
-		 (line-move-partial arg noerror to-end))
+		 (line-move-partial arg noerror))
       (set-window-vscroll nil 0 t)
       (if (and line-move-visual
 	       ;; Display-based column are incompatible with goal-column.
@@ -5986,7 +6009,7 @@ not vscroll."
 		  (set-window-vscroll
 		   nil
 		   (- lh dlh) t))))
-	(line-move-1 arg noerror to-end)))))
+	(line-move-1 arg noerror)))))
 
 ;; Display-based alternative to line-move-1.
 ;; Arg says how many lines to move.  The value is t if we can move the
@@ -6024,7 +6047,13 @@ If NOERROR, don't signal an error if we can't move that many lines."
 	  (setq temporary-goal-column
 		(cons (/ (float x-pos)
 			 (frame-char-width))
-                      hscroll))))))
+                      hscroll)))
+	 (executing-kbd-macro
+	  ;; When we move beyond the first/last character visible in
+	  ;; the window, posn-at-point will return nil, so we need to
+	  ;; approximate the goal column as below.
+	  (setq temporary-goal-column
+		(mod (current-column) (window-text-width)))))))
     (if target-hscroll
 	(set-window-hscroll (selected-window) target-hscroll))
     ;; vertical-motion can move more than it was asked to if it moves
@@ -6405,7 +6434,8 @@ Those commands will move to this position in the line moved to
 rather than trying to keep the same horizontal position.
 With a non-nil argument ARG, clears out the goal column
 so that \\[next-line] and \\[previous-line] resume vertical motion.
-The goal column is stored in the variable `goal-column'."
+The goal column is stored in the variable `goal-column'.
+This is a buffer-local setting."
   (interactive "P")
   (if arg
       (progn

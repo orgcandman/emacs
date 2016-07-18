@@ -919,19 +919,6 @@ is buffer-local."
 
 (term-set-escape-char (or term-escape-char ?\C-c))
 
-(defvar overflow-newline-into-fringe)
-
-(defun term-window-width ()
-  (if (and (not (featurep 'xemacs))
-	   (display-graphic-p)
-	   overflow-newline-into-fringe
-	   ;; Subtract 1 from the width when any fringe has zero width,
-	   ;; not just the right fringe.  Bug#18601.
-	   (/= (frame-parameter nil 'left-fringe) 0)
-	   (/= (frame-parameter nil 'right-fringe) 0))
-      (window-body-width)
-    (1- (window-body-width))))
-
 
 (put 'term-mode 'mode-class 'special)
 
@@ -1018,7 +1005,7 @@ Entry to this mode runs the hooks on `term-mode-hook'."
   (setq buffer-display-table term-display-table)
   (set (make-local-variable 'term-home-marker) (copy-marker 0))
   (set (make-local-variable 'term-height) (1- (window-height)))
-  (set (make-local-variable 'term-width) (term-window-width))
+  (set (make-local-variable 'term-width) (window-max-chars-per-line))
   (set (make-local-variable 'term-last-input-start) (make-marker))
   (set (make-local-variable 'term-last-input-end) (make-marker))
   (set (make-local-variable 'term-last-input-match) "")
@@ -1462,6 +1449,13 @@ Using \"emacs\" loses, because bash disables editing if $TERM == emacs.")
 	   (format "TERMINFO=%s" data-directory)
 	   (format term-termcap-format "TERMCAP="
 		   term-term-name term-height term-width)
+
+	   ;; This is for backwards compatibility with Bash 4.3 and earlier.
+	   ;; Remove this hack once Bash 4.4-or-later is common, because
+	   ;; it breaks './configure' of some packages that expect it to
+	   ;; say where to find EMACS.
+	   (format "EMACS=%s (term:%s)" emacs-version term-protocol-version)
+
 	   (format "INSIDE_EMACS=%s,term:%s" emacs-version term-protocol-version)
 	   (format "LINES=%d" term-height)
 	   (format "COLUMNS=%d" term-width))
@@ -3253,6 +3247,10 @@ See `term-prompt-regexp'."
    ;; \E[D - cursor left (terminfo: cub)
    ((eq char ?D)
     (term-move-columns (- (max 1 term-terminal-parameter))))
+   ;; \E[G - cursor motion to absolute column (terminfo: hpa)
+   ((eq char ?G)
+    (term-move-columns (- (max 0 (min term-width term-terminal-parameter))
+                          (term-current-column))))
    ;; \E[J - clear to end of screen (terminfo: ed, clear)
    ((eq char ?J)
     (term-erase-in-display term-terminal-parameter))

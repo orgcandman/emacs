@@ -474,9 +474,14 @@ so that all identifiers are recognized as words.")
   ;; The value here may be a list of functions or a single function.
   t nil
   c++ '(c-extend-region-for-CPP
+	c-before-change-check-raw-strings
 	c-before-change-check-<>-operators
+	c-depropertize-CPP
+	c-before-after-change-digit-quote
 	c-invalidate-macro-cache)
-  (c objc) '(c-extend-region-for-CPP c-invalidate-macro-cache)
+  (c objc) '(c-extend-region-for-CPP
+	     c-depropertize-CPP
+	     c-invalidate-macro-cache)
   ;; java 'c-before-change-check-<>-operators
   awk 'c-awk-record-region-clear-NL)
 (c-lang-defvar c-get-state-before-change-functions
@@ -504,15 +509,24 @@ parameters \(point-min) and \(point-max).")
 (c-lang-defconst c-before-font-lock-functions
   ;; For documentation see the following c-lang-defvar of the same name.
   ;; The value here may be a list of functions or a single function.
-  t 'c-change-expand-fl-region
-  (c objc) '(c-neutralize-syntax-in-and-mark-CPP
+  t '(c-depropertize-new-text
+      c-change-expand-fl-region)
+  (c objc) '(c-depropertize-new-text
+	     c-extend-font-lock-region-for-macros
+	     c-neutralize-syntax-in-and-mark-CPP
 	     c-change-expand-fl-region)
-  c++ '(c-neutralize-syntax-in-and-mark-CPP
+  c++ '(c-depropertize-new-text
+	c-extend-font-lock-region-for-macros
+	c-before-after-change-digit-quote
+	c-after-change-re-mark-raw-strings
+	c-neutralize-syntax-in-and-mark-CPP
 	c-restore-<>-properties
 	c-change-expand-fl-region)
-  java '(c-restore-<>-properties
+  java '(c-depropertize-new-text
+	 c-restore-<>-properties
 	 c-change-expand-fl-region)
-  awk 'c-awk-extend-and-syntax-tablify-region)
+  awk '(c-depropertize-new-text
+	c-awk-extend-and-syntax-tablify-region))
 (c-lang-defvar c-before-font-lock-functions
 	       (let ((fs (c-lang-const c-before-font-lock-functions)))
 		 (if (listp fs)
@@ -1230,6 +1244,14 @@ operators."
 (c-lang-defvar c-assignment-op-regexp
   (c-lang-const c-assignment-op-regexp))
 
+(c-lang-defconst c-:$-multichar-token-regexp
+  ;; Regexp matching all tokens ending in ":" which are longer than one char.
+  ;; Currently (2016-01-07) only used in C++ Mode.
+  t (c-make-keywords-re nil
+      (c-filter-ops (c-lang-const c-operators) t ".+:$")))
+(c-lang-defvar c-:$-multichar-token-regexp
+  (c-lang-const c-:$-multichar-token-regexp))
+
 (c-lang-defconst c-<>-multichar-token-regexp
   ;; Regexp matching all tokens containing "<" or ">" which are longer
   ;; than one char.
@@ -1322,6 +1344,14 @@ operators."
 (c-lang-defconst c-haskell-op-re
   t (c-make-keywords-re nil (c-lang-const c-haskell-op)))
 (c-lang-defvar c-haskell-op-re (c-lang-const c-haskell-op-re))
+
+(c-lang-defconst c-pre-start-tokens
+  "List of operators following which an apparent declaration \(e.g.
+\"t1 *fn (t2 *b);\") is most likely to be an actual declaration
+\(as opposed to an arithmetic expression)."
+  t '(";" "{" "}"))
+(c-lang-defvar c-pre-start-tokens (c-lang-const c-pre-start-tokens))
+
 
 ;;; Syntactic whitespace.
 
@@ -1775,7 +1805,7 @@ but they don't build a type of themselves.  Unlike the keywords on
 not the type face."
   t    nil
   c    '("const" "restrict" "volatile")
-  c++  '("const" "constexpr" "noexcept" "volatile" "throw" "final" "override")
+  c++  '("const" "noexcept" "volatile" "throw" "final" "override")
   objc '("const" "volatile"))
 
 (c-lang-defconst c-opt-type-modifier-key
@@ -1977,8 +2007,8 @@ If any of these also are on `c-type-list-kwds', `c-ref-list-kwds',
 will be handled."
   t    nil
   (c c++) '("auto" "extern" "inline" "register" "static")
-  c++  (append '("explicit" "friend" "mutable" "template" "thread_local"
-                 "using" "virtual")
+  c++  (append '("constexpr" "explicit" "friend" "mutable" "template"
+		 "thread_local" "using" "virtual")
 	       (c-lang-const c-modifier-kwds))
   objc '("auto" "bycopy" "byref" "extern" "in" "inout" "oneway" "out" "static")
   ;; FIXME: Some of those below ought to be on `c-other-decl-kwds' instead.
@@ -2248,6 +2278,10 @@ contain type identifiers."
 	    ;; MSVC extension.
 	    "__declspec"))
 
+(c-lang-defconst c-paren-nontype-key
+  t (c-make-keywords-re t (c-lang-const c-paren-nontype-kwds)))
+(c-lang-defvar c-paren-nontype-key (c-lang-const c-paren-nontype-key))
+
 (c-lang-defconst c-paren-type-kwds
   "Keywords that may be followed by a parenthesis expression containing
 type identifiers separated by arbitrary tokens."
@@ -2293,6 +2327,15 @@ assumed to be set if this isn't nil."
   ;; bracket sexp.  Always set when `c-recognize-<>-arglists' is.
   t (c-make-keywords-re t (c-lang-const c-<>-sexp-kwds)))
 (c-lang-defvar c-opt-<>-sexp-key (c-lang-const c-opt-<>-sexp-key))
+
+(c-lang-defconst c-inside-<>-type-kwds
+  "Keywords which, used inside a C++ style template arglist, introduce a type."
+  t nil
+  java '("extends" "super"))
+
+(c-lang-defconst c-inside-<>-type-key
+  t (c-make-keywords-re t (c-lang-const c-inside-<>-type-kwds)))
+(c-lang-defvar c-inside-<>-type-key (c-lang-const c-inside-<>-type-key))
 
 (c-lang-defconst c-brace-id-list-kwds
   "Keywords that may be followed by a brace block containing a comma
@@ -3061,7 +3104,7 @@ is in effect or not."
 
 (c-lang-defconst c-special-brace-lists
 "List of open- and close-chars that makes up a pike-style brace list,
-i.e. for a ([ ]) list there should be a cons (?\\[ . ?\\]) in this
+i.e., for a ([ ]) list there should be a cons (?\\[ . ?\\]) in this
 list."
   t    nil
   pike '((?{ . ?}) (?\[ . ?\]) (?< . ?>)))

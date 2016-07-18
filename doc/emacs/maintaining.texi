@@ -432,7 +432,7 @@ to the master repository.
 
   On a graphical display, you can move the mouse over this mode line
 indicator to pop up a tool-tip, which displays a more verbose
-description of the version control status.  Pressing @kbd{Mouse-1}
+description of the version control status.  Pressing @kbd{mouse-1}
 over the indicator pops up a menu of VC commands, identical to
 @samp{Tools / Version Control} on the menu bar.
 
@@ -1289,15 +1289,15 @@ whose state is that of the item at point.
 @findex vc-dir-mark
 @findex vc-dir-mark-all-files
   While in the VC Directory buffer, all the files that you mark with
-@kbd{m} (@code{vc-dir-mark}) or @kbd{M} (@code{vc-dir-mark}) are in
-the current VC fileset.  If you mark a directory entry with @kbd{m},
-all the listed files in that directory tree are in the current VC
-fileset.  The files and directories that belong to the current VC
-fileset are indicated with a @samp{*} character in the VC Directory
-buffer, next to their VC status.  In this way, you can set up a
-multi-file VC fileset to be acted on by VC commands like @w{@kbd{C-x v
-v}} (@pxref{Basic VC Editing}), @w{@kbd{C-x v =}} (@pxref{Old
-Revisions}), and @w{@kbd{C-x v u}} (@pxref{VC Undo}).
+@kbd{m} (@code{vc-dir-mark}) or @kbd{M} (@code{vc-dir-mark-all-files})
+are in the current VC fileset.  If you mark a directory entry with
+@kbd{m}, all the listed files in that directory tree are in the
+current VC fileset.  The files and directories that belong to the
+current VC fileset are indicated with a @samp{*} character in the VC
+Directory buffer, next to their VC status.  In this way, you can set
+up a multi-file VC fileset to be acted on by VC commands like
+@w{@kbd{C-x v v}} (@pxref{Basic VC Editing}), @w{@kbd{C-x v =}}
+(@pxref{Old Revisions}), and @w{@kbd{C-x v u}} (@pxref{VC Undo}).
 
   The VC Directory buffer also defines some single-key shortcuts for
 VC commands with the @kbd{C-x v} prefix: @kbd{=}, @kbd{+}, @kbd{l},
@@ -1335,7 +1335,7 @@ their single-buffer counterparts (@pxref{Search}).
 @cindex stashes in version control
 @cindex shelves in version control
   The above commands are also available via the menu bar, and via a
-context menu invoked by @kbd{Mouse-2}.  Furthermore, some VC backends
+context menu invoked by @kbd{mouse-2}.  Furthermore, some VC backends
 use the menu to provide extra backend-specific commands.  For example,
 Git and Bazaar allow you to manipulate @dfn{stashes} and @dfn{shelves}
 (where are a way to temporarily put aside uncommitted changes, and
@@ -1813,7 +1813,7 @@ object-oriented language, or if there's a function and a variable by
 the same name), the command shows the candidate definitions in a
 @file{*xref*} buffer, together with the files in which these
 definitions are found.  Selecting one of these candidates by typing
-@kbd{@key{RET}} or clicking @kbd{Mouse-2} will pop a buffer showing
+@kbd{@key{RET}} or clicking @kbd{mouse-2} will pop a buffer showing
 the corresponding definition.
 
   When entering the identifier argument to @kbd{M-.}, the usual
@@ -1865,7 +1865,7 @@ the special XREF mode:
 
 @table @kbd
 @item @key{RET}
-@itemx Mouse-2
+@itemx mouse-2
 Display the reference on the current line and bury the @file{*xref*}
 buffer.
 @item n

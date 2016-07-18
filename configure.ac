@@ -330,6 +330,7 @@ OPTION_DEFAULT_ON([tiff],[don't compile with TIFF image support])
 OPTION_DEFAULT_ON([gif],[don't compile with GIF image support])
 OPTION_DEFAULT_ON([png],[don't compile with PNG image support])
 OPTION_DEFAULT_ON([rsvg],[don't compile with SVG image support])
+OPTION_DEFAULT_ON([libsystemd],[don't compile with libsystemd support])
 OPTION_DEFAULT_OFF([cairo],[compile with Cairo drawing (experimental)])
 OPTION_DEFAULT_ON([xml2],[don't compile with XML parsing support])
 OPTION_DEFAULT_ON([imagemagick],[don't compile with ImageMagick image support])
@@ -842,17 +843,45 @@ if test "$ac_test_CFLAGS" != set; then
   esac
 fi
 
+# gl_GCC_VERSION_IFELSE([major], [minor], [run-if-found], [run-if-not-found])
+# ---------------------------------------------------------------------------
+# If $CPP is gcc-MAJOR.MINOR or newer, then run RUN-IF-FOUND.
+# Otherwise, run RUN-IF-NOT-FOUND.
+AC_DEFUN([gl_GCC_VERSION_IFELSE],
+  [AC_PREPROC_IFELSE(
+    [AC_LANG_PROGRAM(
+      [[
+#if ($1) < __GNUC__ || (($1) == __GNUC__ && ($2) <= __GNUC_MINOR__)
+/* ok */
+#else
+# error "your version of gcc is older than $1.$2"
+#endif
+      ]]),
+    ], [$3], [$4])
+  ]
+)
+
 AC_ARG_ENABLE([gcc-warnings],
-  [AS_HELP_STRING([--enable-gcc-warnings],
-                  [turn on lots of GCC warnings/errors. This is intended for
-		   developers, and may generate false alarms when used
-		   with older or non-GNU development tools.])],
+  [AS_HELP_STRING([--enable-gcc-warnings@<:@=TYPE@:>@],
+                  [control generation of GCC warnings.  The TYPE 'yes'
+		   means to fail if any warnings are issued; 'warn-only'
+		   means issue warnings without failing (default for
+		   developer builds); 'no' means disable warnings
+		   (default for non-developer builds).])],
   [case $enableval in
-     yes|no) ;;
+     yes|no|warn-only) ;;
      *)      AC_MSG_ERROR([bad value $enableval for gcc-warnings option]) ;;
    esac
    gl_gcc_warnings=$enableval],
-  [gl_gcc_warnings=no]
+  [# By default, use 'warn-only' if it looks like the invoker of 'configure'
+   # is a developer as opposed to a builder.  This is most likely true
+   # if GCC is recent enough and there is a .git directory or file;
+   # however, if there is also a .tarball-version file it is probably
+   # just a release imported into Git for patch management.
+   gl_gcc_warnings=no
+   if test -e "$srcdir"/.git && test ! -f "$srcdir"/.tarball-version; then
+     gl_GCC_VERSION_IFELSE([5], [3], [gl_gcc_warnings=warn-only])]
+   fi
 )
 
 # clang is unduly picky about some things.
@@ -868,18 +897,19 @@ AC_CACHE_CHECK([whether the compiler is clang], [emacs_cv_clang],
 
 # When compiling with GCC, prefer -isystem to -I when including system
 # include files, to avoid generating useless diagnostics for the files.
-if test "$gl_gcc_warnings" != yes; then
+AS_IF([test $gl_gcc_warnings = no],
+ [
   isystem='-I'
-  if test "$emacs_cv_clang" = yes
-  then
+  AS_IF([test "$emacs_cv_clang" = yes],
+   [
      # Turn off some warnings if supported.
      gl_WARN_ADD([-Wno-switch])
      gl_WARN_ADD([-Wno-tautological-constant-out-of-range-compare])
      gl_WARN_ADD([-Wno-pointer-sign])
      gl_WARN_ADD([-Wno-string-plus-int])
      gl_WARN_ADD([-Wno-unknown-attributes])
-  fi
-else
+   ])
+ ],[
   isystem='-isystem '
 
   # This, $nw, is the list of warnings we disable.
@@ -890,10 +920,9 @@ else
        # Old toolkits mishandle 'const'.
        nw="$nw -Wwrite-strings"
        ;;
-    *)
-       gl_WARN_ADD([-Werror], [WERROR_CFLAGS])
-       ;;
   esac
+  AS_IF([test $gl_gcc_warnings = yes],
+    [gl_WARN_ADD([-Werror], [WERROR_CFLAGS])])
   AC_SUBST([WERROR_CFLAGS])
 
   nw="$nw -Wsystem-headers"         # Don't let system headers trigger warnings
@@ -901,6 +930,7 @@ else
   nw="$nw -Wformat-nonliteral"      # we do this a lot
   nw="$nw -Wvla"                    # Emacs uses <vla.h>.
   nw="$nw -Wswitch-default"         # Too many warnings for now
+  nw="$nw -Wunused-const-variable=2" # lisp.h declares const objects.
   nw="$nw -Winline"                 # OK to ignore 'inline'
   nw="$nw -Wstrict-overflow"        # OK to optimize assuming that
                                     # signed overflow has undefined behavior
@@ -937,6 +967,11 @@ else
     nw="$nw -Wcast-align"
   fi
 
+  # This causes too much noise in the MinGW build
+  if test $opsys = mingw32; then
+    nw="$nw -Wpointer-sign"
+  fi
+
   gl_MANYWARN_ALL_GCC([ws])
   gl_MANYWARN_COMPLEMENT([ws], [$ws], [$nw])
   for w in $ws; do
@@ -951,13 +986,16 @@ else
 
   # More things that clang is unduly picky about.
   if test $emacs_cv_clang = yes; then
-    gl_WARN_ADD([-Wno-format-extra-args])
+    gl_WARN_ADD([-Wno-tautological-compare])
     gl_WARN_ADD([-Wno-tautological-constant-out-of-range-compare])
-    gl_WARN_ADD([-Wno-unused-command-line-argument])
-    gl_WARN_ADD([-Wno-unused-value])
   fi
 
-  AC_DEFINE([lint], [1], [Define to 1 if the compiler is checking for lint.])
+  # This causes too much noise in the MinGW build
+  if test $opsys = mingw32; then
+    gl_WARN_ADD([-Wno-pointer-sign])
+  fi
+
+  AC_DEFINE([GCC_LINT], [1], [Define to 1 if --enable-gcc-warnings.])
   AC_DEFINE([GNULIB_PORTCHECK], [1], [enable some gnulib portability checks])
   AH_VERBATIM([GNULIB_PORTCHECK_FORTIFY_SOURCE],
   [/* Enable compile-time and run-time bounds-checking, and some warnings,
@@ -975,7 +1013,7 @@ else
 
   gl_MANYWARN_COMPLEMENT([GNULIB_WARN_CFLAGS], [$WARN_CFLAGS], [$nw])
   AC_SUBST([GNULIB_WARN_CFLAGS])
-fi
+ ])
 
 edit_cflags="
   s,///*,/,g
@@ -1130,16 +1168,9 @@ AC_PATH_PROG(GZIP_PROG, gzip)
 test $with_compress_install != yes && test -n "$GZIP_PROG" && \
    GZIP_PROG=" # $GZIP_PROG # (disabled by configure --without-compress-install)"
 
+PAXCTL_dumped=
+PAXCTL_notdumped=
 if test $opsys = gnu-linux; then
-  AC_PATH_PROG(PAXCTL, paxctl,,
-    [$PATH$PATH_SEPARATOR/sbin$PATH_SEPARATOR/usr/sbin])
-  if test "X$PAXCTL" != X; then
-    AC_MSG_CHECKING([whether binaries have a PT_PAX_FLAGS header])
-    AC_LINK_IFELSE([AC_LANG_PROGRAM([], [])],
-      [if $PAXCTL -v conftest$EXEEXT >/dev/null 2>&1; then AC_MSG_RESULT(yes)
-      else AC_MSG_RESULT(no); PAXCTL=""; fi])
-  fi
-
   if test "${SETFATTR+set}" != set; then
     AC_CACHE_CHECK([for setfattr],
       [emacs_cv_prog_setfattr],
@@ -1150,6 +1181,7 @@ if test $opsys = gnu-linux; then
 	 emacs_cv_prog_setfattr=no
        fi])
     if test "$emacs_cv_prog_setfattr" = yes; then
+      PAXCTL_notdumped='$(SETFATTR) -n user.pax.flags -v er'
       SETFATTR=setfattr
     else
       SETFATTR=
@@ -1158,6 +1190,32 @@ if test $opsys = gnu-linux; then
     AC_SUBST([SETFATTR])
   fi
 fi
+case $opsys,$PAXCTL_notdumped in
+  gnu-linux, | netbsd,)
+    AC_PATH_PROG([PAXCTL], [paxctl], [],
+      [$PATH$PATH_SEPARATOR/sbin$PATH_SEPARATOR/usr/sbin])
+    if test -n "$PAXCTL"; then
+      if test "$opsys" = netbsd; then
+	PAXCTL_dumped='$(PAXCTL) +a'
+	PAXCTL_notdumped=$PAXCTL_dumped
+      else
+	AC_MSG_CHECKING([whether binaries have a PT_PAX_FLAGS header])
+	AC_LINK_IFELSE([AC_LANG_PROGRAM([], [])],
+	  [if $PAXCTL -v conftest$EXEEXT >/dev/null 2>&1; then
+	     AC_MSG_RESULT([yes])
+	   else
+	     AC_MSG_RESULT([no])
+	     PAXCTL=
+	   fi])
+	if test -n "$PAXCTL"; then
+	  PAXCTL_dumped='$(PAXCTL) -zex'
+	  PAXCTL_notdumped='$(PAXCTL) -r'
+	fi
+      fi
+    fi;;
+esac
+AC_SUBST([PAXCTL_dumped])
+AC_SUBST([PAXCTL_notdumped])
 
 ## Need makeinfo >= 4.7 (?) to build the manuals.
 if test "$MAKEINFO" != "no"; then
@@ -1585,15 +1643,17 @@ AC_CHECK_HEADERS_ONCE(
   sys/resource.h
   sys/utsname.h pwd.h utmp.h util.h)
 
-AC_MSG_CHECKING(if personality LINUX32 can be set)
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <sys/personality.h>]], [[personality (PER_LINUX32)]])],
-               emacs_cv_personality_linux32=yes,
-	       emacs_cv_personality_linux32=no)
-AC_MSG_RESULT($emacs_cv_personality_linux32)
-
-if test $emacs_cv_personality_linux32 = yes; then
-  AC_DEFINE(HAVE_PERSONALITY_LINUX32, 1,
-            [Define to 1 if personality LINUX32 can be set.])
+AC_CACHE_CHECK([for ADDR_NO_RANDOMIZE],
+  [emacs_cv_personality_addr_no_randomize],
+  [AC_COMPILE_IFELSE(
+     [AC_LANG_PROGRAM([[#include <sys/personality.h>]],
+		      [[personality (personality (0xffffffff)
+				     | ADDR_NO_RANDOMIZE)]])],
+     [emacs_cv_personality_addr_no_randomize=yes],
+     [emacs_cv_personality_addr_no_randomize=no])])
+if test $emacs_cv_personality_addr_no_randomize = yes; then
+  AC_DEFINE([HAVE_PERSONALITY_ADDR_NO_RANDOMIZE], [1],
+            [Define to 1 if personality flag ADDR_NO_RANDOMIZE exists.])
 fi
 
 # Note that Solaris has sys/sysinfo.h which defines struct
@@ -2011,17 +2071,6 @@ fi
 ## $window_system is now set to the window system we will
 ## ultimately use.
 
-if test "$window_system" = none && test "$gl_gcc_warnings" = yes; then
-   # Too many warnings for now.
-   nw=
-   nw="$nw -Wsuggest-attribute=noreturn"
-   gl_MANYWARN_COMPLEMENT([WARN_CFLAGS], [$WARN_CFLAGS], [$nw])
-
-   gl_WARN_ADD([-Wno-unused-variable])
-   gl_WARN_ADD([-Wno-unused-but-set-variable])
-   gl_WARN_ADD([-Wno-unused-but-set-parameter])
-fi
-
 term_header=
 HAVE_X_WINDOWS=no
 HAVE_X11=no
@@ -2130,8 +2179,8 @@ elif test "$hybrid_malloc" = yes; then
   AC_DEFINE(HYBRID_MALLOC, 1,
     [Define to use gmalloc before dumping and the system malloc after.])
   HYBRID_MALLOC=1
-  GNU_MALLOC=
-  GNU_MALLOC_reason="only before dumping"
+  GNU_MALLOC=no
+  GNU_MALLOC_reason=" (only before dumping)"
   GMALLOC_OBJ=gmalloc.o
   VMLIMIT_OBJ=
 else
@@ -2716,6 +2765,21 @@ fi
 AC_SUBST(LIBGNUTLS_LIBS)
 AC_SUBST(LIBGNUTLS_CFLAGS)
 
+HAVE_LIBSYSTEMD=no
+if test "${with_libsystemd}" = "yes" ; then
+  dnl This code has been tested with libsystemd 222 and later.
+  dnl FIXME: Find the earliest version number for which Emacs should work,
+  dnl and change '222' to that number.
+  EMACS_CHECK_MODULES([LIBSYSTEMD], [libsystemd >= 222],
+    [HAVE_LIBSYSTEMD=yes], [HAVE_LIBSYSTEMD=no])
+  if test "${HAVE_LIBSYSTEMD}" = "yes"; then
+    AC_DEFINE(HAVE_LIBSYSTEMD, 1, [Define if using libsystemd.])
+  fi
+fi
+
+AC_SUBST(LIBSYSTEMD_LIBS)
+AC_SUBST(LIBSYSTEMD_CFLAGS)
+
 NOTIFY_OBJ=
 NOTIFY_SUMMARY=no
 
@@ -3183,34 +3247,29 @@ fi
 
 ### Use -lXpm if available, unless '--with-xpm=no'.
 ### mingw32 doesn't use -lXpm, since it loads the library dynamically.
-### In the Cygwin-w32 build, we need to use /usr/include/noX/X11/xpm.h
-### rather than /usr/include/X11/xpm.h, so we set CPPFLAGS (and
-### LDFLAGS) accordingly.
+### The Cygwin-w32 build uses <noX/xpm.h> instead of <X11/xpm.h>, so
+### we need to set LDFLAGS accordingly.
 HAVE_XPM=no
 LIBXPM=
 if test "${HAVE_W32}" = "yes" && test "${opsys}" = "cygwin"; then
   if test "${with_xpm}" != "no"; then
-    SAVE_CPPFLAGS="$CPPFLAGS"
     SAVE_LDFLAGS="$LDFLAGS"
-    CPPFLAGS="$CPPFLAGS -I/usr/include/noX"
     LDFLAGS="$LDFLAGS -L/usr/lib/noX"
-    AC_CHECK_HEADER(X11/xpm.h,
+    AC_CHECK_HEADER(noX/xpm.h,
       [AC_CHECK_LIB(Xpm, XpmReadFileToImage, HAVE_XPM=yes)])
     if test "${HAVE_XPM}" = "yes"; then
       AC_MSG_CHECKING(for XpmReturnAllocPixels preprocessor define)
       AC_EGREP_CPP(no_return_alloc_pixels,
-      [#include "X11/xpm.h"
+      [#include "noX/xpm.h"
 #ifndef XpmReturnAllocPixels
 no_return_alloc_pixels
 #endif
       ], HAVE_XPM=no, HAVE_XPM=yes)
 
       if test "${HAVE_XPM}" = "yes"; then
-        REAL_CPPFLAGS="$REAL_CPPFLAGS -I/usr/include/noX"
 	AC_MSG_RESULT(yes)
       else
 	AC_MSG_RESULT(no)
-        CPPFLAGS="$SAVE_CPPFLAGS"
         LDFLAGS="$SAVE_LDFLAGS"
       fi
     fi
@@ -3342,24 +3401,27 @@ HAVE_MODULES=no
 MODULES_OBJ=
 MODULES_SUFFIX=
 if test "${with_modules}" != "no"; then
-  if test "$opsys" = "gnu-linux"; then
-    LIBMODULES="-ldl"
-    MODULES_SUFFIX=".so"
-    HAVE_MODULES=yes
-  elif test "$opsys" = "cygwin"; then
-    MODULES_SUFFIX=".dll"
-    HAVE_MODULES=yes
-  elif test "$opsys" = "darwin"; then
-    MODULES_SUFFIX=".so"
-    HAVE_MODULES=yes
-  elif test "$opsys" = "mingw32"; then
-    MODULES_SUFFIX=".dll"
-    HAVE_MODULES=yes
-  else
-    # BSD system have dlopen in the libc
-    AC_CHECK_FUNC(dlopen, [MODULES_SUFFIX=".so"]
-                          [HAVE_MODULES=yes], [])
-  fi
+  case $opsys in
+    gnu|gnu-linux)
+      LIBMODULES="-ldl"
+      MODULES_SUFFIX=".so"
+      HAVE_MODULES=yes
+      ;;
+    cygwin|mingw32)
+      MODULES_SUFFIX=".dll"
+      HAVE_MODULES=yes
+      ;;
+    darwin)
+      MODULES_SUFFIX=".so"
+      HAVE_MODULES=yes
+      ;;
+    *)
+      # BSD systems have dlopen in libc.
+      AC_CHECK_FUNC([dlopen],
+        [MODULES_SUFFIX=".so"
+         HAVE_MODULES=yes])
+      ;;
+  esac
 
   if test "${HAVE_MODULES}" = no; then
     AC_MSG_ERROR([Dynamic modules are not supported on your system])
@@ -3783,7 +3845,7 @@ lrand48 random rint \
 select getpagesize setlocale newlocale \
 getrlimit setrlimit shutdown \
 pthread_sigmask strsignal setitimer \
-sendto recvfrom getsockname getpeername getifaddrs freeifaddrs \
+sendto recvfrom getsockname getifaddrs freeifaddrs \
 gai_strerror sync \
 getpwent endpwent getgrent endgrent \
 cfmakeraw cfsetspeed copysign __executable_start log2)
@@ -4227,23 +4289,32 @@ else
     [Returns true if character is any form of separator.])
 fi
 
-AH_TEMPLATE(NO_EDITRES, [Define if XEditRes should not be used.])
-
-case $opsys in
-  aix4-2)
-    dnl Unfortunately without libXmu we cannot support EditRes.
-    if test "x$ac_cv_search_XmuConvertStandardSelection" = xno; then
-      AC_DEFINE(NO_EDITRES, 1)
+if test "$USE_X_TOOLKIT" != "none"; then
+  have_editres=yes
+  case $opsys in
+    hpux*)
+      dnl Assar Westerlund <assar@sics.se> says this is necessary
+      dnl for HP-UX 10.20, and that it works for HP-UX 0 as well.
+      have_editres=no
+    ;;
+  esac
+  if test "$have_editres" != no && test ! -z "$LIBXMU"; then
+    OLDLIBS="$LIBS"
+    dnl See libXmu.a check above.
+    if test x$HAVE_X11XTR6 = xyes; then
+      LIBS="-lXt -lSM -lICE $LIBXMU"
+    else
+      OTHERLIBS="-lXt -$LIBXMU"
     fi
-    ;;
-
-  hpux*)
-    dnl Assar Westerlund <assar@sics.se> says this is necessary for
-    dnl HP-UX 10.20, and that it works for HP-UX 0 as well.
-    AC_DEFINE(NO_EDITRES, 1)
-    ;;
-esac
-
+    AC_TRY_LINK(
+      [#include <X11/Intrinsic.h>
+       #include <X11/Xmu/Editres.h>],
+      [_XEditResCheckMessages (0, 0, 0, 0);],
+      [AC_DEFINE([X_TOOLKIT_EDITRES], 1,
+        [Define to 1 if we should use XEditRes.])])
+    LIBS=$OLDLIBS
+  fi
+fi
 
 case $opsys in
   sol2* | unixware )
@@ -5171,9 +5242,10 @@ emacs_config_features=
 for opt in XAW3D XPM JPEG TIFF GIF PNG RSVG CAIRO IMAGEMAGICK SOUND GPM DBUS \
   GCONF GSETTINGS NOTIFY ACL LIBSELINUX GNUTLS LIBXML2 FREETYPE M17N_FLT \
   LIBOTF XFT ZLIB TOOLKIT_SCROLL_BARS X_TOOLKIT X11 NS MODULES \
-  XWIDGETS; do
+  XWIDGETS LIBSYSTEMD CANNOT_DUMP; do
 
     case $opt in
+      CANNOT_DUMP) eval val=\${$opt} ;;
       NOTIFY|ACL) eval val=\${${opt}_SUMMARY} ;;
       TOOLKIT_SCROLL_BARS|X_TOOLKIT) eval val=\${USE_$opt} ;;
       *) eval val=\${HAVE_$opt} ;;
@@ -5218,6 +5290,7 @@ AS_ECHO(["  Does Emacs use -lXaw3d?                                 ${HAVE_XAW3D
   Does Emacs use -lm17n-flt?                              ${HAVE_M17N_FLT}
   Does Emacs use -lotf?                                   ${HAVE_LIBOTF}
   Does Emacs use -lxft?                                   ${HAVE_XFT}
+  Does Emacs use -lsystemd?                               ${HAVE_LIBSYSTEMD}
   Does Emacs directly use zlib?                           ${HAVE_ZLIB}
   Does Emacs have dynamic modules support?                ${HAVE_MODULES}
   Does Emacs use toolkit scroll bars?                     ${USE_TOOLKIT_SCROLL_BARS}

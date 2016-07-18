@@ -108,7 +108,10 @@ A value of nil means 1 <= hh <= 12, and an AM/PM suffix is used."
   :type 'boolean
   :group 'display-time)
 
-(defvar display-time-string nil)
+(defvar display-time-string nil
+  "String used in mode lines to display a time string.
+It should not be set directly, but is instead updated by the
+`display-time' function.")
 ;;;###autoload(put 'display-time-string 'risky-local-variable t)
 
 (defcustom display-time-hook nil
@@ -532,7 +535,8 @@ See `display-time-world'."
     (setq fmt (concat "%-" (int-to-string max-width) "s %s\n"))
     (dolist (timedata (nreverse result))
       (insert (format fmt (car timedata) (cdr timedata))))
-    (delete-char -1)))
+    (delete-char -1))
+  (goto-char (point-min)))
 
 ;;;###autoload
 (defun display-time-world ()

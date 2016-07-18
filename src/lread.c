@@ -36,16 +36,20 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "character.h"
 #include "buffer.h"
 #include "charset.h"
-#include "coding.h"
 #include <epaths.h>
 #include "commands.h"
 #include "keyboard.h"
 #include "systime.h"
 #include "termhooks.h"
 #include "blockinput.h"
+#include <c-ctype.h>
 
 #ifdef MSDOS
 #include "msdos.h"
+#if __DJGPP__ == 2 && __DJGPP_MINOR__ < 5
+# define INFINITY  __builtin_inf()
+# define NAN       __builtin_nan("")
+#endif
 #endif
 
 #ifdef HAVE_NS
@@ -1035,7 +1039,7 @@ Return t if the file exists and loads successfully.  */)
 {
   FILE *stream;
   int fd;
-  int fd_index;
+  int fd_index UNINIT;
   ptrdiff_t count = SPECPDL_INDEX ();
   Lisp_Object found, efound, hist_file_name;
   /* True means we printed the ".el is newer" message.  */
@@ -1151,12 +1155,7 @@ Return t if the file exists and loads successfully.  */)
 #endif
     }
 
-  if (fd < 0)
-    {
-      /* Pacify older GCC with --enable-gcc-warnings.  */
-      IF_LINT (fd_index = 0);
-    }
-  else
+  if (0 <= fd)
     {
       fd_index = SPECPDL_INDEX ();
       record_unwind_protect_int (close_file_unwind, fd);
@@ -1205,7 +1204,11 @@ Return t if the file exists and loads successfully.  */)
   specbind (Qold_style_backquotes, Qnil);
   record_unwind_protect (load_warn_old_style_backquotes, file);
 
-  if (suffix_p (found, ".elc") || (fd >= 0 && (version = safe_to_load_version (fd)) > 0))
+  int is_elc;
+  if ((is_elc = suffix_p (found, ".elc")) != 0
+      /* version = 1 means the file is empty, in which case we can
+	 treat it as not byte-compiled.  */
+      || (fd >= 0 && (version = safe_to_load_version (fd)) > 1))
     /* Load .elc files directly, but not when they are
        remote and have no handler!  */
     {
@@ -1232,7 +1235,7 @@ Return t if the file exists and loads successfully.  */)
           /* openp already checked for newness, no point doing it again.
              FIXME would be nice to get a message when openp
              ignores suffix order due to load_prefer_newer.  */
-          if (!load_prefer_newer)
+          if (!load_prefer_newer && is_elc)
             {
               result = stat (SSDATA (efound), &s1);
               if (result == 0)
@@ -1461,6 +1464,8 @@ openp (Lisp_Object path, Lisp_Object str, Lisp_Object suffixes,
 
   for (; CONSP (path); path = XCDR (path))
     {
+      ptrdiff_t baselen, prefixlen;
+
       filename = Fexpand_file_name (str, XCAR (path));
       if (!complete_filename_p (filename))
 	/* If there are non-absolute elts in PATH (eg ".").  */
@@ -1482,6 +1487,14 @@ openp (Lisp_Object path, Lisp_Object str, Lisp_Object suffixes,
 	  fn = SAFE_ALLOCA (fn_size);
 	}
 
+      /* Copy FILENAME's data to FN but remove starting /: if any.  */
+      prefixlen = ((SCHARS (filename) > 2
+		    && SREF (filename, 0) == '/'
+		    && SREF (filename, 1) == ':')
+		   ? 2 : 0);
+      baselen = SBYTES (filename) - prefixlen;
+      memcpy (fn, SDATA (filename) + prefixlen, baselen);
+
       /* Loop over suffixes.  */
       for (tail = NILP (suffixes) ? list1 (empty_unibyte_string) : suffixes;
 	   CONSP (tail); tail = XCDR (tail))
@@ -1490,16 +1503,10 @@ openp (Lisp_Object path, Lisp_Object str, Lisp_Object suffixes,
 	  ptrdiff_t fnlen, lsuffix = SBYTES (suffix);
 	  Lisp_Object handler;
 
-	  /* Concatenate path element/specified name with the suffix.
-	     If the directory starts with /:, remove that.  */
-	  int prefixlen = ((SCHARS (filename) > 2
-			    && SREF (filename, 0) == '/'
-			    && SREF (filename, 1) == ':')
-			   ? 2 : 0);
-	  fnlen = SBYTES (filename) - prefixlen;
-	  memcpy (fn, SDATA (filename) + prefixlen, fnlen);
-	  memcpy (fn + fnlen, SDATA (suffix), lsuffix + 1);
-	  fnlen += lsuffix;
+	  /* Make complete filename by appending SUFFIX.  */
+	  memcpy (fn + baselen, SDATA (suffix), lsuffix + 1);
+	  fnlen = baselen + lsuffix;
+
 	  /* Check that the file exists and is not a directory.  */
 	  /* We used to only check for handlers on non-absolute file names:
 	        if (absolute)
@@ -1578,8 +1585,7 @@ openp (Lisp_Object path, Lisp_Object str, Lisp_Object suffixes,
 		}
 	      else
 		{
-		  int oflags = O_RDONLY + (NILP (predicate) ? 0 : O_BINARY);
-		  fd = emacs_open (pfn, oflags, 0);
+		  fd = emacs_open (pfn, O_RDONLY, 0);
 		  if (fd < 0)
 		    {
 		      if (errno != ENOENT)
@@ -2150,6 +2156,33 @@ grow_read_buffer (void)
 			 MAX_MULTIBYTE_LENGTH, -1, 1);
 }
 
+/* Return the scalar value that has the Unicode character name NAME.
+   Raise 'invalid-read-syntax' if there is no such character.  */
+static int
+character_name_to_code (char const *name, ptrdiff_t name_len)
+{
+  /* For "U+XXXX", pass the leading '+' to string_to_number to reject
+     monstrosities like "U+-0000".  */
+  Lisp_Object code
+    = (name[0] == 'U' && name[1] == '+'
+       ? string_to_number (name + 1, 16, false)
+       : call2 (Qchar_from_name, make_unibyte_string (name, name_len), Qt));
+
+  if (! RANGED_INTEGERP (0, code, MAX_UNICODE_CHAR)
+      || char_surrogate_p (XINT (code)))
+    {
+      AUTO_STRING (format, "\\N{%s}");
+      AUTO_STRING_WITH_LEN (namestr, name, name_len);
+      xsignal1 (Qinvalid_read_syntax, CALLN (Fformat, format, namestr));
+    }
+
+  return XINT (code);
+}
+
+/* Bound on the length of a Unicode character name.  As of
+   Unicode 9.0.0 the maximum is 83, so this should be safe.  */
+enum { UNICODE_CHARACTER_NAME_LENGTH_BOUND = 200 };
+
 /* Read a \-escape sequence, assuming we already read the `\'.
    If the escape sequence forces unibyte, return eight-bit char.  */
 
@@ -2355,6 +2388,51 @@ read_escape (Lisp_Object readcharfun, bool stringp)
 	if (i > 0x10FFFF)
 	  error ("Non-Unicode character: 0x%x", i);
 	return i;
+      }
+
+    case 'N':
+      /* Named character.  */
+      {
+        c = READCHAR;
+        if (c != '{')
+          invalid_syntax ("Expected opening brace after \\N");
+        char name[UNICODE_CHARACTER_NAME_LENGTH_BOUND + 1];
+        bool whitespace = false;
+        ptrdiff_t length = 0;
+        while (true)
+          {
+            c = READCHAR;
+            if (c < 0)
+              end_of_file_error ();
+            if (c == '}')
+              break;
+            if (! (0 < c && c < 0x80))
+              {
+                AUTO_STRING (format,
+                             "Invalid character U+%04X in character name");
+                xsignal1 (Qinvalid_read_syntax,
+                          CALLN (Fformat, format, make_natnum (c)));
+              }
+            /* Treat multiple adjacent whitespace characters as a
+               single space character.  This makes it easier to use
+               character names in e.g. multi-line strings.  */
+            if (c_isspace (c))
+              {
+                if (whitespace)
+                  continue;
+                c = ' ';
+                whitespace = true;
+              }
+            else
+              whitespace = false;
+            name[length++] = c;
+            if (length >= sizeof name)
+              invalid_syntax ("Character name too long");
+          }
+        if (length == 0)
+          invalid_syntax ("Empty character name");
+	name[length] = '\0';
+	return character_name_to_code (name, length);
       }
 
     default:
@@ -4413,18 +4491,24 @@ void
 dir_warning (char const *use, Lisp_Object dirname)
 {
   static char const format[] = "Warning: %s '%s': %s\n";
-  int access_errno = errno;
-  fprintf (stderr, format, use, SSDATA (ENCODE_SYSTEM (dirname)),
-	   strerror (access_errno));
+  char *diagnostic = emacs_strerror (errno);
+  fprintf (stderr, format, use, SSDATA (ENCODE_SYSTEM (dirname)), diagnostic);
 
   /* Don't log the warning before we've initialized!!  */
   if (initialized)
     {
-      char const *diagnostic = emacs_strerror (access_errno);
+      ptrdiff_t diaglen = strlen (diagnostic);
+      AUTO_STRING_WITH_LEN (diag, diagnostic, diaglen);
+      if (! NILP (Vlocale_coding_system))
+	{
+	  Lisp_Object s
+	    = code_convert_string_norecord (diag, Vlocale_coding_system, false);
+	  diagnostic = SSDATA (s);
+	  diaglen = SBYTES (s);
+	}
       USE_SAFE_ALLOCA;
       char *buffer = SAFE_ALLOCA (sizeof format - 3 * (sizeof "%s" - 1)
-				  + strlen (use) + SBYTES (dirname)
-				  + strlen (diagnostic));
+				  + strlen (use) + SBYTES (dirname) + diaglen);
       ptrdiff_t message_len = esprintf (buffer, format, use, SSDATA (dirname),
 					diagnostic);
       message_dolog (buffer, message_len, 0, STRING_MULTIBYTE (dirname));
@@ -4504,6 +4588,7 @@ were read in.  */);
 	       doc: /* List of directories to search for files to load.
 Each element is a string (directory file name) or nil (meaning
 `default-directory').
+This list is consulted by the `require' function.
 Initialized during startup as described in Info node `(elisp)Library Search'.
 Use `directory-file-name' when adding items to this path.  However, Lisp
 programs that process this list should tolerate directories both with
@@ -4745,4 +4830,6 @@ that are loaded before your customizations are read!  */);
   DEFSYM (Qweakness, "weakness");
   DEFSYM (Qrehash_size, "rehash-size");
   DEFSYM (Qrehash_threshold, "rehash-threshold");
+
+  DEFSYM (Qchar_from_name, "char-from-name");
 }

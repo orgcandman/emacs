@@ -34,6 +34,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "coding.h"
 #include "buffer.h"
 #include "disptab.h"
+#include "intervals.h"
 #include "keymap.h"
 
 /* Buffer used for reading from documentation file.  */
@@ -338,16 +339,7 @@ string is passed through `substitute-command-keys'.  */)
   if (CONSP (fun) && EQ (XCAR (fun), Qmacro))
     fun = XCDR (fun);
   if (SUBRP (fun))
-    {
-      if (XSUBR (fun)->doc == 0)
-	return Qnil;
-      /* FIXME: This is not portable, as it assumes that string
-	 pointers have the top bit clear.  */
-      else if ((intptr_t) XSUBR (fun)->doc >= 0)
-	doc = build_string (XSUBR (fun)->doc);
-      else
-	doc = make_number ((intptr_t) XSUBR (fun)->doc);
-    }
+    doc = make_number (XSUBR (fun)->doc);
   else if (COMPILEDP (fun))
     {
       if ((ASIZE (fun) & PSEUDOVECTOR_SIZE_MASK) <= COMPILED_DOC_STRING)
@@ -472,7 +464,7 @@ aren't strings.  */)
 /* Scanning the DOC files and placing docstring offsets into functions.  */
 
 static void
-store_function_docstring (Lisp_Object obj, ptrdiff_t offset)
+store_function_docstring (Lisp_Object obj, EMACS_INT offset)
 {
   /* Don't use indirect_function here, or defaliases will apply their
      docstrings to the base functions (Bug#2603).  */
@@ -480,15 +472,10 @@ store_function_docstring (Lisp_Object obj, ptrdiff_t offset)
 
   /* The type determines where the docstring is stored.  */
 
-  /* Lisp_Subrs have a slot for it.  */
-  if (SUBRP (fun))
-    {
-      intptr_t negative_offset = - offset;
-      XSUBR (fun)->doc = (char *) negative_offset;
-    }
-
   /* If it's a lisp form, stick it in the form.  */
-  else if (CONSP (fun))
+  if (CONSP (fun) && EQ (XCAR (fun), Qmacro))
+    fun = XCDR (fun);
+  if (CONSP (fun))
     {
       Lisp_Object tem;
 
@@ -502,9 +489,11 @@ store_function_docstring (Lisp_Object obj, ptrdiff_t offset)
 	       correctness is quite delicate.  */
 	    XSETCAR (tem, make_number (offset));
 	}
-      else if (EQ (tem, Qmacro))
-	store_function_docstring (XCDR (fun), offset);
     }
+
+  /* Lisp_Subrs have a slot for it.  */
+  else if (SUBRP (fun))
+    XSUBR (fun)->doc = offset;
 
   /* Bytecode objects sometimes have slots for it.  */
   else if (COMPILEDP (fun))
@@ -739,6 +728,7 @@ Otherwise, return a new string.  */)
 {
   char *buf;
   bool changed = false;
+  bool nonquotes_changed = false;
   unsigned char *strp;
   char *bufp;
   ptrdiff_t idx;
@@ -786,7 +776,7 @@ Otherwise, return a new string.  */)
 	{
 	  /* \= quotes the next character;
 	     thus, to put in \[ without its special meaning, use \=\[.  */
-	  changed = true;
+	  changed = nonquotes_changed = true;
 	  strp += 2;
 	  if (multibyte)
 	    {
@@ -946,6 +936,8 @@ Otherwise, return a new string.  */)
 	  length = SCHARS (tem);
 	  length_byte = SBYTES (tem);
 	subst:
+	  nonquotes_changed = true;
+	subst_quote:
 	  changed = true;
 	  {
 	    ptrdiff_t offset = bufp - buf;
@@ -967,7 +959,7 @@ Otherwise, return a new string.  */)
 	  length = 1;
 	  length_byte = sizeof uLSQM - 1;
 	  idx = strp - SDATA (string) + 1;
-	  goto subst;
+	  goto subst_quote;
 	}
       else if (strp[0] == '`' && quoting_style == STRAIGHT_QUOTING_STYLE)
 	{
@@ -976,34 +968,33 @@ Otherwise, return a new string.  */)
 	  nchars++;
 	  changed = true;
 	}
-      else if (! multibyte)
-	*bufp++ = *strp++, nchars++;
       else
 	{
-	  int len;
-	  int ch = STRING_CHAR_AND_LENGTH (strp, len);
-	  if ((ch == LEFT_SINGLE_QUOTATION_MARK
-	       || ch == RIGHT_SINGLE_QUOTATION_MARK)
-	      && quoting_style != CURVE_QUOTING_STYLE)
-	    {
-	      *bufp++ = ((ch == LEFT_SINGLE_QUOTATION_MARK
-			  && quoting_style == GRAVE_QUOTING_STYLE)
-			 ? '`' : '\'');
-	      strp += len;
-	      changed = true;
-	    }
-	  else
-	    {
-	      do
-		*bufp++ = *strp++;
-	      while (--len != 0);
-	    }
+	  *bufp++ = *strp++;
+	  if (multibyte)
+	    while (! CHAR_HEAD_P (*strp))
+	      *bufp++ = *strp++;
 	  nchars++;
 	}
     }
 
   if (changed)			/* don't bother if nothing substituted */
-    tem = make_string_from_bytes (buf, nchars, bufp - buf);
+    {
+      tem = make_string_from_bytes (buf, nchars, bufp - buf);
+      if (!nonquotes_changed)
+	{
+	  /* Nothing has changed other than quoting, so copy the string’s
+	     text properties.  FIXME: Text properties should survive other
+	     changes too.  */
+	  INTERVAL interval_copy = copy_intervals (string_intervals (string),
+						   0, SCHARS (string));
+	  if (interval_copy)
+	    {
+	      set_interval_object (interval_copy, tem);
+	      set_string_intervals (tem, interval_copy);
+	    }
+	}
+    }
   else
     tem = string;
   xfree (buf);
@@ -1027,12 +1018,17 @@ syms_of_doc (void)
 
   DEFVAR_LISP ("text-quoting-style", Vtext_quoting_style,
                doc: /* Style to use for single quotes in help and messages.
-Its value should be a symbol.
+Its value should be a symbol.  It works by substituting certain single
+quotes for grave accent and apostrophe.  This is done in help output
+and in functions like `message' and `format-message'.  It is not done
+in `format'.
+
 `curve' means quote with curved single quotes \\=‘like this\\=’.
 `straight' means quote with straight apostrophes \\='like this\\='.
-`grave' means quote with grave accent and apostrophe \\=`like this\\='.
-The default value nil acts like `curve' if curved single quotes are
-displayable, and like `grave' otherwise.  */);
+`grave' means quote with grave accent and apostrophe \\=`like this\\=';
+i.e., do not alter quote marks.  The default value nil acts like
+`curve' if curved single quotes are displayable, and like `grave'
+otherwise.  */);
   Vtext_quoting_style = Qnil;
 
   DEFVAR_BOOL ("internal--text-quoting-flag", text_quoting_flag,

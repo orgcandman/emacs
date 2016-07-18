@@ -35,7 +35,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "window.h"
 
 static void sort_vector_copy (Lisp_Object, ptrdiff_t,
-			      Lisp_Object [restrict], Lisp_Object [restrict]);
+			      Lisp_Object *restrict, Lisp_Object *restrict);
 static bool internal_equal (Lisp_Object, Lisp_Object, int, bool, Lisp_Object);
 
 DEFUN ("identity", Fidentity, Sidentity, 1, 1, 0,
@@ -226,7 +226,7 @@ Like in `substring', negative values are counted from the end.
 The strings are compared by the numeric values of their characters.
 For instance, STR1 is "less than" STR2 if its first differing
 character has a smaller numeric value.  If IGNORE-CASE is non-nil,
-characters are converted to lower-case before comparing them.  Unibyte
+characters are converted to upper-case before comparing them.  Unibyte
 strings are converted to multibyte for comparison.
 
 The value is t if the strings (or specified portions) match.
@@ -2654,6 +2654,30 @@ SEQUENCE may be a list, a vector, a bool-vector, or a string.  */)
 
   return sequence;
 }
+
+DEFUN ("mapcan", Fmapcan, Smapcan, 2, 2, 0,
+       doc: /* Apply FUNCTION to each element of SEQUENCE, and concatenate
+the results by altering them (using `nconc').
+SEQUENCE may be a list, a vector, a bool-vector, or a string. */)
+     (Lisp_Object function, Lisp_Object sequence)
+{
+  register EMACS_INT leni;
+  register Lisp_Object *args;
+  Lisp_Object ret;
+  USE_SAFE_ALLOCA;
+
+  if (CHAR_TABLE_P (sequence))
+    wrong_type_argument (Qlistp, sequence);
+
+  leni = XFASTINT (Flength (sequence));
+  SAFE_ALLOCA_LISP (args, leni);
+  mapcar1 (leni, args, function, sequence);
+  ret = Fnconc (leni, args);
+
+  SAFE_FREE ();
+
+  return ret;
+}
 
 /* This is how C code calls `yes-or-no-p' and allows the user
    to redefine it.  */
@@ -2808,17 +2832,24 @@ require_unwind (Lisp_Object old_value)
 
 DEFUN ("require", Frequire, Srequire, 1, 3, 0,
        doc: /* If feature FEATURE is not loaded, load it from FILENAME.
-If FEATURE is not a member of the list `features', then the feature
-is not loaded; so load the file FILENAME.
-If FILENAME is omitted, the printname of FEATURE is used as the file name,
-and `load' will try to load this name appended with the suffix `.elc',
-`.el', or the system-dependent suffix for dynamic module files, in that
-order.  The name without appended suffix will not be used.
-See `get-load-suffixes' for the complete list of suffixes.
-If the optional third argument NOERROR is non-nil,
-then return nil if the file is not found instead of signaling an error.
-Normally the return value is FEATURE.
-The normal messages at start and end of loading FILENAME are suppressed.  */)
+If FEATURE is not a member of the list `features', then the feature is
+not loaded; so load the file FILENAME.
+
+If FILENAME is omitted, the printname of FEATURE is used as the file
+name, and `load' will try to load this name appended with the suffix
+`.elc', `.el', or the system-dependent suffix for dynamic module
+files, in that order.  The name without appended suffix will not be
+used.  See `get-load-suffixes' for the complete list of suffixes.
+
+The directories in `load-path' are searched when trying to find the
+file name.
+
+If the optional third argument NOERROR is non-nil, then return nil if
+the file is not found instead of signaling an error.  Normally the
+return value is FEATURE.
+
+The normal messages at start and end of loading FILENAME are
+suppressed.  */)
   (Lisp_Object feature, Lisp_Object filename, Lisp_Object noerror)
 {
   Lisp_Object tem;
@@ -2999,7 +3030,6 @@ The data read from the system are decoded using `locale-coding-system'.  */)
 {
   char *str = NULL;
 #ifdef HAVE_LANGINFO_CODESET
-  Lisp_Object val;
   if (EQ (item, Qcodeset))
     {
       str = nl_langinfo (CODESET);
@@ -3015,7 +3045,7 @@ The data read from the system are decoded using `locale-coding-system'.  */)
       for (i = 0; i < 7; i++)
 	{
 	  str = nl_langinfo (days[i]);
-	  val = build_unibyte_string (str);
+	  AUTO_STRING (val, str);
 	  /* Fixme: Is this coding system necessarily right, even if
 	     it is consistent with CODESET?  If not, what to do?  */
 	  ASET (v, i, code_convert_string_norecord (val, Vlocale_coding_system,
@@ -3035,7 +3065,7 @@ The data read from the system are decoded using `locale-coding-system'.  */)
       for (i = 0; i < 12; i++)
 	{
 	  str = nl_langinfo (months[i]);
-	  val = build_unibyte_string (str);
+	  AUTO_STRING (val, str);
 	  ASET (v, i, code_convert_string_norecord (val, Vlocale_coding_system,
 						    0));
 	}
@@ -3668,8 +3698,6 @@ larger_vector (Lisp_Object vec, ptrdiff_t incr_min, ptrdiff_t nitems_max)
 			 Low-level Functions
  ***********************************************************************/
 
-struct hash_table_test hashtest_eq, hashtest_eql, hashtest_equal;
-
 /* Compare KEY1 which has hash code HASH1 and KEY2 with hash code
    HASH2 in hash table H using `eql'.  Value is true if KEY1 and
    KEY2 are the same.  */
@@ -3710,7 +3738,6 @@ cmpfn_user_defined (struct hash_table_test *ht,
   return !NILP (call2 (ht->user_cmp_function, key1, key2));
 }
 
-
 /* Value is a hash code for KEY for use in hash table H which uses
    `eq' to compare keys.  The hash code returned is guaranteed to fit
    in a Lisp integer.  */
@@ -3718,23 +3745,7 @@ cmpfn_user_defined (struct hash_table_test *ht,
 static EMACS_UINT
 hashfn_eq (struct hash_table_test *ht, Lisp_Object key)
 {
-  EMACS_UINT hash = XHASH (key) ^ XTYPE (key);
-  return hash;
-}
-
-/* Value is a hash code for KEY for use in hash table H which uses
-   `eql' to compare keys.  The hash code returned is guaranteed to fit
-   in a Lisp integer.  */
-
-static EMACS_UINT
-hashfn_eql (struct hash_table_test *ht, Lisp_Object key)
-{
-  EMACS_UINT hash;
-  if (FLOATP (key))
-    hash = sxhash (key, 0);
-  else
-    hash = XHASH (key) ^ XTYPE (key);
-  return hash;
+  return XHASH (key) ^ XTYPE (key);
 }
 
 /* Value is a hash code for KEY for use in hash table H which uses
@@ -3744,8 +3755,17 @@ hashfn_eql (struct hash_table_test *ht, Lisp_Object key)
 static EMACS_UINT
 hashfn_equal (struct hash_table_test *ht, Lisp_Object key)
 {
-  EMACS_UINT hash = sxhash (key, 0);
-  return hash;
+  return sxhash (key, 0);
+}
+
+/* Value is a hash code for KEY for use in hash table H which uses
+   `eql' to compare keys.  The hash code returned is guaranteed to fit
+   in a Lisp integer.  */
+
+static EMACS_UINT
+hashfn_eql (struct hash_table_test *ht, Lisp_Object key)
+{
+  return FLOATP (key) ? hashfn_equal (ht, key) : hashfn_eq (ht, key);
 }
 
 /* Value is a hash code for KEY for use in hash table H which uses as
@@ -3758,6 +3778,14 @@ hashfn_user_defined (struct hash_table_test *ht, Lisp_Object key)
   Lisp_Object hash = call1 (ht->user_hash_function, key);
   return hashfn_eq (ht, hash);
 }
+
+struct hash_table_test const
+  hashtest_eq = { LISPSYM_INITIALLY (Qeq), LISPSYM_INITIALLY (Qnil),
+		  LISPSYM_INITIALLY (Qnil), 0, hashfn_eq },
+  hashtest_eql = { LISPSYM_INITIALLY (Qeql), LISPSYM_INITIALLY (Qnil),
+		   LISPSYM_INITIALLY (Qnil), cmpfn_eql, hashfn_eql },
+  hashtest_equal = { LISPSYM_INITIALLY (Qequal), LISPSYM_INITIALLY (Qnil),
+		     LISPSYM_INITIALLY (Qnil), cmpfn_equal, hashfn_equal };
 
 /* Allocate basically initialized hash table.  */
 
@@ -4448,15 +4476,29 @@ sxhash (Lisp_Object obj, int depth)
 			    Lisp Interface
  ***********************************************************************/
 
-
-DEFUN ("sxhash", Fsxhash, Ssxhash, 1, 1, 0,
-       doc: /* Compute a hash code for OBJ and return it as integer.  */)
+DEFUN ("sxhash-eq", Fsxhash_eq, Ssxhash_eq, 1, 1, 0,
+       doc: /* Return an integer hash code for OBJ suitable for `eq'.
+If (eq A B), then (= (sxhash-eq A) (sxhash-eq B)).  */)
   (Lisp_Object obj)
 {
-  EMACS_UINT hash = sxhash (obj, 0);
-  return make_number (hash);
+  return make_number (hashfn_eq (NULL, obj));
 }
 
+DEFUN ("sxhash-eql", Fsxhash_eql, Ssxhash_eql, 1, 1, 0,
+       doc: /* Return an integer hash code for OBJ suitable for `eql'.
+If (eql A B), then (= (sxhash-eql A) (sxhash-eql B)).  */)
+  (Lisp_Object obj)
+{
+  return make_number (hashfn_eql (NULL, obj));
+}
+
+DEFUN ("sxhash-equal", Fsxhash_equal, Ssxhash_equal, 1, 1, 0,
+       doc: /* Return an integer hash code for OBJ suitable for `equal'.
+If (equal A B), then (= (sxhash-equal A) (sxhash-equal B)).  */)
+  (Lisp_Object obj)
+{
+  return make_number (hashfn_equal (NULL, obj));
+}
 
 DEFUN ("make-hash-table", Fmake_hash_table, Smake_hash_table, 0, MANY, 0,
        doc: /* Create and return a new hash table.
@@ -4737,6 +4779,21 @@ returns nil, then (funcall TEST x1 x2) also returns nil.  */)
 #include "sha256.h"
 #include "sha512.h"
 
+static Lisp_Object
+make_digest_string (Lisp_Object digest, int digest_size)
+{
+  unsigned char *p = SDATA (digest);
+
+  for (int i = digest_size - 1; i >= 0; i--)
+    {
+      static char const hexdigit[16] = "0123456789abcdef";
+      int p_i = p[i];
+      p[2 * i] = hexdigit[p_i >> 4];
+      p[2 * i + 1] = hexdigit[p_i & 0xf];
+    }
+  return digest;
+}
+
 /* ALGORITHM is a symbol: md5, sha1, sha224 and so on. */
 
 static Lisp_Object
@@ -4744,7 +4801,6 @@ secure_hash (Lisp_Object algorithm, Lisp_Object object, Lisp_Object start,
 	     Lisp_Object end, Lisp_Object coding_system, Lisp_Object noerror,
 	     Lisp_Object binary)
 {
-  int i;
   ptrdiff_t size, start_char = 0, start_byte, end_char = 0, end_byte;
   register EMACS_INT b, e;
   register struct buffer *bp;
@@ -4936,17 +4992,7 @@ secure_hash (Lisp_Object algorithm, Lisp_Object object, Lisp_Object start,
 	     SSDATA (digest));
 
   if (NILP (binary))
-    {
-      unsigned char *p = SDATA (digest);
-      for (i = digest_size - 1; i >= 0; i--)
-	{
-	  static char const hexdigit[16] = "0123456789abcdef";
-	  int p_i = p[i];
-	  p[2 * i] = hexdigit[p_i >> 4];
-	  p[2 * i + 1] = hexdigit[p_i & 0xf];
-	}
-      return digest;
-    }
+    return make_digest_string (digest, digest_size);
   else
     return make_unibyte_string (SSDATA (digest), digest_size);
 }
@@ -4997,6 +5043,45 @@ If BINARY is non-nil, returns a string in binary form.  */)
 {
   return secure_hash (algorithm, object, start, end, Qnil, Qnil, binary);
 }
+
+DEFUN ("buffer-hash", Fbuffer_hash, Sbuffer_hash, 0, 1, 0,
+       doc: /* Return a hash of the contents of BUFFER-OR-NAME.
+This hash is performed on the raw internal format of the buffer,
+disregarding any coding systems.
+If nil, use the current buffer." */ )
+  (Lisp_Object buffer_or_name)
+{
+  Lisp_Object buffer;
+  struct buffer *b;
+  struct sha1_ctx ctx;
+
+  if (NILP (buffer_or_name))
+    buffer = Fcurrent_buffer ();
+  else
+    buffer = Fget_buffer (buffer_or_name);
+  if (NILP (buffer))
+    nsberror (buffer_or_name);
+
+  b = XBUFFER (buffer);
+  sha1_init_ctx (&ctx);
+
+  /* Process the first part of the buffer. */
+  sha1_process_bytes (BUF_BEG_ADDR (b),
+		      BUF_GPT_BYTE (b) - BUF_BEG_BYTE (b),
+		      &ctx);
+
+  /* If the gap is before the end of the buffer, process the last half
+     of the buffer. */
+  if (BUF_GPT_BYTE (b) < BUF_Z_BYTE (b))
+    sha1_process_bytes (BUF_GAP_END_ADDR (b),
+			BUF_Z_ADDR (b) - BUF_GAP_END_ADDR (b),
+			&ctx);
+
+  Lisp_Object digest = make_uninit_string (SHA1_DIGEST_SIZE * 2);
+  sha1_finish_ctx (&ctx, SSDATA (digest));
+  return make_digest_string (digest, SHA1_DIGEST_SIZE);
+}
+
 
 void
 syms_of_fns (void)
@@ -5024,7 +5109,9 @@ syms_of_fns (void)
   DEFSYM (Qkey_or_value, "key-or-value");
   DEFSYM (Qkey_and_value, "key-and-value");
 
-  defsubr (&Ssxhash);
+  defsubr (&Ssxhash_eq);
+  defsubr (&Ssxhash_eql);
+  defsubr (&Ssxhash_equal);
   defsubr (&Smake_hash_table);
   defsubr (&Scopy_hash_table);
   defsubr (&Shash_table_count);
@@ -5060,6 +5147,9 @@ syms_of_fns (void)
     doc: /* A list of symbols which are the features of the executing Emacs.
 Used by `featurep' and `require', and altered by `provide'.  */);
   Vfeatures = list1 (Qemacs);
+  DEFSYM (Qfeatures, "features");
+  /* Let people use lexically scoped vars named `features'.  */
+  Fmake_var_non_special (Qfeatures);
   DEFSYM (Qsubfeatures, "subfeatures");
   DEFSYM (Qfuncall, "funcall");
 
@@ -5140,6 +5230,7 @@ this variable.  */);
   defsubr (&Snconc);
   defsubr (&Smapcar);
   defsubr (&Smapc);
+  defsubr (&Smapcan);
   defsubr (&Smapconcat);
   defsubr (&Syes_or_no_p);
   defsubr (&Sload_average);
@@ -5156,23 +5247,6 @@ this variable.  */);
   defsubr (&Sbase64_decode_string);
   defsubr (&Smd5);
   defsubr (&Ssecure_hash);
+  defsubr (&Sbuffer_hash);
   defsubr (&Slocale_info);
-
-  hashtest_eq.name = Qeq;
-  hashtest_eq.user_hash_function = Qnil;
-  hashtest_eq.user_cmp_function = Qnil;
-  hashtest_eq.cmpfn = 0;
-  hashtest_eq.hashfn = hashfn_eq;
-
-  hashtest_eql.name = Qeql;
-  hashtest_eql.user_hash_function = Qnil;
-  hashtest_eql.user_cmp_function = Qnil;
-  hashtest_eql.cmpfn = cmpfn_eql;
-  hashtest_eql.hashfn = hashfn_eql;
-
-  hashtest_equal.name = Qequal;
-  hashtest_equal.user_hash_function = Qnil;
-  hashtest_equal.user_cmp_function = Qnil;
-  hashtest_equal.cmpfn = cmpfn_equal;
-  hashtest_equal.hashfn = hashfn_equal;
 }

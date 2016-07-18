@@ -255,6 +255,7 @@ This means that the server should not kill the buffer when you say you
 are done with it in the server.")
 (make-variable-buffer-local 'server-existing-buffer)
 
+;;;###autoload
 (defcustom server-name "server"
   "The name of the Emacs server, if this Emacs process creates one.
 The command `server-start' makes use of this.  It should not be
@@ -655,6 +656,7 @@ server or call `\\[server-force-delete]' to forcibly disconnect it."))
 		       :noquery t
 		       :sentinel #'server-sentinel
 		       :filter #'server-process-filter
+		       :use-external-socket t
 		       ;; We must receive file names without being decoded.
 		       ;; Those are decoded by server-process-filter according
 		       ;; to file-name-coding-system.  Also don't get

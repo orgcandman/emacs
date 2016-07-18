@@ -1771,7 +1771,8 @@ font_parse_family_registry (Lisp_Object family, Lisp_Object registry, Lisp_Objec
       p1 = strchr (p0, '-');
       if (! p1)
 	{
-	  AUTO_STRING (extra, (&"*-*"[len && p0[len - 1] == '*']));
+	  bool asterisk = len && p0[len - 1] == '*';
+	  AUTO_STRING_WITH_LEN (extra, &"*-*"[asterisk], 3 - asterisk);
 	  registry = concat2 (registry, extra);
 	}
       registry = Fdowncase (registry);
@@ -2233,7 +2234,8 @@ font_sort_entities (Lisp_Object list, Lisp_Object prefer,
   struct font_sort_data *data;
   unsigned best_score;
   Lisp_Object best_entity;
-  Lisp_Object tail, vec IF_LINT (= Qnil);
+  Lisp_Object tail;
+  Lisp_Object vec UNINIT;
   USE_SAFE_ALLOCA;
 
   for (i = FONT_WEIGHT_INDEX; i <= FONT_AVGWIDTH_INDEX; i++)
@@ -2861,7 +2863,7 @@ font_open_entity (struct frame *f, Lisp_Object entity, int pixel_size)
   struct font_driver_list *driver_list;
   Lisp_Object objlist, size, val, font_object;
   struct font *font;
-  int min_width, height, psize;
+  int height, psize;
 
   eassert (FONT_ENTITY_P (entity));
   size = AREF (entity, FONT_SIZE_INDEX);
@@ -2905,10 +2907,12 @@ font_open_entity (struct frame *f, Lisp_Object entity, int pixel_size)
 	Fcons (font_object, AREF (entity, FONT_OBJLIST_INDEX)));
 
   font = XFONT_OBJECT (font_object);
-  min_width = (font->min_width ? font->min_width
-	       : font->average_width ? font->average_width
-	       : font->space_width ? font->space_width
-	       : 1);
+#ifdef HAVE_WINDOW_SYSTEM
+  int min_width = (font->min_width ? font->min_width
+		   : font->average_width ? font->average_width
+		   : font->space_width ? font->space_width
+		   : 1);
+#endif
 
   int font_ascent, font_descent;
   get_font_ascent_descent (font, &font_ascent, &font_descent);
@@ -5317,7 +5321,7 @@ syms_of_font (void)
   DEFSYM (Qja, "ja");
   DEFSYM (Qko, "ko");
 
-  DEFSYM (QCuser_spec, "user-spec");
+  DEFSYM (QCuser_spec, ":user-spec");
 
   staticpro (&scratch_font_spec);
   scratch_font_spec = Ffont_spec (0, NULL);

@@ -296,8 +296,10 @@ image under point instead.
 If called twice, then try to fetch the URL and see whether it
 redirects somewhere else."
   (interactive "P")
-  (let ((url (or (get-text-property (point) 'shr-url)
-		 (get-text-property (point) 'image-url))))
+  (let ((url (if image-url
+                 (get-text-property (point) 'image-url)
+               (or (get-text-property (point) 'shr-url)
+                   (get-text-property (point) 'image-url)))))
     (cond
      ((not url)
       (message "No URL under point"))
@@ -554,6 +556,16 @@ size, and full-buffer size."
       (insert string)
       (shr-pixel-column))))
 
+(defsubst shr--translate-insertion-chars ()
+  ;; Remove soft hyphens.
+  (goto-char (point-min))
+  (while (search-forward "­" nil t)
+    (replace-match "" t t))
+  ;; Translate non-breaking spaces into real spaces.
+  (goto-char (point-min))
+  (while (search-forward " " nil t)
+    (replace-match " " t t)))
+
 (defun shr-insert (text)
   (when (and (not (bolp))
 	     (get-text-property (1- (point)) 'image-url))
@@ -564,14 +576,11 @@ size, and full-buffer size."
       (insert text)
       (save-restriction
 	(narrow-to-region start (point))
-	;; Remove soft hyphens.
-	(goto-char (point-min))
-	(while (search-forward "­" nil t)
-	  (replace-match "" t t))
+        (shr--translate-insertion-chars)
 	(goto-char (point-max)))))
    (t
     (let ((font-start (point)))
-      (when (and (string-match "\\`[ \t\n\r ]" text)
+      (when (and (string-match "\\`[ \t\n\r]" text)
 		 (not (bolp))
 		 (not (eq (char-after (1- (point))) ? )))
 	(insert " "))
@@ -581,14 +590,11 @@ size, and full-buffer size."
 	(save-restriction
 	  (narrow-to-region start (point))
 	  (goto-char start)
-	  (when (looking-at "[ \t\n\r ]+")
+	  (when (looking-at "[ \t\n\r]+")
 	    (replace-match "" t t))
-	  (while (re-search-forward "[ \t\n\r ]+" nil t)
+	  (while (re-search-forward "[ \t\n\r]+" nil t)
 	    (replace-match " " t t))
-	  ;; Remove soft hyphens.
-	  (goto-char (point-min))
-	  (while (search-forward "­" nil t)
-	    (replace-match "" t t))
+          (shr--translate-insertion-chars)
 	  (goto-char (point-max)))
 	;; We may have removed everything we inserted if if was just
 	;; spaces.
@@ -1004,22 +1010,25 @@ element is the data blob and the second element is the content-type."
 (defun shr-rescale-image (data content-type width height)
   "Rescale DATA, if too big, to fit the current buffer.
 WIDTH and HEIGHT are the sizes given in the HTML data, if any."
-  (if (not (and (fboundp 'imagemagick-types)
-                (get-buffer-window (current-buffer))))
+  (if (or (not (fboundp 'imagemagick-types))
+          (not (get-buffer-window (current-buffer))))
       (create-image data nil t :ascent 100)
     (let* ((edges (window-inside-pixel-edges
                    (get-buffer-window (current-buffer))))
            (max-width (truncate (* shr-max-image-proportion
                                    (- (nth 2 edges) (nth 0 edges)))))
            (max-height (truncate (* shr-max-image-proportion
-                                    (- (nth 3 edges) (nth 1 edges))))))
+                                    (- (nth 3 edges) (nth 1 edges)))))
+           (scaling (image-compute-scaling-factor image-scaling-factor)))
       (when (or (and width
                      (> width max-width))
                 (and height
                      (> height max-height)))
         (setq width nil
               height nil))
-      (if (and width height)
+      (if (and width height
+               (< (* width scaling) max-width)
+               (< (* height scaling) max-height))
           (create-image
            data 'imagemagick t
            :ascent 100
@@ -1441,13 +1450,14 @@ The preference is a float determined from `shr-prefer-media-type'."
 (defun shr-tag-img (dom &optional url)
   (when (or url
 	    (and dom
-		 (> (length (dom-attr dom 'src)) 0)))
+		 (or (> (length (dom-attr dom 'src)) 0)
+                     (> (length (dom-attr dom 'srcset)) 0))))
     (when (> (current-column) 0)
       (insert "\n"))
     (let ((alt (dom-attr dom 'alt))
           (width (shr-string-number (dom-attr dom 'width)))
           (height (shr-string-number (dom-attr dom 'height)))
-	  (url (shr-expand-url (or url (dom-attr dom 'src)))))
+	  (url (shr-expand-url (or url (shr--preferred-image dom)))))
       (let ((start (point-marker)))
 	(when (zerop (length alt))
 	  (setq alt "*"))
@@ -1506,6 +1516,43 @@ The preference is a float determined from `shr-prefer-media-type'."
 	  (put-text-property start (point) 'help-echo
 			     (shr-fill-text
 			      (or (dom-attr dom 'title) alt))))))))
+
+(defun shr--preferred-image (dom)
+  (let ((srcset (dom-attr dom 'srcset))
+        (frame-width (frame-pixel-width))
+        (width (string-to-number (or (dom-attr dom 'width) "100")))
+        candidate)
+    (when (> (length srcset) 0)
+      ;; srcset consist of a series of URL/size specifications
+      ;; separated by the ", " string.
+      (setq srcset
+            (sort (mapcar
+                   (lambda (elem)
+                     (let ((spec (split-string elem " ")))
+                       (cond
+                        ((= (length spec) 1)
+                         ;; Make sure it's well formed.
+                         (list (car spec) 0))
+                        ((string-match "\\([0-9]+\\)x\\'" (cadr spec))
+                         ;; If we have an "x" form, then use the width
+                         ;; spec to compute the real width.
+                         (list (car spec)
+                               (* width (string-to-number
+                                         (match-string 1 (cadr spec))))))
+                        (t
+                         (list (car spec)
+                               (string-to-number (cadr spec)))))))
+                   (split-string srcset ", "))
+                  (lambda (e1 e2)
+                    (> (cadr e1) (cadr e2)))))
+      ;; Choose the smallest picture that's bigger than the current
+      ;; frame.
+      (setq candidate (caar srcset))
+      (while (and srcset
+                  (> (cadr (car srcset)) frame-width))
+        (setq candidate (caar srcset))
+        (pop srcset)))
+    (or candidate (dom-attr dom 'src))))
 
 (defun shr-string-number (string)
   (if (null string)
@@ -1686,19 +1733,19 @@ The preference is a float determined from `shr-prefer-media-type'."
   (let* ((direction (dom-attr dom 'dir))
          (char (cond
                 ((equal direction "ltr")
-                 #x202d)                ; LRO
+                 ?\N{LEFT-TO-RIGHT OVERRIDE})
                 ((equal direction "rtl")
-                 #x202e))))             ; RLO
+                 ?\N{RIGHT-TO-LEFT OVERRIDE}))))
     (when char
-      (insert #x2068 char))             ; FSI + LRO/RLO
+      (insert ?\N{FIRST STRONG ISOLATE} char))
     (shr-generic dom)
     (when char
-      (insert #x202c #x2069))))         ; PDF + PDI
+      (insert ?\N{POP DIRECTIONAL FORMATTING} ?\N{POP DIRECTIONAL ISOLATE}))))
 
 (defun shr-tag-bdi (dom)
-  (insert #x2068)                       ; FSI
+  (insert ?\N{FIRST STRONG ISOLATE})
   (shr-generic dom)
-  (insert #x2069))                      ; PDI
+  (insert ?\N{POP DIRECTIONAL ISOLATE}))
 
 ;;; Table rendering algorithm.
 

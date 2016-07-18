@@ -88,7 +88,11 @@ typedef unsigned long EMACS_UINT;
 typedef long long int EMACS_INT;
 typedef unsigned long long int EMACS_UINT;
 #  define EMACS_INT_MAX LLONG_MAX
-#  define pI "ll"
+#  ifdef __MINGW32__
+#   define pI "I64"
+#  else
+#   define pI "ll"
+#  endif
 # else
 #  error "INTPTR_MAX too large"
 # endif
@@ -341,7 +345,9 @@ error !;
      (struct Lisp_Symbol *) ((intptr_t) XLI (a) - Lisp_Symbol \
 			     + (char *) lispsym))
 # define lisp_h_XTYPE(a) ((enum Lisp_Type) (XLI (a) & ~VALMASK))
-# define lisp_h_XUNTAG(a, type) ((void *) (intptr_t) (XLI (a) - (type)))
+# define lisp_h_XUNTAG(a, type) \
+    __builtin_assume_aligned ((void *) (intptr_t) (XLI (a) - (type)), \
+			      GCALIGNMENT)
 #endif
 
 /* When compiling via gcc -O0, define the key operations as macros, as
@@ -721,12 +727,16 @@ struct Lisp_Symbol
    except the former expands to an integer constant expression.  */
 #define XLI_BUILTIN_LISPSYM(iname) TAG_SYMOFFSET ((iname) * sizeof *lispsym)
 
+/* LISPSYM_INITIALLY (Qfoo) is equivalent to Qfoo except it is
+   designed for use as an initializer, even for a constant initializer.  */
+#define LISPSYM_INITIALLY(name) LISP_INITIALLY (XLI_BUILTIN_LISPSYM (i##name))
+
 /* Declare extern constants for Lisp symbols.  These can be helpful
    when using a debugger like GDB, on older platforms where the debug
    format does not represent C macros.  */
 #define DEFINE_LISP_SYMBOL(name) \
   DEFINE_GDB_SYMBOL_BEGIN (Lisp_Object, name) \
-  DEFINE_GDB_SYMBOL_END (LISP_INITIALLY (XLI_BUILTIN_LISPSYM (i##name)))
+  DEFINE_GDB_SYMBOL_END (LISPSYM_INITIALLY (name))
 
 /* By default, define macros for Qt, etc., as this leads to a bit
    better performance in the core Emacs interpreter.  A plugin can
@@ -1742,7 +1752,7 @@ struct Lisp_Subr
     short min_args, max_args;
     const char *symbol_name;
     const char *intspec;
-    const char *doc;
+    EMACS_INT doc;
   };
 
 enum char_table_specials
@@ -1768,7 +1778,8 @@ CHAR_TABLE_EXTRA_SLOTS (struct Lisp_Char_Table *ct)
 
 /* Make sure that sub char-table contents slot is where we think it is.  */
 verify (offsetof (struct Lisp_Sub_Char_Table, contents)
-	== offsetof (struct Lisp_Vector, contents[SUB_CHAR_TABLE_OFFSET]));
+	== (offsetof (struct Lisp_Vector, contents)
+	    + SUB_CHAR_TABLE_OFFSET * sizeof (Lisp_Object)));
 
 /***********************************************************************
 			       Symbols
@@ -3440,7 +3451,7 @@ ptrdiff_t hash_lookup (struct Lisp_Hash_Table *, Lisp_Object, EMACS_UINT *);
 ptrdiff_t hash_put (struct Lisp_Hash_Table *, Lisp_Object, Lisp_Object,
 		    EMACS_UINT);
 void hash_remove_from_table (struct Lisp_Hash_Table *, Lisp_Object);
-extern struct hash_table_test hashtest_eq, hashtest_eql, hashtest_equal;
+extern struct hash_table_test const hashtest_eq, hashtest_eql, hashtest_equal;
 extern void validate_subarray (Lisp_Object, Lisp_Object, Lisp_Object,
 			       ptrdiff_t, ptrdiff_t *, ptrdiff_t *);
 extern Lisp_Object substring_both (Lisp_Object, ptrdiff_t, ptrdiff_t,
@@ -4124,6 +4135,7 @@ INLINE void fixup_locale (void) {}
 INLINE void synchronize_system_messages_locale (void) {}
 INLINE void synchronize_system_time_locale (void) {}
 #endif
+extern char *emacs_strerror (int);
 extern void shut_down_emacs (int, Lisp_Object);
 
 /* True means don't do interactive redisplay and don't change tty modes.  */
@@ -4160,8 +4172,8 @@ extern void kill_buffer_processes (Lisp_Object);
 extern int wait_reading_process_output (intmax_t, int, int, bool, Lisp_Object,
 					struct Lisp_Process *, int);
 /* Max value for the first argument of wait_reading_process_output.  */
-#if __GNUC__ == 3 || (__GNUC__ == 4 && __GNUC_MINOR__ <= 5)
-/* Work around a bug in GCC 3.4.2, known to be fixed in GCC 4.6.3.
+#if GNUC_PREREQ (3, 0, 0) && ! GNUC_PREREQ (4, 6, 0)
+/* Work around a bug in GCC 3.4.2, known to be fixed in GCC 4.6.0.
    The bug merely causes a bogus warning, but the warning is annoying.  */
 # define WAIT_READING_MAX min (TYPE_MAXIMUM (time_t), INTMAX_MAX)
 #else
@@ -4176,7 +4188,7 @@ extern void delete_keyboard_wait_descriptor (int);
 extern void add_gpm_wait_descriptor (int);
 extern void delete_gpm_wait_descriptor (int);
 #endif
-extern void init_process_emacs (void);
+extern void init_process_emacs (int);
 extern void syms_of_process (void);
 extern void setup_process_coding_systems (Lisp_Object);
 
@@ -4214,6 +4226,7 @@ extern struct byte_stack *byte_stack_list;
 extern void relocate_byte_stack (void);
 extern Lisp_Object exec_byte_code (Lisp_Object, Lisp_Object, Lisp_Object,
 				   Lisp_Object, ptrdiff_t, Lisp_Object *);
+extern Lisp_Object get_byte_code_arity (Lisp_Object);
 
 /* Defined in macros.c.  */
 extern void init_macros (void);
@@ -4246,6 +4259,7 @@ struct tty_display_info;
 struct terminal;
 
 /* Defined in sysdep.c.  */
+extern void init_standard_fds (void);
 extern char *emacs_get_current_dir_name (void);
 extern void stuff_char (char c);
 extern void init_foreground_group (void);
@@ -4532,8 +4546,7 @@ extern void *record_xmalloc (size_t) ATTRIBUTE_ALLOC_SIZE ((1));
    Build with CPPFLAGS='-DUSE_STACK_LISP_OBJECTS=0' to disable it.  */
 
 #if (!defined USE_STACK_LISP_OBJECTS \
-     && defined __GNUC__ && !defined __clang__ \
-     && !(4 < __GNUC__ + (3 < __GNUC_MINOR__ + (2 <= __GNUC_PATCHLEVEL__))))
+     && defined __GNUC__ && !defined __clang__ && ! GNUC_PREREQ (4, 3, 2))
   /* Work around GCC bugs 36584 and 35271, which were fixed in GCC 4.3.2.  */
 # define USE_STACK_LISP_OBJECTS false
 #endif
@@ -4606,27 +4619,29 @@ enum
 						     STACK_CONS (d, Qnil)))) \
 	 : list4 (a, b, c, d))
 
-/* Check whether stack-allocated strings are ASCII-only.  */
+/* Declare NAME as an auto Lisp string if possible, a GC-based one if not.
+   Take its unibyte value from the null-terminated string STR,
+   an expression that should not have side effects.
+   STR's value is not necessarily copied.  The resulting Lisp string
+   should not be modified or made visible to user code.  */
 
-#if defined (ENABLE_CHECKING) && USE_STACK_LISP_OBJECTS
-extern const char *verify_ascii (const char *);
-#else
-# define verify_ascii(str) (str)
-#endif
+#define AUTO_STRING(name, str) \
+  AUTO_STRING_WITH_LEN (name, str, strlen (str))
 
 /* Declare NAME as an auto Lisp string if possible, a GC-based one if not.
-   Take its value from STR.  STR is not necessarily copied and should
-   contain only ASCII characters.  The resulting Lisp string should
-   not be modified or made visible to user code.  */
+   Take its unibyte value from the null-terminated string STR with length LEN.
+   STR may have side effects and may contain null bytes.
+   STR's value is not necessarily copied.  The resulting Lisp string
+   should not be modified or made visible to user code.  */
 
-#define AUTO_STRING(name, str)						\
+#define AUTO_STRING_WITH_LEN(name, str, len)				\
   Lisp_Object name =							\
     (USE_STACK_STRING							\
      ? (make_lisp_ptr							\
 	((&(union Aligned_String)					\
-	  {{strlen (str), -1, 0, (unsigned char *) verify_ascii (str)}}.s), \
-	  Lisp_String))							\
-     : build_string (verify_ascii (str)))
+	  {{len, -1, 0, (unsigned char *) (str)}}.s),			\
+	 Lisp_String))							\
+     : make_unibyte_string (str, len))
 
 /* Loop over all tails of a list, checking for cycles.
    FIXME: Make tortoise and n internal declarations.

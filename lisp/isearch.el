@@ -222,7 +222,7 @@ It is nil if none yet.")
 Default value, nil, means edit the string instead."
   :type 'boolean)
 
-(autoload 'character-fold-to-regexp "character-fold")
+(autoload 'char-fold-to-regexp "char-fold")
 
 (defcustom search-default-mode nil
   "Default mode to use when starting isearch.
@@ -236,7 +236,7 @@ isearch).
 If a function, use that function as an `isearch-regexp-function'.
 Example functions (and the keys to toggle them during isearch)
 are `word-search-regexp' \(`\\[isearch-toggle-word]'), `isearch-symbol-regexp'
-\(`\\[isearch-toggle-symbol]'), and `character-fold-to-regexp' \(`\\[isearch-toggle-character-fold]')."
+\(`\\[isearch-toggle-symbol]'), and `char-fold-to-regexp' \(`\\[isearch-toggle-char-fold]')."
   ;; :type is set below by `isearch-define-mode-toggle'.
   :type '(choice (const :tag "Literal search" nil)
                  (const :tag "Regexp search" t)
@@ -354,11 +354,7 @@ A value of nil means highlight all matches."
   "Face for lazy highlighting of matches other than the current one."
   :group 'lazy-highlight
   :group 'basic-faces)
-(define-obsolete-face-alias 'isearch-lazy-highlight-face 'lazy-highlight "22.1")
-(define-obsolete-variable-alias 'isearch-lazy-highlight-face
-                                'lazy-highlight-face
-                                "22.1")
-(defvar lazy-highlight-face 'lazy-highlight)
+
 
 ;; Define isearch help map.
 
@@ -510,6 +506,7 @@ This is like `describe-bindings', but displays only Isearch keys."
     ;; People expect to be able to paste with the mouse.
     (define-key map [mouse-2] #'isearch-mouse-2)
     (define-key map [down-mouse-2] nil)
+    (define-key map [xterm-paste] #'isearch-xterm-paste)
 
     ;; Some bindings you may want to put in your isearch-mode-hook.
     ;; Suggest some alternates...
@@ -718,7 +715,7 @@ Type \\[isearch-toggle-invisible] to toggle search in invisible text.
 Type \\[isearch-toggle-regexp] to toggle regular-expression mode.
 Type \\[isearch-toggle-word] to toggle word mode.
 Type \\[isearch-toggle-symbol] to toggle symbol mode.
-Type \\[isearch-toggle-character-fold] to toggle character folding.
+Type \\[isearch-toggle-char-fold] to toggle character folding.
 
 Type \\[isearch-toggle-lax-whitespace] to toggle whitespace matching.
 In incremental searches, a space or spaces normally matches any whitespace
@@ -837,10 +834,10 @@ See the command `isearch-forward-symbol' for more information."
        (buffer-substring-no-properties (car bounds) (cdr bounds))))
      (t
       (setq isearch-error "No symbol at point")
+      (isearch-push-state)
       (isearch-update)))))
 
 
-(defvar cursor-sensor-inhibit)
 ;; isearch-mode only sets up incremental search for the minor mode.
 ;; All the work is done by the isearch-mode commands.
 
@@ -973,8 +970,6 @@ The last thing is to trigger a new round of lazy highlighting."
         (setq cursor-sensor-inhibit (delq 'isearch cursor-sensor-inhibit))))
     (setq isearch--current-buffer (current-buffer))
     (make-local-variable 'cursor-sensor-inhibit)
-    (unless (boundp 'cursor-sensor-inhibit)
-      (setq cursor-sensor-inhibit nil))
     ;; Suspend things like cursor-intangible during Isearch so we can search
     ;; even within intangible text.
     (push 'isearch cursor-sensor-inhibit))
@@ -1260,6 +1255,11 @@ You can update the global isearch variables by setting new values to
 	      (isearch-adjusted isearch-adjusted)
 	      (isearch-yank-flag isearch-yank-flag)
 	      (isearch-error isearch-error)
+
+	      (multi-isearch-file-list-new multi-isearch-file-list)
+	      (multi-isearch-buffer-list-new multi-isearch-buffer-list)
+	      (multi-isearch-next-buffer-function multi-isearch-next-buffer-current-function)
+	      (multi-isearch-current-buffer-new multi-isearch-current-buffer)
   ;;; Don't bind this.  We want isearch-search, below, to set it.
   ;;; And the old value won't matter after that.
   ;;;	    (isearch-other-end isearch-other-end)
@@ -1314,7 +1314,10 @@ You can update the global isearch variables by setting new values to
 		  isearch-message isearch-new-message
 		  isearch-forward isearch-new-forward
 		  isearch-regexp-function isearch-new-regexp-function
-		  isearch-case-fold-search isearch-new-case-fold)
+		  isearch-case-fold-search isearch-new-case-fold
+		  multi-isearch-current-buffer multi-isearch-current-buffer-new
+		  multi-isearch-file-list multi-isearch-file-list-new
+		  multi-isearch-buffer-list multi-isearch-buffer-list-new)
 
 	    ;; Restore the minibuffer message before moving point.
             (funcall (or isearch-message-function #'isearch-message) nil t)
@@ -1548,9 +1551,9 @@ The command then executes BODY and updates the isearch prompt."
 Turning on word search turns off regexp mode.")
 (isearch-define-mode-toggle symbol "_" isearch-symbol-regexp "\
 Turning on symbol search turns off regexp mode.")
-(isearch-define-mode-toggle character-fold "'" character-fold-to-regexp "\
+(isearch-define-mode-toggle char-fold "'" char-fold-to-regexp "\
 Turning on character-folding turns off regexp mode.")
-(put 'character-fold-to-regexp 'isearch-message-prefix "char-fold ")
+(put 'char-fold-to-regexp 'isearch-message-prefix "char-fold ")
 
 (isearch-define-mode-toggle regexp "r" nil nil
   (setq isearch-regexp (not isearch-regexp))
@@ -2002,6 +2005,13 @@ is bound to outside of Isearch."
 	(isearch-yank-x-selection)
       (when (functionp binding)
 	(call-interactively binding)))))
+
+(declare-function xterm--pasted-text "term/xterm" ())
+
+(defun isearch-xterm-paste ()
+  "Pull terminal paste into search string."
+  (interactive)
+  (isearch-yank-string (xterm--pasted-text)))
 
 (defun isearch-yank-internal (jumpform)
   "Pull the text from point to the point reached by JUMPFORM.
@@ -2574,16 +2584,30 @@ the word mode."
   (when (eq regexp-function t)
     (setq regexp-function #'word-search-regexp))
   (let ((description
-         ;; Don't use a description on the default search mode.
-         (cond ((equal regexp-function search-default-mode) "")
-               (regexp-function
-                (and (symbolp regexp-function)
-                     (or (get regexp-function 'isearch-message-prefix)
-                         "")))
-               (isearch-regexp "regexp ")
-               ;; We're in literal mode. If the default mode is not
-               ;; literal, then describe it.
-               ((functionp search-default-mode) "literal "))))
+         (cond
+          ;; 1. Do not use a description on the default search mode,
+          ;;    but only if the default search mode is non-nil.
+          ((or (and search-default-mode
+                    (equal search-default-mode regexp-function))
+               ;; Special case where `search-default-mode' is t
+               ;; (defaults to regexp searches).
+               (and (eq search-default-mode t)
+                    (eq search-default-mode isearch-regexp))) "")
+          ;; 2. Use the `isearch-message-prefix' set for
+          ;;    `regexp-function' if available.
+          (regexp-function
+           (and (symbolp regexp-function)
+                (or (get regexp-function 'isearch-message-prefix)
+                    "")))
+          ;; 3. Else if `isearch-regexp' is non-nil, set description
+          ;;    to "regexp ".
+          (isearch-regexp "regexp ")
+          ;; 4. Else if we're in literal mode (and if the default
+          ;;    mode is also not literal), describe it.
+          ((functionp search-default-mode) "literal ")
+          ;; 5. And finally, if none of the above is true, set the
+          ;;    description to an empty string.
+          (t ""))))
     (if space-before
         ;; Move space from the end to the beginning.
         (replace-regexp-in-string "\\(.*\\) \\'" " \\1" description)
@@ -2651,8 +2675,9 @@ the word mode."
   "Non-default value overrides the behavior of `isearch-search-fun-default'.
 This variable's value should be a function, which will be called
 with no arguments, and should return a function that takes three
-arguments: STRING, BOUND, and NOERROR.  See `re-search-forward'
-for the meaning of BOUND and NOERROR arguments.
+arguments: STRING, BOUND, and NOERROR.  STRING is the string to
+be searched for.  See `re-search-forward' for the meaning of
+BOUND and NOERROR arguments.
 
 This returned function will be used by `isearch-search-string' to
 search for the first occurrence of STRING.")
@@ -3230,7 +3255,7 @@ Attempt to do the search exactly the way the pending Isearch would."
 			  ;; 1000 is higher than ediff's 100+,
 			  ;; but lower than isearch main overlay's 1001
 			  (overlay-put ov 'priority 1000)
-			  (overlay-put ov 'face lazy-highlight-face)))
+			  (overlay-put ov 'face 'lazy-highlight)))
 			  ;(overlay-put ov 'window (selected-window))))
 		      ;; Remember the current position of point for
 		      ;; the next call of `isearch-lazy-highlight-update'

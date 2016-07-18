@@ -115,11 +115,10 @@ being the result.")
 (defmacro tramp--instrument-test-case (verbose &rest body)
   "Run BODY with `tramp-verbose' equal VERBOSE.
 Print the the content of the Tramp debug buffer, if BODY does not
-eval properly in `should', `should-not' or `should-error'.  BODY
-shall not contain a timeout."
+eval properly in `should' or `should-not'.  `should-error' is not
+handled properly.  BODY shall not contain a timeout."
   (declare (indent 1) (debug (natnump body)))
   `(let ((tramp-verbose ,verbose)
-	 (tramp-message-show-message t)
 	 (tramp-debug-on-error t)
 	 (debug-ignored-errors
 	  (cons "^make-symbolic-link not supported$" debug-ignored-errors)))
@@ -637,7 +636,26 @@ This checks also `file-name-as-directory', `file-name-directory',
   (should
    (string-equal (file-name-nondirectory "/method:host:/path/to/file/") ""))
   (should-not
-   (unhandled-file-name-directory "/method:host:/path/to/file")))
+   (unhandled-file-name-directory "/method:host:/path/to/file"))
+
+  ;; Bug#10085.
+  (dolist (n-e '(nil t))
+    ;; We must clear `tramp-default-method'.  On hydra, it is "ftp",
+    ;; which ruins the tests.
+    (let ((non-essential n-e)
+          tramp-default-method)
+      (dolist (file
+	       `(,(file-remote-p tramp-test-temporary-file-directory 'method)
+		 ,(file-remote-p tramp-test-temporary-file-directory 'host)))
+	(unless (zerop (length file))
+	  (setq file (format "/%s:" file))
+	  (should (string-equal (directory-file-name file) file))
+	  (should
+	   (string-equal
+	    (file-name-as-directory file)
+	    (if (tramp-completion-mode-p) file (concat file "./"))))
+	  (should (string-equal (file-name-directory file) file))
+	  (should (string-equal (file-name-nondirectory file) "")))))))
 
 (ert-deftest tramp-test07-file-exists-p ()
   "Check `file-exist-p', `write-region' and `delete-file'."
@@ -913,7 +931,7 @@ This tests also `file-directory-p' and `file-accessible-directory-p'."
 	  (make-directory tmp-name1)
 	  (should (file-directory-p tmp-name1))
 	  (should (file-accessible-directory-p tmp-name1))
-	  (should-error (make-directory tmp-name2) :type 'file-error)
+	  (should-error (make-directory tmp-name2))
 	  (make-directory tmp-name2 'parents)
 	  (should (file-directory-p tmp-name2))
 	  (should (file-accessible-directory-p tmp-name2)))
@@ -933,19 +951,16 @@ This tests also `file-directory-p' and `file-accessible-directory-p'."
     (should-not (file-directory-p tmp-name))
     ;; Delete non-empty directory.
     (make-directory tmp-name)
+    (should (file-directory-p tmp-name))
     (write-region "foo" nil (expand-file-name "bla" tmp-name))
-    (should-error (delete-directory tmp-name) :type 'file-error)
+    (should (file-exists-p (expand-file-name "bla" tmp-name)))
+    (should-error (delete-directory tmp-name))
     (delete-directory tmp-name 'recursive)
     (should-not (file-directory-p tmp-name))))
 
 (ert-deftest tramp-test15-copy-directory ()
   "Check `copy-directory'."
   (skip-unless (tramp--test-enabled))
-  (skip-unless
-   (not
-    (eq
-     (tramp-find-foreign-file-name-handler tramp-test-temporary-file-directory)
-     'tramp-smb-file-name-handler)))
 
   (let* ((tmp-name1 (tramp--test-make-temp-name))
 	 (tmp-name2 (tramp--test-make-temp-name))
@@ -954,6 +969,8 @@ This tests also `file-directory-p' and `file-accessible-directory-p'."
 	 (tmp-name4 (expand-file-name "foo" tmp-name1))
 	 (tmp-name5 (expand-file-name "foo" tmp-name2))
 	 (tmp-name6 (expand-file-name "foo" tmp-name3)))
+
+    ;; Copy complete directory.
     (unwind-protect
 	(progn
 	  ;; Copy empty directory.
@@ -968,6 +985,31 @@ This tests also `file-directory-p' and `file-accessible-directory-p'."
 	  (copy-directory tmp-name1 tmp-name2)
 	  (should (file-directory-p tmp-name3))
 	  (should (file-exists-p tmp-name6)))
+
+      ;; Cleanup.
+      (ignore-errors
+	(delete-directory tmp-name1 'recursive)
+	(delete-directory tmp-name2 'recursive)))
+
+    ;; Copy directory contents.
+    (unwind-protect
+	(progn
+	  ;; Copy empty directory.
+	  (make-directory tmp-name1)
+	  (write-region "foo" nil tmp-name4)
+	  (should (file-directory-p tmp-name1))
+	  (should (file-exists-p tmp-name4))
+	  (copy-directory tmp-name1 tmp-name2 nil 'parents 'contents)
+	  (should (file-directory-p tmp-name2))
+	  (should (file-exists-p tmp-name5))
+	  ;; Target directory does exist already.
+	  (delete-file tmp-name5)
+	  (should-not (file-exists-p tmp-name5))
+	  (copy-directory tmp-name1 tmp-name2 nil 'parents 'contents)
+	  (should (file-directory-p tmp-name2))
+	  (should (file-exists-p tmp-name5))
+	  (should-not (file-directory-p tmp-name3))
+	  (should-not (file-exists-p tmp-name6)))
 
       ;; Cleanup.
       (ignore-errors
@@ -1071,12 +1113,12 @@ This tests also `file-readable-p' and `file-regular-p'."
 	(progn
 	  (write-region "foo" nil tmp-name1)
 	  (should (file-exists-p tmp-name1))
-	  (setq attr (file-attributes tmp-name1))
-	  (should (consp attr))
-	  (should (file-exists-p tmp-name1))
 	  (should (file-readable-p tmp-name1))
 	  (should (file-regular-p tmp-name1))
+
 	  ;; We do not test inodes and device numbers.
+	  (setq attr (file-attributes tmp-name1))
+	  (should (consp attr))
 	  (should (null (car attr)))
           (should (numberp (nth 1 attr))) ;; Link.
           (should (numberp (nth 2 attr))) ;; Uid.
@@ -1353,25 +1395,85 @@ This tests also `make-symbolic-link', `file-truename' and `add-name-to-file'."
   "Check `file-name-completion' and `file-name-all-completions'."
   (skip-unless (tramp--test-enabled))
 
-  (let ((tmp-name (tramp--test-make-temp-name)))
-    (unwind-protect
-	(progn
-	  (make-directory tmp-name)
-	  (should (file-directory-p tmp-name))
-	  (write-region "foo" nil (expand-file-name "foo" tmp-name))
-	  (write-region "bar" nil (expand-file-name "bold" tmp-name))
-	  (make-directory (expand-file-name "boz" tmp-name))
-	  (should (equal (file-name-completion "fo" tmp-name) "foo"))
-	  (should (equal (file-name-completion "b" tmp-name) "bo"))
-	  (should
-	   (equal (file-name-completion "b" tmp-name 'file-directory-p) "boz/"))
-	  (should (equal (file-name-all-completions "fo" tmp-name) '("foo")))
-	  (should
-	   (equal (sort (file-name-all-completions "b" tmp-name) 'string-lessp)
-		  '("bold" "boz/"))))
+  (dolist (n-e '(nil t))
+    (let ((non-essential n-e)
+	  (tmp-name (tramp--test-make-temp-name))
+	  (method (file-remote-p tramp-test-temporary-file-directory 'method))
+	  (host (file-remote-p tramp-test-temporary-file-directory 'host)))
 
-      ;; Cleanup.
-      (ignore-errors (delete-directory tmp-name 'recursive)))))
+      (unwind-protect
+	  (progn
+	    ;; Method and host name in completion mode.  This kind of
+	    ;; completion does not work on MS Windows.
+	    (when (and (tramp-completion-mode-p)
+		       (not (memq system-type '(cygwin windows-nt))))
+	      (unless (zerop (length method))
+		(should
+		 (member
+		  (format "%s:" method)
+		  (file-name-all-completions (substring method 0 1) "/"))))
+	      (unless (zerop (length host))
+		(let ((tramp-default-method (or method tramp-default-method)))
+		  (should
+		   (member
+		    (format "%s:" host)
+		    (file-name-all-completions (substring host 0 1) "/")))))
+	      (unless (or (zerop (length method)) (zerop (length host)))
+		(should
+		 (member
+		  (format "%s:" host)
+		  (file-name-all-completions
+		   (substring host 0 1) (format "/%s:" method))))))
+
+	    ;; Local files.
+	    (make-directory tmp-name)
+	    (should (file-directory-p tmp-name))
+	    (write-region "foo" nil (expand-file-name "foo" tmp-name))
+	    (should (file-exists-p (expand-file-name "foo" tmp-name)))
+	    (write-region "bar" nil (expand-file-name "bold" tmp-name))
+	    (should (file-exists-p (expand-file-name "bold" tmp-name)))
+	    (make-directory (expand-file-name "boz" tmp-name))
+	    (should (file-directory-p (expand-file-name "boz" tmp-name)))
+	    (should (equal (file-name-completion "fo" tmp-name) "foo"))
+	    (should (equal (file-name-completion "foo" tmp-name) t))
+	    (should (equal (file-name-completion "b" tmp-name) "bo"))
+	    (should-not (file-name-completion "a" tmp-name))
+	    (should
+	     (equal
+	      (file-name-completion "b" tmp-name 'file-directory-p) "boz/"))
+	    (should (equal (file-name-all-completions "fo" tmp-name) '("foo")))
+	    (should
+	     (equal
+	      (sort (file-name-all-completions "b" tmp-name) 'string-lessp)
+	      '("bold" "boz/")))
+	    (should-not (file-name-all-completions "a" tmp-name))
+	    ;; `completion-regexp-list' restricts the completion to
+	    ;; files which match all expressions in this list.
+	    (let ((completion-regexp-list
+		   `(,directory-files-no-dot-files-regexp "b")))
+	      (should
+	       (equal (file-name-completion "" tmp-name) "bo"))
+	      (should
+	       (equal
+		(sort (file-name-all-completions "" tmp-name) 'string-lessp)
+		'("bold" "boz/"))))
+	    ;; `file-name-completion' ignores file names that end in
+	    ;; any string in `completion-ignored-extensions'.
+	    (let ((completion-ignored-extensions '(".ext")))
+	      (write-region "foo" nil (expand-file-name "foo.ext" tmp-name))
+	      (should (file-exists-p (expand-file-name "foo.ext" tmp-name)))
+	      (should (equal (file-name-completion "fo" tmp-name) "foo"))
+	      (should (equal (file-name-completion "foo" tmp-name) t))
+	      (should (equal (file-name-completion "foo." tmp-name) "foo.ext"))
+	      (should (equal (file-name-completion "foo.ext" tmp-name) t))
+	      ;; `file-name-all-completions' is not affected.
+	      (should
+	       (equal
+		(sort (file-name-all-completions "" tmp-name) 'string-lessp)
+		'("../" "./" "bold" "boz/" "foo" "foo.ext")))))
+
+	;; Cleanup.
+	(ignore-errors (delete-directory tmp-name 'recursive))))))
 
 (ert-deftest tramp-test25-load ()
   "Check `load'."
@@ -1420,7 +1522,8 @@ This tests also `make-symbolic-link', `file-truename' and `add-name-to-file'."
 	    (should (zerop (process-file "ls" nil t nil fnnd)))
 	    ;; `ls' could produce colorized output.
 	    (goto-char (point-min))
-	    (while (re-search-forward tramp-color-escape-sequence-regexp nil t)
+	    (while
+		(re-search-forward tramp-display-escape-sequence-regexp nil t)
 	      (replace-match "" nil nil))
 	    (should (string-equal (format "%s\n" fnnd) (buffer-string)))
 	    (should-not (get-buffer-window (current-buffer) t))
@@ -1430,7 +1533,8 @@ This tests also `make-symbolic-link', `file-truename' and `add-name-to-file'."
 	    (should (zerop (process-file "ls" nil t t fnnd)))
 	    ;; `ls' could produce colorized output.
 	    (goto-char (point-min))
-	    (while (re-search-forward tramp-color-escape-sequence-regexp nil t)
+	    (while
+		(re-search-forward tramp-display-escape-sequence-regexp nil t)
 	      (replace-match "" nil nil))
 	    (should
 	     (string-equal (format "%s\n%s\n" fnnd fnnd) (buffer-string)))
@@ -1533,7 +1637,7 @@ This tests also `make-symbolic-link', `file-truename' and `add-name-to-file'."
 	   (format "ls %s" (file-name-nondirectory tmp-name)) (current-buffer))
 	  ;; `ls' could produce colorized output.
 	  (goto-char (point-min))
-	  (while (re-search-forward tramp-color-escape-sequence-regexp nil t)
+	  (while (re-search-forward tramp-display-escape-sequence-regexp nil t)
 	    (replace-match "" nil nil))
 	  (should
 	   (string-equal
@@ -1556,7 +1660,7 @@ This tests also `make-symbolic-link', `file-truename' and `add-name-to-file'."
 	      (accept-process-output (get-buffer-process (current-buffer)) 1)))
 	  ;; `ls' could produce colorized output.
 	  (goto-char (point-min))
-	  (while (re-search-forward tramp-color-escape-sequence-regexp nil t)
+	  (while (re-search-forward tramp-display-escape-sequence-regexp nil t)
 	    (replace-match "" nil nil))
 	  ;; There might be a nasty "Process *Async Shell* finished" message.
 	  (goto-char (point-min))
@@ -1585,7 +1689,7 @@ This tests also `make-symbolic-link', `file-truename' and `add-name-to-file'."
 	      (accept-process-output (get-buffer-process (current-buffer)) 1)))
 	  ;; `ls' could produce colorized output.
 	  (goto-char (point-min))
-	  (while (re-search-forward tramp-color-escape-sequence-regexp nil t)
+	  (while (re-search-forward tramp-display-escape-sequence-regexp nil t)
 	    (replace-match "" nil nil))
 	  ;; There might be a nasty "Process *Async Shell* finished" message.
 	  (goto-char (point-min))
@@ -1765,6 +1869,12 @@ This does not support globbing characters in file names (yet)."
 	   'tramp-sh-file-name-handler)
        (string-match
 	"ftp$" (file-remote-p tramp-test-temporary-file-directory 'method))))
+
+(defun tramp--test-rsync-p ()
+  "Check, whether the rsync method is used.
+This does not support special file names."
+  (string-equal
+   "rsync" (file-remote-p tramp-test-temporary-file-directory 'method)))
 
 (defun tramp--test-gvfs-p ()
   "Check, whether the remote host runs a GVFS based method.
@@ -1965,6 +2075,7 @@ Several special characters do not work properly there."
 (ert-deftest tramp-test31-special-characters ()
   "Check special characters in file names."
   (skip-unless (tramp--test-enabled))
+  (skip-unless (not (tramp--test-rsync-p)))
 
   (tramp--test-special-characters))
 
@@ -1973,6 +2084,7 @@ Several special characters do not work properly there."
 Use the `stat' command."
   :tags '(:expensive-test)
   (skip-unless (tramp--test-enabled))
+  (skip-unless (not (tramp--test-rsync-p)))
   (skip-unless
    (eq
     (tramp-find-foreign-file-name-handler tramp-test-temporary-file-directory)
@@ -1992,6 +2104,7 @@ Use the `stat' command."
 Use the `perl' command."
   :tags '(:expensive-test)
   (skip-unless (tramp--test-enabled))
+  (skip-unless (not (tramp--test-rsync-p)))
   (skip-unless
    (eq
     (tramp-find-foreign-file-name-handler tramp-test-temporary-file-directory)
@@ -2014,6 +2127,7 @@ Use the `perl' command."
 Use the `ls' command."
   :tags '(:expensive-test)
   (skip-unless (tramp--test-enabled))
+  (skip-unless (not (tramp--test-rsync-p)))
   (skip-unless
    (eq
     (tramp-find-foreign-file-name-handler tramp-test-temporary-file-directory)
@@ -2033,9 +2147,12 @@ Use the `ls' command."
 
 (defun tramp--test-utf8 ()
   "Perform the test in `tramp-test32-utf8*'."
-  (let ((coding-system-for-read 'utf-8)
-	(coding-system-for-write 'utf-8)
-	(file-name-coding-system 'utf-8))
+  (let* ((utf8 (if (and (eq system-type 'darwin)
+			(memq 'utf-8-hfs (coding-system-list)))
+		   'utf-8-hfs 'utf-8))
+	 (coding-system-for-read utf8)
+	 (coding-system-for-write utf8)
+	 (file-name-coding-system utf8))
     (tramp--test-check-files
      (unless (tramp--test-hpux-p) "Γυρίστε το Γαλαξία με Ώτο Στοπ")
      (unless (tramp--test-hpux-p)
@@ -2046,6 +2163,7 @@ Use the `ls' command."
 (ert-deftest tramp-test32-utf8 ()
   "Check UTF8 encoding in file names and file contents."
   (skip-unless (tramp--test-enabled))
+  (skip-unless (not (tramp--test-rsync-p)))
 
   (tramp--test-utf8))
 
@@ -2054,6 +2172,7 @@ Use the `ls' command."
 Use the `stat' command."
   :tags '(:expensive-test)
   (skip-unless (tramp--test-enabled))
+  (skip-unless (not (tramp--test-rsync-p)))
   (skip-unless
    (eq
     (tramp-find-foreign-file-name-handler tramp-test-temporary-file-directory)
@@ -2073,6 +2192,7 @@ Use the `stat' command."
 Use the `perl' command."
   :tags '(:expensive-test)
   (skip-unless (tramp--test-enabled))
+  (skip-unless (not (tramp--test-rsync-p)))
   (skip-unless
    (eq
     (tramp-find-foreign-file-name-handler tramp-test-temporary-file-directory)
@@ -2095,6 +2215,7 @@ Use the `perl' command."
 Use the `ls' command."
   :tags '(:expensive-test)
   (skip-unless (tramp--test-enabled))
+  (skip-unless (not (tramp--test-rsync-p)))
   (skip-unless
    (eq
     (tramp-find-foreign-file-name-handler tramp-test-temporary-file-directory)
@@ -2271,8 +2392,8 @@ Since it unloads Tramp, it shall be the last test to run."
 ;; * set-file-selinux-context
 
 ;; * Work on skipped tests.  Make a comment, when it is impossible.
-;; * Fix `tramp-test15-copy-directory' for `smb'.  Using tar in a pipe
-;;   doesn't work well when an interactive password must be provided.
+;; * Fix `tramp-test06-directory-file-name' for `ftp'.
+;; * Fix `tramp-test15-copy-directory' for `rsync'.
 ;; * Fix `tramp-test27-start-file-process' on MS Windows (`process-send-eof'?).
 ;; * Fix Bug#16928.  Set expected error of `tramp-test33-asynchronous-requests'.
 ;; * Fix `tramp-test35-unload' (Not all symbols are unbound).  Set

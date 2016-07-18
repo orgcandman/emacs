@@ -1155,7 +1155,7 @@ FILE is the file from which we obtained this token."
                       (point-min)
                       (point-max))))))
 
-(defun auto-source--symbol-keyword (symbol)
+(defun auth-source--symbol-keyword (symbol)
   (intern (format ":%s" symbol)))
 
 (defun auth-source-netrc-normalize (alist filename)
@@ -1191,7 +1191,7 @@ FILE is the file from which we obtained this token."
                                   (setq lexv (funcall token-decoder lexv)))
                                 lexv))))
                   (setq ret (plist-put ret
-                                       (auto-source--symbol-keyword k)
+                                       (auth-source--symbol-keyword k)
                                        v))))
               ret))
           alist))
@@ -1268,7 +1268,7 @@ See `auth-source-search' for details on SPEC."
     ;; fill in the valist with whatever data we may have from the search
     ;; we complete the first value if it's a list and use the value otherwise
     (dolist (br base-required)
-      (let ((val (plist-get spec (auto-source--symbol-keyword br))))
+      (let ((val (plist-get spec (auth-source--symbol-keyword br))))
         (when val
           (let ((br-choice (cond
                             ;; all-accepting choice (predicate is t)
@@ -1280,7 +1280,7 @@ See `auth-source-search' for details on SPEC."
 
     ;; for extra required elements, see if the spec includes a value for them
     (dolist (er create-extra)
-      (let ((k (auto-source--symbol-keyword er))
+      (let ((k (auth-source--symbol-keyword er))
             (keys (loop for i below (length spec) by 2
                         collect (nth i spec))))
         (when (memq k keys)
@@ -1292,7 +1292,7 @@ See `auth-source-search' for details on SPEC."
              ;; take the first element if the data is a list
              (data (or (auth-source-netrc-element-or-first data)
                        (plist-get current-data
-                                  (auto-source--symbol-keyword r))))
+                                  (auth-source--symbol-keyword r))))
              ;; this is the default to be offered
              (given-default (auth-source--aget
                              auth-source-creation-defaults r))
@@ -1382,7 +1382,7 @@ See `auth-source-search' for details on SPEC."
 
         (when data
           (setq artificial (plist-put artificial
-                                      (auto-source--symbol-keyword r)
+                                      (auth-source--symbol-keyword r)
                                       (if (eq r 'secret)
                                           (lexical-let ((data data))
                                             (lambda () data))
@@ -1735,7 +1735,7 @@ entries for git.gnus.org:
          (items (catch 'match
                   (dolist (host hosts)
                     (dolist (port ports)
-                      (let* ((port (format "%S" port))
+                      (let* ((port (if port (format "%S" port)))
                              (items (apply #'auth-source-macos-keychain-search-items
                                            coll
                                            type
@@ -1758,12 +1758,28 @@ entries for git.gnus.org:
                         items)))
     items))
 
+
+(defun auth-source--decode-octal-string (string)
+  "Convert octal string to utf-8 string. E.g: 'a\134b' to 'a\b'"
+  (let ((list (string-to-list string))
+        (size (length string)))
+    (decode-coding-string
+     (apply #'unibyte-string
+            (loop for i = 0 then (+ i (if (eq (nth i list) ?\\) 4 1))
+                  for var = (nth i list)
+                  while (< i size)
+                  if (eq var ?\\)
+                  collect (string-to-number
+                           (concat (cl-subseq list (+ i 1) (+ i 4))) 8)
+                  else
+                  collect var))
+     'utf-8)))
+
 (defun* auth-source-macos-keychain-search-items (coll _type _max
                                                       host port
                                                       &key label type
                                                       user
                                                       &allow-other-keys)
-
   (let* ((keychain-generic (eq type 'macos-keychain-generic))
          (args `(,(if keychain-generic
                       "find-generic-password"
@@ -1792,36 +1808,39 @@ entries for git.gnus.org:
         (goto-char (point-min))
         (while (not (eobp))
           (cond
-           ((looking-at "^password: \"\\(.+\\)\"$")
+           ((looking-at "^password: \\(?:0x[0-9A-F]+\\)? *\"\\(.+\\)\"")
             (setq ret (auth-source-macos-keychain-result-append
                        ret
                        keychain-generic
                        "secret"
-                       (lexical-let ((v (match-string 1)))
+                       (lexical-let ((v (auth-source--decode-octal-string
+                                         (match-string 1))))
                          (lambda () v)))))
            ;; TODO: check if this is really the label
            ;; match 0x00000007 <blob>="AppleID"
-           ((looking-at "^[ ]+0x00000007 <blob>=\"\\(.+\\)\"")
+           ((looking-at
+             "^[ ]+0x00000007 <blob>=\\(?:0x[0-9A-F]+\\)? *\"\\(.+\\)\"")
             (setq ret (auth-source-macos-keychain-result-append
                        ret
                        keychain-generic
                        "label"
-                       (match-string 1))))
+                       (auth-source--decode-octal-string (match-string 1)))))
            ;; match "crtr"<uint32>="aapl"
            ;; match "svce"<blob>="AppleID"
-           ((looking-at "^[ ]+\"\\([a-z]+\\)\"[^=]+=\"\\(.+\\)\"")
+           ((looking-at
+             "^[ ]+\"\\([a-z]+\\)\"[^=]+=\\(?:0x[0-9A-F]+\\)? *\"\\(.+\\)\"")
             (setq ret (auth-source-macos-keychain-result-append
                        ret
                        keychain-generic
-                       (match-string 1)
-                       (match-string 2)))))
+                       (auth-source--decode-octal-string (match-string 1))
+                       (auth-source--decode-octal-string (match-string 2))))))
           (forward-line)))
       ;; return `ret' iff it has the :secret key
       (and (plist-get ret :secret) (list ret))))
 
 (defun auth-source-macos-keychain-result-append (result generic k v)
   (push v result)
-  (push (auto-source--symbol-keyword
+  (push (auth-source--symbol-keyword
          (cond
           ((equal k "acct") "user")
           ;; for generic keychains, creator is host, service is port
@@ -1938,7 +1957,7 @@ entries for git.gnus.org:
     ;; fill in the valist with whatever data we may have from the search
     ;; we complete the first value if it's a list and use the value otherwise
     (dolist (br base-required)
-      (let ((val (plist-get spec (auto-source--symbol-keyword br))))
+      (let ((val (plist-get spec (auth-source--symbol-keyword br))))
         (when val
           (let ((br-choice (cond
                             ;; all-accepting choice (predicate is t)
@@ -1950,7 +1969,7 @@ entries for git.gnus.org:
 
     ;; for extra required elements, see if the spec includes a value for them
     (dolist (er create-extra)
-      (let ((k (auto-source--symbol-keyword er))
+      (let ((k (auth-source--symbol-keyword er))
             (keys (loop for i below (length spec) by 2
                         collect (nth i spec))))
         (when (memq k keys)
@@ -1962,7 +1981,7 @@ entries for git.gnus.org:
              ;; take the first element if the data is a list
              (data (or (auth-source-netrc-element-or-first data)
                        (plist-get current-data
-                                  (auto-source--symbol-keyword r))))
+                                  (auth-source--symbol-keyword r))))
              ;; this is the default to be offered
              (given-default (auth-source--aget
                              auth-source-creation-defaults r))
@@ -2022,10 +2041,10 @@ entries for git.gnus.org:
           (if (member r base-secret)
               (setq secret-artificial
                     (plist-put secret-artificial
-                               (auto-source--symbol-keyword r)
+                               (auth-source--symbol-keyword r)
                                data))
             (setq artificial (plist-put artificial
-                                        (auto-source--symbol-keyword r)
+                                        (auth-source--symbol-keyword r)
                                         data))))))
     (plstore-put (oref backend data)
                  (sha1 (format "%s@%s:%s"

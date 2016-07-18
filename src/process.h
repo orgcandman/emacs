@@ -83,7 +83,10 @@ struct Lisp_Process
     Lisp_Object mark;
 
     /* Symbol indicating status of process.
-       This may be a symbol: run, open, or closed.
+       This may be a symbol: run, open, closed, listen, or failed.
+       Or it may be a pair (connect . ADDRINFOS) where ADDRINFOS is
+       a list of remaining (PROTOCOL . ADDRINFO) pairs to try.
+       Or it may be (failed ERR) where ERR is an integer, string or symbol.
        Or it may be a list, whose car is stop, exit or signal
        and whose cdr is a pair (EXIT_CODE . COREDUMP_FLAG)
        or (SIGNAL_NUMBER . COREDUMP_FLAG).  */
@@ -173,8 +176,6 @@ struct Lisp_Process
     int port;
     /* The socket type. */
     int socktype;
-    /* The socket protocol. */
-    int ai_protocol;
 
 #ifdef HAVE_GETADDRINFO_A
     /* Whether the socket is waiting for response from an asynchronous

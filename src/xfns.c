@@ -91,11 +91,6 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "../lwlib/xlwmenu.h"
 #endif
 
-#if !defined (NO_EDITRES)
-#define HACK_EDITRES
-extern void _XEditResCheckMessages (Widget, XtPointer, XEvent *, Boolean *);
-#endif /* not defined NO_EDITRES */
-
 /* Unique id counter for widgets created by the Lucid Widget Library.  */
 
 extern LWLIB_ID widget_id_tick;
@@ -273,7 +268,7 @@ x_real_pos_and_offsets (struct frame *f,
       XFree (tmp_children);
 #endif
 
-      if (wm_window == rootw || had_errors)
+      if (had_errors || wm_window == rootw)
         break;
 
       win = wm_window;
@@ -1434,7 +1429,7 @@ x_set_internal_border_width (struct frame *f, Lisp_Object arg, Lisp_Object oldva
 
   if (border != FRAME_INTERNAL_BORDER_WIDTH (f))
     {
-      FRAME_INTERNAL_BORDER_WIDTH (f) = border;
+      f->internal_border_width = border;
 
 #ifdef USE_X_TOOLKIT
       if (FRAME_X_OUTPUT (f)->edit_widget)
@@ -2662,7 +2657,7 @@ x_window (struct frame *f, long window_prompting)
 
   hack_wm_protocols (f, shell_widget);
 
-#ifdef HACK_EDITRES
+#ifdef X_TOOLKIT_EDITRES
   XtAddEventHandler (shell_widget, 0, True, _XEditResCheckMessages, 0);
 #endif
 
@@ -3128,7 +3123,7 @@ x_default_font_parameter (struct frame *f, Lisp_Object parms)
     {
       /* Remember the explicit font parameter, so we can re-apply it after
 	 we've applied the `default' face settings.  */
-      AUTO_FRAME_ARG (arg, Qfont_param, font_param);
+      AUTO_FRAME_ARG (arg, Qfont_parameter, font_param);
       x_set_frame_parameters (f, arg);
     }
 
@@ -4286,7 +4281,7 @@ x_get_monitor_attributes_xrandr (struct x_display_info *dpyinfo)
   n_monitors = resources->noutput;
   monitors = xzalloc (n_monitors * sizeof *monitors);
 
-#ifdef RANDR13_LIBRARY
+#if RANDR13_LIBRARY
   if (randr13_avail)
     pxid = XRRGetOutputPrimary (dpy, dpyinfo->root_window);
 #endif
@@ -4295,8 +4290,8 @@ x_get_monitor_attributes_xrandr (struct x_display_info *dpyinfo)
     {
       XRROutputInfo *info = XRRGetOutputInfo (dpy, resources,
                                               resources->outputs[i]);
-      Connection conn = info ? info->connection : RR_Disconnected;
-      RRCrtc id = info ? info->crtc : None;
+      if (!info)
+	continue;
 
       if (strcmp (info->name, "default") == 0)
         {
@@ -4307,9 +4302,9 @@ x_get_monitor_attributes_xrandr (struct x_display_info *dpyinfo)
           return Qnil;
         }
 
-      if (conn != RR_Disconnected && id != None)
+      if (info->connection != RR_Disconnected && info->crtc != None)
         {
-          XRRCrtcInfo *crtc = XRRGetCrtcInfo (dpy, resources, id);
+          XRRCrtcInfo *crtc = XRRGetCrtcInfo (dpy, resources, info->crtc);
           struct MonitorInfo *mi = &monitors[i];
           XRectangle workarea_r;
 
@@ -6463,7 +6458,7 @@ nil, it defaults to the selected frame. */)
     default_name = xlispstrdup (font_param);
   else
     {
-      font_param = Fframe_parameter (frame, Qfont_param);
+      font_param = Fframe_parameter (frame, Qfont_parameter);
       if (STRINGP (font_param))
         default_name = xlispstrdup (font_param);
     }
@@ -6795,7 +6790,7 @@ syms_of_xfns (void)
   DEFSYM (Qundefined_color, "undefined-color");
   DEFSYM (Qcompound_text, "compound-text");
   DEFSYM (Qcancel_timer, "cancel-timer");
-  DEFSYM (Qfont_param, "font-parameter");
+  DEFSYM (Qfont_parameter, "font-parameter");
   DEFSYM (Qmono, "mono");
   DEFSYM (Qassq_delete_all, "assq-delete-all");
 

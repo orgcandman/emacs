@@ -21,87 +21,13 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "xwidget.h"
 
-#include <signal.h>
-
-#include <stdio.h>
-#include <setjmp.h>
-#ifdef HAVE_X_WINDOWS
-
 #include "lisp.h"
 #include "blockinput.h"
-#include "syssignal.h"
-
-#include "xterm.h"
-#include <X11/cursorfont.h>
-
-#ifndef makedev
-# include <sys/types.h>
-#endif
-
-#ifdef BSD_SYSTEM
-# include <sys/ioctl.h>
-#endif
-
-#include "systime.h"
-
-#ifndef INCLUDED_FCNTL
-# include <fcntl.h>
-#endif
-#include <ctype.h>
-#include <errno.h>
-#include <setjmp.h>
-#include <sys/stat.h>
-
-#include "charset.h"
-#include "character.h"
-#include "coding.h"
-#include "ccl.h"
 #include "frame.h"
-#include "dispextern.h"
-#include "fontset.h"
-#include "termhooks.h"
-#include "termopts.h"
-#include "termchar.h"
-#include "disptab.h"
-#include "buffer.h"
-#include "window.h"
 #include "keyboard.h"
-#include "intervals.h"
-#include "process.h"
-#include "atimer.h"
-#include "keymap.h"
-
-
-#ifdef USE_X_TOOLKIT
-#include <X11/Shell.h>
-#endif
-#include <X11/extensions/Xcomposite.h>
-#include <X11/extensions/Xrender.h>
-#include <cairo.h>
-#ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
-#endif
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
 #include "gtkutil.h"
-#include "font.h"
-#endif /* HAVE_X_WINDOWS */
-
-#include <gtk/gtk.h>
-#include <gdk/gdk.h>
-
-#include <gtk/gtkx.h>
-
-#include "emacsgtkfixed.h"
-
-#include <wchar.h>
 
 #include <webkit/webkitwebview.h>
-#include <webkit/webkitwebplugindatabase.h>
-#include <webkit/webkitwebplugin.h>
-#include <webkit/webkitglobals.h>
 #include <webkit/webkitwebnavigationaction.h>
 #include <webkit/webkitdownload.h>
 #include <webkit/webkitwebpolicydecision.h>
@@ -156,27 +82,23 @@ webkit_navigation_policy_decision_requested_cb (WebKitWebView *,
 
 DEFUN ("make-xwidget",
        Fmake_xwidget, Smake_xwidget,
-       7, 8, 0,
-       doc: /* Make an xwidget from BEG to END of TYPE.
+       5, 6, 0,
+       doc: /* Make an xwidget of TYPE.
 If BUFFER is nil, use the current buffer.
 If BUFFER is a string and no such buffer exists, create it.
 TYPE is a symbol which can take one of the following values:
 
-- webkit-osr
+- webkit
 
 Returns the newly constructed xwidget, or nil if construction fails.  */)
-  (Lisp_Object beg, Lisp_Object end, Lisp_Object type,
+  (Lisp_Object type,
    Lisp_Object title, Lisp_Object width, Lisp_Object height,
    Lisp_Object arguments, Lisp_Object buffer)
 {
   CHECK_SYMBOL (type);
   CHECK_NATNUM (width);
   CHECK_NATNUM (height);
-  /* This should work a bit like "make-button"
-     (make-button BEG END &rest PROPERTIES)
-     TYPE etc. should be keyword args eventually.
-     (make-xwidget 3 3 'button "oei" 31 31 nil)
-     (xwidget-info (car xwidget-list))  */
+
   struct xwidget *xw = allocate_xwidget ();
   Lisp_Object val;
   xw->type = type;
@@ -191,7 +113,7 @@ Returns the newly constructed xwidget, or nil if construction fails.  */)
   xw->widget_osr = NULL;
   xw->plist = Qnil;
 
-  if (EQ (xw->type, Qwebkit_osr))
+  if (EQ (xw->type, Qwebkit))
     {
       block_input ();
       xw->widgetwindow_osr = gtk_offscreen_window_new ();
@@ -201,7 +123,7 @@ Returns the newly constructed xwidget, or nil if construction fails.  */)
       /* WebKit OSR is the only scrolled component at the moment.  */
       xw->widgetscrolledwindow_osr = NULL;
 
-      if (EQ (xw->type, Qwebkit_osr))
+      if (EQ (xw->type, Qwebkit))
         {
           xw->widgetscrolledwindow_osr = gtk_scrolled_window_new (NULL, NULL);
           gtk_scrolled_window_set_min_content_height
@@ -222,7 +144,7 @@ Returns the newly constructed xwidget, or nil if construction fails.  */)
       gtk_widget_set_size_request (GTK_WIDGET (xw->widget_osr), xw->width,
                                    xw->height);
 
-      if (EQ (xw->type, Qwebkit_osr))
+      if (EQ (xw->type, Qwebkit))
         {
           gtk_container_add (GTK_CONTAINER (xw->widgetwindow_osr),
                              xw->widgetscrolledwindow_osr);
@@ -243,7 +165,7 @@ Returns the newly constructed xwidget, or nil if construction fails.  */)
       g_object_set_data (G_OBJECT (xw->widgetwindow_osr), XG_XWIDGET, xw);
 
       /* signals */
-      if (EQ (xw->type, Qwebkit_osr))
+      if (EQ (xw->type, Qwebkit))
         {
           g_signal_connect (G_OBJECT (xw->widget_osr),
                             "document-load-finished",
@@ -501,7 +423,7 @@ xwidget_init_view (struct xwidget *xww,
   XSETWINDOW (xv->w, s->w);
   XSETXWIDGET (xv->model, xww);
 
-  if (EQ (xww->type, Qwebkit_osr))
+  if (EQ (xww->type, Qwebkit))
     {
       xv->widget = gtk_drawing_area_new ();
       /* Expose event handling.  */
@@ -512,7 +434,7 @@ xwidget_init_view (struct xwidget *xww,
       g_signal_connect (G_OBJECT (xww->widgetwindow_osr), "damage-event",
                         G_CALLBACK (offscreen_damage_event), xv->widget);
 
-      if (EQ (xww->type, Qwebkit_osr))
+      if (EQ (xww->type, Qwebkit))
         {
           g_signal_connect (G_OBJECT (xv->widget), "button-press-event",
                             G_CALLBACK (xwidget_osr_event_forward), NULL);
@@ -569,11 +491,15 @@ x_draw_xwidget_glyph_string (struct glyph_string *s)
      xwidget on screen.  Moving and clipping is done here.  Also view
      initialization.  */
   struct xwidget *xww = s->xwidget;
-  struct xwidget_view *xv = xwidget_view_lookup (xww, s->w);
+  struct xwidget_view *xv;
   int clip_right;
   int clip_bottom;
   int clip_top;
   int clip_left;
+
+  /* FIXME: The result of this call is discarded.
+     What if the lookup fails?  */
+  xwidget_view_lookup (xww, s->w);
 
   int x = s->x;
   int y = s->y + (s->height / 2) - (xww->height / 2);
@@ -582,24 +508,16 @@ x_draw_xwidget_glyph_string (struct glyph_string *s)
      other time to know things like window placement etc.  */
   xv = xwidget_init_view (xww, s, x, y);
 
-  /* Calculate clipping, which is used for all manner of onscreen
-     xwidget views.  Each widget border can get clipped by other emacs
-     objects so there are four clipping variables.  */
-  clip_right =
-    min (xww->width,
-         WINDOW_RIGHT_EDGE_X (s->w) - x -
-         WINDOW_RIGHT_SCROLL_BAR_AREA_WIDTH (s->w) -
-         WINDOW_RIGHT_FRINGE_WIDTH (s->w));
-  clip_left =
-    max (0,
-         WINDOW_LEFT_EDGE_X (s->w) - x +
-         WINDOW_LEFT_SCROLL_BAR_AREA_WIDTH (s->w) +
-         WINDOW_LEFT_FRINGE_WIDTH (s->w));
+  int text_area_x, text_area_y, text_area_width, text_area_height;
 
-  clip_bottom =
-    min (xww->height,
-         WINDOW_BOTTOM_EDGE_Y (s->w) - WINDOW_MODE_LINE_HEIGHT (s->w) - y);
-  clip_top = max (0, WINDOW_TOP_EDGE_Y (s->w) - y);
+  window_box (s->w, TEXT_AREA, &text_area_x, &text_area_y,
+              &text_area_width, &text_area_height);
+  clip_left = max (0, text_area_x - x);
+  clip_right = max (clip_left,
+		    min (xww->width, text_area_x + text_area_width - x));
+  clip_top = max (0, text_area_y - y);
+  clip_bottom = max (clip_top,
+		     min (xww->height, text_area_y + text_area_height - y));
 
   /* We are concerned with movement of the onscreen area.  The area
      might sit still when the widget actually moves.  This happens
@@ -628,8 +546,8 @@ x_draw_xwidget_glyph_string (struct glyph_string *s)
       || xv->clip_bottom != clip_bottom
       || xv->clip_top != clip_top || xv->clip_left != clip_left)
     {
-      gtk_widget_set_size_request (xv->widgetwindow, clip_right + clip_left,
-                                   clip_bottom + clip_top);
+      gtk_widget_set_size_request (xv->widgetwindow, clip_right - clip_left,
+                                   clip_bottom - clip_top);
       gtk_fixed_move (GTK_FIXED (xv->widgetwindow), xv->widget, -clip_left,
                       -clip_top);
 
@@ -767,14 +685,14 @@ VALUE is the amount to scroll, either relatively or absolutely.  */)
    Lisp_Object value)
 {
   CHECK_XWIDGET (xwidget);
-  CHECK_NATNUM (value);
+  CHECK_NUMBER (value);
   struct xwidget *xw = XXWIDGET (xwidget);
   GtkAdjustment *adjustment
     = ((EQ (Qhorizontal, axis)
 	? gtk_scrolled_window_get_hadjustment
 	: gtk_scrolled_window_get_vadjustment)
        (GTK_SCROLLED_WINDOW (xw->widgetscrolledwindow_osr)));
-  double final_value = XFASTINT (value);
+  double final_value = XINT (value);
   if (EQ (Qt, relative))
     final_value += gtk_adjustment_get_value (adjustment);
   gtk_adjustment_set_value (adjustment, final_value);
@@ -987,7 +905,7 @@ syms_of_xwidget (void)
   defsubr (&Sxwidget_webkit_goto_uri);
   defsubr (&Sxwidget_webkit_execute_script);
   defsubr (&Sxwidget_webkit_get_title);
-  DEFSYM (Qwebkit_osr, "webkit-osr");
+  DEFSYM (Qwebkit, "webkit");
 
   defsubr (&Sxwidget_size_request);
   defsubr (&Sdelete_xwidget_view);
@@ -1157,7 +1075,13 @@ xwidget_end_redisplay (struct window *w, struct glyph_matrix *matrix)
 		{
 		  /* The only call to xwidget_end_redisplay is in dispnew.
 		     xwidget_end_redisplay (w->current_matrix);  */
-		  xwidget_touch (xwidget_view_lookup (glyph->u.xwidget, w));
+		  struct xwidget_view *xv
+		    = xwidget_view_lookup (glyph->u.xwidget, w);
+		  /* FIXME: Is it safe to assume xwidget_view_lookup
+		     always succeeds here?  If so, this comment can be removed.
+		     If not, the code probably needs fixing.  */
+		  eassume (xv);
+		  xwidget_touch (xv);
 		}
 	  }
     }

@@ -55,7 +55,6 @@ DEF_DLL_FN (gnutls_alert_description_t, gnutls_alert_get,
 	    (gnutls_session_t));
 DEF_DLL_FN (const char *, gnutls_alert_get_name,
 	    (gnutls_alert_description_t));
-DEF_DLL_FN (int, gnutls_alert_send_appropriate, (gnutls_session_t, int));
 DEF_DLL_FN (int, gnutls_anon_allocate_client_credentials,
 	    (gnutls_anon_client_credentials_t *));
 DEF_DLL_FN (void, gnutls_anon_free_client_credentials,
@@ -156,8 +155,6 @@ DEF_DLL_FN (int, gnutls_x509_crt_get_subject_unique_id,
 	    (gnutls_x509_crt_t, char *, size_t *));
 DEF_DLL_FN (int, gnutls_x509_crt_get_signature_algorithm,
 	    (gnutls_x509_crt_t));
-DEF_DLL_FN (int, gnutls_x509_crt_get_signature,
-	    (gnutls_x509_crt_t, char *, size_t *));
 DEF_DLL_FN (int, gnutls_x509_crt_get_key_id,
 	    (gnutls_x509_crt_t, unsigned int, unsigned char *, size_t *_size));
 DEF_DLL_FN (const char*, gnutls_sec_param_get_name, (gnutls_sec_param_t));
@@ -184,7 +181,7 @@ init_gnutls_functions (void)
   HMODULE library;
   int max_log_level = 1;
 
-  if (!(library = w32_delayed_load (Qgnutls_dll)))
+  if (!(library = w32_delayed_load (Qgnutls)))
     {
       GNUTLS_LOG (1, max_log_level, "GnuTLS library not found");
       return 0;
@@ -192,7 +189,6 @@ init_gnutls_functions (void)
 
   LOAD_DLL_FN (library, gnutls_alert_get);
   LOAD_DLL_FN (library, gnutls_alert_get_name);
-  LOAD_DLL_FN (library, gnutls_alert_send_appropriate);
   LOAD_DLL_FN (library, gnutls_anon_allocate_client_credentials);
   LOAD_DLL_FN (library, gnutls_anon_free_client_credentials);
   LOAD_DLL_FN (library, gnutls_bye);
@@ -255,7 +251,6 @@ init_gnutls_functions (void)
   LOAD_DLL_FN (library, gnutls_x509_crt_get_issuer_unique_id);
   LOAD_DLL_FN (library, gnutls_x509_crt_get_subject_unique_id);
   LOAD_DLL_FN (library, gnutls_x509_crt_get_signature_algorithm);
-  LOAD_DLL_FN (library, gnutls_x509_crt_get_signature);
   LOAD_DLL_FN (library, gnutls_x509_crt_get_key_id);
   LOAD_DLL_FN (library, gnutls_sec_param_get_name);
   LOAD_DLL_FN (library, gnutls_sign_get_name);
@@ -272,7 +267,7 @@ init_gnutls_functions (void)
   max_log_level = global_gnutls_log_level;
 
   {
-    Lisp_Object name = CAR_SAFE (Fget (Qgnutls_dll, QCloaded_from));
+    Lisp_Object name = CAR_SAFE (Fget (Qgnutls, QCloaded_from));
     GNUTLS_LOG2 (1, max_log_level, "GnuTLS library loaded:",
                  STRINGP (name) ? (const char *) SDATA (name) : "unknown");
   }
@@ -282,7 +277,6 @@ init_gnutls_functions (void)
 
 # define gnutls_alert_get fn_gnutls_alert_get
 # define gnutls_alert_get_name fn_gnutls_alert_get_name
-# define gnutls_alert_send_appropriate fn_gnutls_alert_send_appropriate
 # define gnutls_anon_allocate_client_credentials fn_gnutls_anon_allocate_client_credentials
 # define gnutls_anon_free_client_credentials fn_gnutls_anon_free_client_credentials
 # define gnutls_bye fn_gnutls_bye
@@ -343,7 +337,6 @@ init_gnutls_functions (void)
 # define gnutls_x509_crt_get_key_id fn_gnutls_x509_crt_get_key_id
 # define gnutls_x509_crt_get_pk_algorithm fn_gnutls_x509_crt_get_pk_algorithm
 # define gnutls_x509_crt_get_serial fn_gnutls_x509_crt_get_serial
-# define gnutls_x509_crt_get_signature fn_gnutls_x509_crt_get_signature
 # define gnutls_x509_crt_get_signature_algorithm fn_gnutls_x509_crt_get_signature_algorithm
 # define gnutls_x509_crt_get_subject_unique_id fn_gnutls_x509_crt_get_subject_unique_id
 # define gnutls_x509_crt_get_version fn_gnutls_x509_crt_get_version
@@ -388,13 +381,6 @@ static void
 gnutls_log_function2 (int level, const char *string, const char *extra)
 {
   message ("gnutls.c: [%d] %s %s", level, string, extra);
-}
-
-/* Log a message and an integer.  */
-static void
-gnutls_log_function2i (int level, const char *string, int extra)
-{
-  message ("gnutls.c: [%d] %s %d", level, string, extra);
 }
 
 int
@@ -1181,6 +1167,7 @@ boot_error (struct Lisp_Process *p, const char *m, ...)
     pset_status (p, list2 (Qfailed, vformat_string (m, ap)));
   else
     verror (m, ap);
+  va_end (ap);
 }
 
 Lisp_Object
@@ -1199,8 +1186,8 @@ gnutls_verify_boot (Lisp_Object proc, Lisp_Object proplist)
   if (NILP (proplist))
     proplist = Fcdr (Fplist_get (p->childp, QCtls_parameters));
 
-  verify_error = Fplist_get (proplist, QCgnutls_bootprop_verify_error);
-  hostname = Fplist_get (proplist, QCgnutls_bootprop_hostname);
+  verify_error = Fplist_get (proplist, QCverify_error);
+  hostname = Fplist_get (proplist, QChostname);
 
   if (EQ (verify_error, Qt))
     verify_error_all = true;
@@ -1245,7 +1232,7 @@ gnutls_verify_boot (Lisp_Object proc, Lisp_Object proplist)
   if (peer_verification != 0)
     {
       if (verify_error_all
-          || !NILP (Fmember (QCgnutls_bootprop_trustfiles, verify_error)))
+          || !NILP (Fmember (QCtrustfiles, verify_error)))
         {
 	  emacs_gnutls_deinit (proc);
 	  boot_error (p,
@@ -1305,7 +1292,7 @@ gnutls_verify_boot (Lisp_Object proc, Lisp_Object proplist)
 	  XPROCESS (proc)->gnutls_extra_peer_verification
 	    |= CERTIFICATE_NOT_MATCHING;
           if (verify_error_all
-              || !NILP (Fmember (QCgnutls_bootprop_hostname, verify_error)))
+              || !NILP (Fmember (QChostname, verify_error)))
             {
 	      gnutls_x509_crt_deinit (gnutls_verify_cert);
 	      emacs_gnutls_deinit (proc);
@@ -1421,13 +1408,13 @@ one trustfile (usually a CA bundle).  */)
       return Qnil;
     }
 
-  hostname              = Fplist_get (proplist, QCgnutls_bootprop_hostname);
-  priority_string       = Fplist_get (proplist, QCgnutls_bootprop_priority);
-  trustfiles            = Fplist_get (proplist, QCgnutls_bootprop_trustfiles);
-  keylist               = Fplist_get (proplist, QCgnutls_bootprop_keylist);
-  crlfiles              = Fplist_get (proplist, QCgnutls_bootprop_crlfiles);
-  loglevel              = Fplist_get (proplist, QCgnutls_bootprop_loglevel);
-  prime_bits            = Fplist_get (proplist, QCgnutls_bootprop_min_prime_bits);
+  hostname              = Fplist_get (proplist, QChostname);
+  priority_string       = Fplist_get (proplist, QCpriority);
+  trustfiles            = Fplist_get (proplist, QCtrustfiles);
+  keylist               = Fplist_get (proplist, QCkeylist);
+  crlfiles              = Fplist_get (proplist, QCcrlfiles);
+  loglevel              = Fplist_get (proplist, QCloglevel);
+  prime_bits            = Fplist_get (proplist, QCmin_prime_bits);
 
   if (!STRINGP (hostname))
     {
@@ -1477,7 +1464,7 @@ one trustfile (usually a CA bundle).  */)
       check_memory_full (gnutls_certificate_allocate_credentials (&x509_cred));
       XPROCESS (proc)->gnutls_x509_cred = x509_cred;
 
-      verify_flags = Fplist_get (proplist, QCgnutls_bootprop_verify_flags);
+      verify_flags = Fplist_get (proplist, QCverify_flags);
       if (NUMBERP (verify_flags))
 	{
 	  gnutls_verify_flags = XINT (verify_flags);
@@ -1653,7 +1640,7 @@ one trustfile (usually a CA bundle).  */)
     }
 
   XPROCESS (proc)->gnutls_complete_negotiation_p =
-    !NILP (Fplist_get (proplist, QCgnutls_complete_negotiation));
+    !NILP (Fplist_get (proplist, QCcomplete_negotiation));
   GNUTLS_INITSTAGE (proc) = GNUTLS_STAGE_CRED_SET;
   ret = emacs_gnutls_handshake (XPROCESS (proc));
   if (ret < GNUTLS_E_SUCCESS)
@@ -1700,14 +1687,14 @@ DEFUN ("gnutls-available-p", Fgnutls_available_p, Sgnutls_available_p, 0, 0, 0,
 {
 #ifdef HAVE_GNUTLS
 # ifdef WINDOWSNT
-  Lisp_Object found = Fassq (Qgnutls_dll, Vlibrary_cache);
+  Lisp_Object found = Fassq (Qgnutls, Vlibrary_cache);
   if (CONSP (found))
     return XCDR (found);
   else
     {
       Lisp_Object status;
       status = init_gnutls_functions () ? Qt : Qnil;
-      Vlibrary_cache = Fcons (Fcons (Qgnutls_dll, status), Vlibrary_cache);
+      Vlibrary_cache = Fcons (Fcons (Qgnutls, status), Vlibrary_cache);
       return status;
     }
 # else	/* !WINDOWSNT */
@@ -1739,16 +1726,16 @@ syms_of_gnutls (void)
   DEFSYM (Qgnutls_x509pki, "gnutls-x509pki");
 
   /* The following are for the property list of 'gnutls-boot'.  */
-  DEFSYM (QCgnutls_bootprop_hostname, ":hostname");
-  DEFSYM (QCgnutls_bootprop_priority, ":priority");
-  DEFSYM (QCgnutls_bootprop_trustfiles, ":trustfiles");
-  DEFSYM (QCgnutls_bootprop_keylist, ":keylist");
-  DEFSYM (QCgnutls_bootprop_crlfiles, ":crlfiles");
-  DEFSYM (QCgnutls_bootprop_min_prime_bits, ":min-prime-bits");
-  DEFSYM (QCgnutls_bootprop_loglevel, ":loglevel");
-  DEFSYM (QCgnutls_complete_negotiation, ":complete-negotiation");
-  DEFSYM (QCgnutls_bootprop_verify_flags, ":verify-flags");
-  DEFSYM (QCgnutls_bootprop_verify_error, ":verify-error");
+  DEFSYM (QChostname, ":hostname");
+  DEFSYM (QCpriority, ":priority");
+  DEFSYM (QCtrustfiles, ":trustfiles");
+  DEFSYM (QCkeylist, ":keylist");
+  DEFSYM (QCcrlfiles, ":crlfiles");
+  DEFSYM (QCmin_prime_bits, ":min-prime-bits");
+  DEFSYM (QCloglevel, ":loglevel");
+  DEFSYM (QCcomplete_negotiation, ":complete-negotiation");
+  DEFSYM (QCverify_flags, ":verify-flags");
+  DEFSYM (QCverify_error, ":verify-error");
 
   DEFSYM (Qgnutls_e_interrupted, "gnutls-e-interrupted");
   Fput (Qgnutls_e_interrupted, Qgnutls_code,

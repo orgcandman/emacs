@@ -215,7 +215,7 @@ xmalloc (size_t size)
   void *val = malloc (size);
   if (!val && size)
     {
-      write (2, "virtual memory exhausted\n", 25);
+      write (STDERR_FILENO, "virtual memory exhausted\n", 25);
       exit (1);
     }
   return val;
@@ -233,7 +233,7 @@ xrealloc (void *block, size_t size)
     val = realloc (block, size);
   if (!val && size)
     {
-      write (2, "virtual memory exhausted\n", 25);
+      write (STDERR_FILENO, "virtual memory exhausted\n", 25);
       exit (1);
     }
   return val;
@@ -1196,13 +1196,6 @@ print_double_string (re_char *where, re_char *string1, ssize_t size1,
 # define DEBUG_PRINT_DOUBLE_STRING(w, s1, sz1, s2, sz2)
 
 #endif /* not DEBUG */
-
-/* Use this to suppress gcc's `...may be used before initialized' warnings. */
-#ifdef lint
-# define IF_LINT(Code) Code
-#else
-# define IF_LINT(Code) /* empty */
-#endif
 
 /* Set by `re_set_syntax' to the current regexp syntax to recognize.  Can
    also be assigned to arbitrarily: each pattern buffer stores its own
@@ -2472,9 +2465,9 @@ regex_compile (const_re_char *pattern, size_t size, reg_syntax_t syntax,
 
   /* These hold the values of p, pattern, and pend from the main
      pattern when we have pushed into a subpattern.  */
-  re_char *main_p IF_LINT (= NULL);
-  re_char *main_pattern IF_LINT (= NULL);
-  re_char *main_pend IF_LINT (= NULL);
+  re_char *main_p;
+  re_char *main_pattern;
+  re_char *main_pend;
 
 #ifdef DEBUG
   debug++;
@@ -5451,7 +5444,7 @@ re_match_2_internal (struct re_pattern_buffer *bufp, const_re_char *string1,
 
 	    /* Start of actual range_table, or end of bitmap if there is no
 	       range table.  */
-	    re_char *range_table IF_LINT (= NULL);
+	    re_char *range_table UNINIT;
 
 	    /* Nonzero if there is a range table.  */
 	    int range_table_exists;

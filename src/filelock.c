@@ -53,6 +53,8 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "w32.h"	/* for dostounix_filename */
 #endif
 
+#ifndef MSDOS
+
 #ifdef HAVE_UTMP_H
 #include <utmp.h>
 #endif
@@ -63,7 +65,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #define BOOT_TIME_FILE "/var/run/random-seed"
 #endif
 
-#ifndef WTMP_FILE
+#if !defined WTMP_FILE && !defined WINDOWSNT
 #define WTMP_FILE "/var/log/wtmp"
 #endif
 
@@ -191,14 +193,11 @@ get_boot_time (void)
   /* If we did not find a boot time in wtmp, look at wtmp, and so on.  */
   for (counter = 0; counter < 20 && ! boot_time; counter++)
     {
+      Lisp_Object filename = Qnil;
+      bool delete_flag = false;
       char cmd_string[sizeof WTMP_FILE ".19.gz"];
-      Lisp_Object tempname, filename;
-      bool delete_flag = 0;
-
-      filename = Qnil;
-
-      tempname = make_formatted_string
-	(cmd_string, "%s.%d", WTMP_FILE, counter);
+      AUTO_STRING_WITH_LEN (tempname, cmd_string,
+			    sprintf (cmd_string, "%s.%d", WTMP_FILE, counter));
       if (! NILP (Ffile_exists_p (tempname)))
 	filename = tempname;
       else
@@ -218,7 +217,7 @@ get_boot_time (void)
 	      CALLN (Fcall_process, build_string ("gzip"), Qnil,
 		     list2 (QCfile, filename), Qnil,
 		     build_string ("-cd"), tempname);
-	      delete_flag = 1;
+	      delete_flag = true;
 	    }
 	}
 
@@ -488,7 +487,7 @@ read_lock_data (char *lfname, char lfinfo[MAX_LFINFO + 1])
   while ((nbytes = readlinkat (AT_FDCWD, lfname, lfinfo, MAX_LFINFO + 1)) < 0
 	 && errno == EINVAL)
     {
-      int fd = emacs_open (lfname, O_RDONLY | O_BINARY | O_NOFOLLOW, 0);
+      int fd = emacs_open (lfname, O_RDONLY | O_NOFOLLOW, 0);
       if (0 <= fd)
 	{
 	  /* Use read, not emacs_read, since FD isn't unwind-protected.  */
@@ -735,6 +734,19 @@ unlock_file (Lisp_Object fn)
   SAFE_FREE ();
 }
 
+#else  /* MSDOS */
+void
+lock_file (Lisp_Object fn)
+{
+}
+
+void
+unlock_file (Lisp_Object fn)
+{
+}
+
+#endif	/* MSDOS */
+
 void
 unlock_all_files (void)
 {
@@ -798,6 +810,9 @@ The value is nil if the FILENAME is not locked,
 t if it is locked by you, else a string saying which user has locked it.  */)
   (Lisp_Object filename)
 {
+#ifdef MSDOS
+  return Qnil;
+#else
   Lisp_Object ret;
   char *lfname;
   int owner;
@@ -818,6 +833,7 @@ t if it is locked by you, else a string saying which user has locked it.  */)
 
   SAFE_FREE ();
   return ret;
+#endif
 }
 
 void

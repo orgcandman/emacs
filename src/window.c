@@ -2859,9 +2859,12 @@ selected frame and no others.  */)
 
 
 static Lisp_Object
-resize_root_window (Lisp_Object window, Lisp_Object delta, Lisp_Object horizontal, Lisp_Object ignore, Lisp_Object pixelwise)
+resize_root_window (Lisp_Object window, Lisp_Object delta,
+		    Lisp_Object horizontal, Lisp_Object ignore,
+		    Lisp_Object pixelwise)
 {
-  return call5 (Qwindow_resize_root_window, window, delta, horizontal, ignore, pixelwise);
+  return call5 (Qwindow__resize_root_window, window, delta,
+		horizontal, ignore, pixelwise);
 }
 
 /* Placeholder used by temacs -nw before window.el is loaded.  */
@@ -2877,14 +2880,14 @@ DEFUN ("window--sanitize-window-sizes", Fwindow__sanitize_window_sizes,
 Lisp_Object
 sanitize_window_sizes (Lisp_Object frame, Lisp_Object horizontal)
 {
-  return call2 (Qwindow_sanitize_window_sizes, frame, horizontal);
+  return call2 (Qwindow__sanitize_window_sizes, frame, horizontal);
 }
 
 
 static Lisp_Object
 window_pixel_to_total (Lisp_Object frame, Lisp_Object horizontal)
 {
-  return call2 (Qwindow_pixel_to_total, frame, horizontal);
+  return call2 (Qwindow__pixel_to_total, frame, horizontal);
 }
 
 
@@ -2907,9 +2910,11 @@ window-start value is reasonable when this function is called.  */)
 {
   struct window *w, *r, *s;
   struct frame *f;
-  Lisp_Object sibling, pwindow, swindow IF_LINT (= Qnil), delta;
-  ptrdiff_t startpos IF_LINT (= 0), startbyte IF_LINT (= 0);
-  int top IF_LINT (= 0), new_top;
+  Lisp_Object sibling, pwindow, delta;
+  Lisp_Object swindow UNINIT;
+  ptrdiff_t startpos UNINIT, startbyte UNINIT;
+  int top UNINIT;
+  int new_top;
   bool resize_failed = false;
 
   w = decode_valid_window (window);
@@ -3319,7 +3324,7 @@ run_window_size_change_functions (Lisp_Object frame)
       while (CONSP (functions))
 	{
 	  if (!EQ (XCAR (functions), Qt))
-	    call1 (XCAR (functions), frame);
+	    safe_call1 (XCAR (functions), frame);
 	  functions = XCDR (functions);
 	}
 
@@ -4585,7 +4590,7 @@ grow_mini_window (struct window *w, int delta, bool pixelwise)
     {
       root = FRAME_ROOT_WINDOW (f);
       r = XWINDOW (root);
-      height = call3 (Qwindow_resize_root_window_vertically,
+      height = call3 (Qwindow__resize_root_window_vertically,
 		      root, make_number (- delta), pixelwise ? Qt : Qnil);
       if (INTEGERP (height) && window_resize_check (r, false))
 	{
@@ -4619,6 +4624,9 @@ grow_mini_window (struct window *w, int delta, bool pixelwise)
 	  adjust_frame_glyphs (f);
 	  unblock_input ();
 	}
+      else
+	error ("Failed to grow minibuffer window");
+
     }
 }
 
@@ -4639,7 +4647,7 @@ shrink_mini_window (struct window *w, bool pixelwise)
     {
       root = FRAME_ROOT_WINDOW (f);
       r = XWINDOW (root);
-      delta = call3 (Qwindow_resize_root_window_vertically,
+      delta = call3 (Qwindow__resize_root_window_vertically,
 		     root, make_number (height - unit),
 		     pixelwise ? Qt : Qnil);
       if (INTEGERP (delta) && window_resize_check (r, false))
@@ -4662,6 +4670,8 @@ shrink_mini_window (struct window *w, bool pixelwise)
 	 one window frame here.  The same routine will be needed when
 	 shrinking the frame (and probably when making the initial
 	 *scratch* window).  For the moment leave things as they are.  */
+      else
+	error ("Failed to shrink minibuffer window");
     }
 }
 
@@ -5641,21 +5651,14 @@ displayed_window_lines (struct window *w)
   bottom_y = line_bottom_y (&it);
   bidi_unshelve_cache (itdata, false);
 
-  /* rms: On a non-window display,
-     the value of it.vpos at the bottom of the screen
-     seems to be 1 larger than window_box_height (w).
-     This kludge fixes a bug whereby (move-to-window-line -1)
-     when ZV is on the last screen line
-     moves to the previous screen line instead of the last one.  */
-  if (! FRAME_WINDOW_P (XFRAME (w->frame)))
-    height++;
-
   /* Add in empty lines at the bottom of the window.  */
   if (bottom_y < height)
     {
       int uy = FRAME_LINE_HEIGHT (it.f);
       it.vpos += (height - bottom_y + uy - 1) / uy;
     }
+  else if (bottom_y == height)
+    it.vpos++;
 
   if (old_buffer)
     set_buffer_internal (old_buffer);
@@ -5685,7 +5688,7 @@ and redisplay normally--don't erase and redraw the frame.  */)
   struct buffer *buf = XBUFFER (w->contents);
   bool center_p = false;
   ptrdiff_t charpos, bytepos;
-  EMACS_INT iarg IF_LINT (= 0);
+  EMACS_INT iarg;
   int this_scroll_margin;
 
   if (buf != current_buffer)
@@ -5930,7 +5933,12 @@ DEFUN ("move-to-window-line", Fmove_to_window_line, Smove_to_window_line,
        doc: /* Position point relative to window.
 ARG nil means position point at center of window.
 Else, ARG specifies vertical position within the window;
-zero means top of window, negative means relative to bottom of window.  */)
+zero means top of window, negative means relative to bottom
+of window, -1 meaning the last fully visible display line
+of the window.
+
+Value is the screen line of the window point moved to, counting
+from the top of the window.  */)
   (Lisp_Object arg)
 {
   struct window *w = XWINDOW (selected_window);
@@ -7304,10 +7312,11 @@ syms_of_window (void)
   DEFSYM (Qwindow_valid_p, "window-valid-p");
   DEFSYM (Qwindow_deletable_p, "window-deletable-p");
   DEFSYM (Qdelete_window, "delete-window");
-  DEFSYM (Qwindow_resize_root_window, "window--resize-root-window");
-  DEFSYM (Qwindow_resize_root_window_vertically, "window--resize-root-window-vertically");
-  DEFSYM (Qwindow_sanitize_window_sizes, "window--sanitize-window-sizes");
-  DEFSYM (Qwindow_pixel_to_total, "window--pixel-to-total");
+  DEFSYM (Qwindow__resize_root_window, "window--resize-root-window");
+  DEFSYM (Qwindow__resize_root_window_vertically,
+	  "window--resize-root-window-vertically");
+  DEFSYM (Qwindow__sanitize_window_sizes, "window--sanitize-window-sizes");
+  DEFSYM (Qwindow__pixel_to_total, "window--pixel-to-total");
   DEFSYM (Qsafe, "safe");
   DEFSYM (Qdisplay_buffer, "display-buffer");
   DEFSYM (Qreplace_buffer_in_windows, "replace-buffer-in-windows");

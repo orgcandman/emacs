@@ -572,7 +572,7 @@ It can be quoted, or be inside a quoted form."
                                        " " (cadr table-etc)))
                     (cddr table-etc)))))))))
 
-(defun lisp-completion-at-point (_predicate)
+(defun lisp-completion-at-point (&optional _predicate)
   (declare (obsolete elisp-completion-at-point "25.1"))
   (elisp-completion-at-point))
 
@@ -823,8 +823,9 @@ non-nil result supercedes the xrefs produced by
   (pcase-let (((cl-struct xref-elisp-location symbol type file) l))
     (let ((buffer-point (find-function-search-for-symbol symbol type file)))
       (with-current-buffer (car buffer-point)
-        (goto-char (or (cdr buffer-point) (point-min)))
-        (point-marker)))))
+        (save-excursion
+          (goto-char (or (cdr buffer-point) (point-min)))
+          (point-marker))))))
 
 (cl-defmethod xref-location-group ((l xref-elisp-location))
   (xref-elisp-location-file l))
@@ -1051,6 +1052,17 @@ If CHAR is not a character, return nil."
 	      ((or (eq (following-char) ?\')
 		   (eq (preceding-char) ?\'))
 	       (setq left-quote ?\`)))
+
+        ;; When after a named character literal, skip over the entire
+        ;; literal, not only its last word.
+        (when (= (preceding-char) ?})
+          (let ((begin (save-excursion
+                         (backward-char)
+                         (skip-syntax-backward "w-")
+                         (backward-char 3)
+                         (when (looking-at-p "\\\\N{") (point)))))
+            (when begin (goto-char begin))))
+
 	(forward-sexp -1)
 	;; If we were after `?\e' (or similar case),
 	;; use the whole thing, not just the `e'.
@@ -1554,7 +1566,8 @@ In the absence of INDEX, just call `eldoc-docstring-format-sym-doc'."
 ARGLIST is either a string, or a list of strings or symbols."
   (let ((str (cond ((stringp arglist) arglist)
                    ((not (listp arglist)) nil)
-                   (t (help--make-usage-docstring 'toto arglist)))))
+                   (t (substitute-command-keys
+                       (help--make-usage-docstring 'toto arglist))))))
     (if (and str (string-match "\\`([^ )]+ ?" str))
         (replace-match "(" t t str)
       str)))

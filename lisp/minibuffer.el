@@ -369,13 +369,15 @@ instead of a string, a function that takes the completion and returns the
 
 (defun completion-table-with-predicate (table pred1 strict string pred2 action)
   "Make a completion table equivalent to TABLE but filtered through PRED1.
-PRED1 is a function of one argument which returns non-nil if and only if the
-argument is an element of TABLE which should be considered for completion.
-STRING, PRED2, and ACTION are the usual arguments to completion tables,
-as described in `try-completion', `all-completions', and `test-completion'.
-If STRICT is t, the predicate always applies; if nil it only applies if
-it does not reduce the set of possible completions to nothing.
-Note: TABLE needs to be a proper completion table which obeys predicates."
+PRED1 is a function of one argument which returns non-nil if and
+only if the argument is an element of TABLE which should be
+considered for completion.  STRING, PRED2, and ACTION are the
+usual arguments to completion tables, as described in
+`try-completion', `all-completions', and `test-completion'.  If
+STRICT is non-nil, the predicate always applies; if nil it only
+applies if it does not reduce the set of possible completions to
+nothing.  Note: TABLE needs to be a proper completion table which
+obeys predicates."
   (cond
    ((and (not strict) (eq action 'lambda))
     ;; Ignore pred1 since it doesn't really have to apply anyway.
@@ -1835,7 +1837,7 @@ variables.")
                 'display-buffer-below-selected))
 	    ,(if temp-buffer-resize-mode
 		 '(window-height . resize-temp-buffer-window)
-	       '(window-height . shrink-window-if-larger-than-buffer))
+	       '(window-height . fit-window-to-buffer))
 	    ,(when temp-buffer-resize-mode
 	       '(preserve-size . (nil . t))))
           nil
@@ -1968,7 +1970,7 @@ if there was no valid completion, else t."
   "Default function to use for `completion-in-region-function'.
 Its arguments and return value are as specified for `completion-in-region'.
 This respects the wrapper hook `completion-in-region-functions'."
-  (with-wrapper-hook
+  (subr--with-wrapper-hook-no-warnings
       ;; FIXME: Maybe we should use this hook to provide a "display
       ;; completions" operation as well.
       completion-in-region-functions (start end collection predicate)

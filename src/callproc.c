@@ -565,8 +565,7 @@ call_process (ptrdiff_t nargs, Lisp_Object *args, int filefd,
     {
       /* Since CRLF is converted to LF within `decode_coding', we
 	 can always open a file with binary mode.  */
-      callproc_fd[CALLPROC_PIPEREAD] = emacs_open (tempfile,
-						   O_RDONLY | O_BINARY, 0);
+      callproc_fd[CALLPROC_PIPEREAD] = emacs_open (tempfile, O_RDONLY, 0);
       if (callproc_fd[CALLPROC_PIPEREAD] < 0)
 	{
 	  int open_errno = errno;
@@ -1078,10 +1077,6 @@ usage: (call-process-region START END PROGRAM &optional DELETE BUFFER DISPLAY &r
   return unbind_to (count, val);
 }
 
-#ifndef WINDOWSNT
-static int relocate_fd (int fd, int minfd);
-#endif
-
 static char **
 add_env (char **env, char **new_env, char *string)
 {
@@ -1099,7 +1094,7 @@ add_env (char **env, char **new_env, char *string)
       char *p = *ep, *q = string;
       while (ok)
 	{
-	  if (*q != *p)
+	  if (*p && *q != *p)
 	    break;
 	  if (*q == 0)
 	    /* The string is a lone variable name; keep it for now, we
@@ -1300,7 +1295,7 @@ child_setup (int in, int out, int err, char **new_argv, bool set_pgrp,
 
 #ifdef WINDOWSNT
   prepare_standard_handles (in, out, err, handles);
-  set_process_dir (SDATA (current_dir));
+  set_process_dir (SSDATA (current_dir));
   /* Spawn the child.  (See w32proc.c:sys_spawnve).  */
   cpid = spawnve (_P_NOWAIT, new_argv[0], new_argv, env);
   reset_standard_handles (in, out, err, handles);
@@ -1310,37 +1305,14 @@ child_setup (int in, int out, int err, char **new_argv, bool set_pgrp,
   return cpid;
 
 #else  /* not WINDOWSNT */
-  /* Make sure that in, out, and err are not actually already in
-     descriptors zero, one, or two; this could happen if Emacs is
-     started with its standard in, out, or error closed, as might
-     happen under X.  */
-  {
-    int oin = in, oout = out;
-
-    /* We have to avoid relocating the same descriptor twice!  */
-
-    in = relocate_fd (in, 3);
-
-    if (out == oin)
-      out = in;
-    else
-      out = relocate_fd (out, 3);
-
-    if (err == oin)
-      err = in;
-    else if (err == oout)
-      err = out;
-    else
-      err = relocate_fd (err, 3);
-  }
 
 #ifndef MSDOS
   /* Redirect file descriptors and clear the close-on-exec flag on the
      redirected ones.  IN, OUT, and ERR are close-on-exec so they
      need not be closed explicitly.  */
-  dup2 (in, 0);
-  dup2 (out, 1);
-  dup2 (err, 2);
+  dup2 (in, STDIN_FILENO);
+  dup2 (out, STDOUT_FILENO);
+  dup2 (err, STDERR_FILENO);
 
   setpgid (0, 0);
   tcsetpgrp (0, pid);
@@ -1359,31 +1331,6 @@ child_setup (int in, int out, int err, char **new_argv, bool set_pgrp,
 #endif  /* not WINDOWSNT */
 }
 
-#ifndef WINDOWSNT
-/* Move the file descriptor FD so that its number is not less than MINFD.
-   If the file descriptor is moved at all, the original is closed on MSDOS,
-   but not elsewhere as the caller will close it anyway.  */
-static int
-relocate_fd (int fd, int minfd)
-{
-  if (fd >= minfd)
-    return fd;
-  else
-    {
-      int new = fcntl (fd, F_DUPFD_CLOEXEC, minfd);
-      if (new == -1)
-	{
-	  emacs_perror ("while setting up child");
-	  _exit (EXIT_CANCELED);
-	}
-#ifdef MSDOS
-      emacs_close (fd);
-#endif
-      return new;
-    }
-}
-#endif /* not WINDOWSNT */
-
 static bool
 getenv_internal_1 (const char *var, ptrdiff_t varlen, char **value,
 		   ptrdiff_t *valuelen, Lisp_Object env)
@@ -1395,7 +1342,7 @@ getenv_internal_1 (const char *var, ptrdiff_t varlen, char **value,
 	  && SBYTES (entry) >= varlen
 #ifdef WINDOWSNT
 	  /* NT environment variables are case insensitive.  */
-	  && ! strnicmp (SDATA (entry), var, varlen)
+	  && ! strnicmp (SSDATA (entry), var, varlen)
 #else  /* not WINDOWSNT */
 	  && ! memcmp (SDATA (entry), var, varlen)
 #endif /* not WINDOWSNT */

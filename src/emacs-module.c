@@ -395,17 +395,19 @@ module_make_function (emacs_env *env, ptrdiff_t min_arity, ptrdiff_t max_arity,
   envptr->data = data;
 
   Lisp_Object envobj = make_save_ptr (envptr);
-  Lisp_Object doc
-    = (documentation
-       ? code_convert_string_norecord (build_unibyte_string (documentation),
-				       Qutf_8, false)
-       : Qnil);
+  Lisp_Object doc = Qnil;
+  if (documentation)
+    {
+      AUTO_STRING (unibyte_doc, documentation);
+      doc = code_convert_string_norecord (unibyte_doc, Qutf_8, false);
+    }
+
   /* FIXME: Use a bytecompiled object, or even better a subr.  */
   Lisp_Object ret = list4 (Qlambda,
                            list2 (Qand_rest, Qargs),
                            doc,
                            list4 (Qapply,
-                                  list2 (Qfunction, Qinternal_module_call),
+                                  list2 (Qfunction, Qinternal__module_call),
                                   envobj,
                                   Qargs));
 
@@ -537,7 +539,7 @@ static emacs_value
 module_make_string (emacs_env *env, const char *str, ptrdiff_t length)
 {
   MODULE_FUNCTION_BEGIN (module_nil);
-  Lisp_Object lstr = make_unibyte_string (str, length);
+  AUTO_STRING_WITH_LEN (lstr, str, length);
   return lisp_to_value (code_convert_string_norecord (lstr, Qutf_8, false));
 }
 
@@ -588,13 +590,21 @@ module_set_user_finalizer (emacs_env *env, emacs_value uptr,
 }
 
 static void
+check_vec_index (Lisp_Object lvec, ptrdiff_t i)
+{
+  CHECK_VECTOR (lvec);
+  if (! (0 <= i && i < ASIZE (lvec)))
+    args_out_of_range_3 (make_fixnum_or_float (i),
+			 make_number (0), make_number (ASIZE (lvec) - 1));
+}
+
+static void
 module_vec_set (emacs_env *env, emacs_value vec, ptrdiff_t i, emacs_value val)
 {
   /* FIXME: This function should return bool because it can fail.  */
   MODULE_FUNCTION_BEGIN ();
   Lisp_Object lvec = value_to_lisp (vec);
-  CHECK_VECTOR (lvec);
-  CHECK_RANGED_INTEGER (make_number (i), 0, ASIZE (lvec) - 1);
+  check_vec_index (lvec, i);
   ASET (lvec, i, value_to_lisp (val));
 }
 
@@ -603,8 +613,7 @@ module_vec_get (emacs_env *env, emacs_value vec, ptrdiff_t i)
 {
   MODULE_FUNCTION_BEGIN (module_nil);
   Lisp_Object lvec = value_to_lisp (vec);
-  CHECK_VECTOR (lvec);
-  CHECK_RANGED_INTEGER (make_number (i), 0, ASIZE (lvec) - 1);
+  check_vec_index (lvec, i);
   return lisp_to_value (AREF (lvec, i));
 }
 
@@ -985,10 +994,12 @@ module_format_fun_env (const struct module_fun_env *env)
        ? exprintf (&buf, &bufsize, buffer, -1,
 		   "#<module function %s from %s>", sym, path)
        : sprintf (buffer, noaddr_format, env->subr));
-  Lisp_Object unibyte_result = make_unibyte_string (buffer, size);
+  AUTO_STRING_WITH_LEN (unibyte_result, buffer, size);
+  Lisp_Object result = code_convert_string_norecord (unibyte_result,
+						     Qutf_8, false);
   if (buf != buffer)
     xfree (buf);
-  return code_convert_string_norecord (unibyte_result, Qutf_8, false);
+  return result;
 }
 
 
@@ -1047,7 +1058,7 @@ syms_of_module (void)
 
   defsubr (&Smodule_load);
 
-  DEFSYM (Qinternal_module_call, "internal--module-call");
+  DEFSYM (Qinternal__module_call, "internal--module-call");
   defsubr (&Sinternal_module_call);
 }
 

@@ -185,11 +185,10 @@ void
 report_file_errno (char const *string, Lisp_Object name, int errorno)
 {
   Lisp_Object data = CONSP (name) || NILP (name) ? name : list1 (name);
-  synchronize_system_messages_locale ();
-  char *str = strerror (errorno);
+  char *str = emacs_strerror (errorno);
+  AUTO_STRING (unibyte_str, str);
   Lisp_Object errstring
-    = code_convert_string_norecord (build_unibyte_string (str),
-				    Vlocale_coding_system, 0);
+    = code_convert_string_norecord (unibyte_str, Vlocale_coding_system, 0);
   Lisp_Object errdata = Fcons (errstring, data);
 
   if (errorno == EEXIST)
@@ -214,12 +213,11 @@ report_file_error (char const *string, Lisp_Object name)
 void
 report_file_notify_error (const char *string, Lisp_Object name)
 {
-  Lisp_Object data = CONSP (name) || NILP (name) ? name : list1 (name);
-  synchronize_system_messages_locale ();
-  char *str = strerror (errno);
+  char *str = emacs_strerror (errno);
+  AUTO_STRING (unibyte_str, str);
   Lisp_Object errstring
-    = code_convert_string_norecord (build_unibyte_string (str),
-				    Vlocale_coding_system, 0);
+    = code_convert_string_norecord (unibyte_str, Vlocale_coding_system, 0);
+  Lisp_Object data = CONSP (name) || NILP (name) ? name : list1 (name);
   Lisp_Object errdata = Fcons (errstring, data);
 
   xsignal (Qfile_notify_error, Fcons (build_string (string), errdata));
@@ -1015,11 +1013,9 @@ filesystem tree, not (expand-file-name ".."  dirname).  */)
 	  /* Drive must be set, so this is okay.  */
 	  if (strcmp (nm - 2, SSDATA (name)) != 0)
 	    {
-	      char temp[] = " :";
-
 	      name = make_specified_string (nm, -1, p - nm, multibyte);
-	      temp[0] = DRIVE_LETTER (drive);
-	      AUTO_STRING (drive_prefix, temp);
+	      char temp[] = { DRIVE_LETTER (drive), ':', 0 };
+	      AUTO_STRING_WITH_LEN (drive_prefix, temp, 2);
 	      name = concat2 (drive_prefix, name);
 	    }
 #ifdef WINDOWSNT
@@ -2544,7 +2540,7 @@ DEFUN ("file-writable-p", Ffile_writable_p, Sfile_writable_p, 1, 1, 0,
   /* The read-only attribute of the parent directory doesn't affect
      whether a file or directory can be created within it.  Some day we
      should check ACLs though, which do affect this.  */
-  return file_directory_p (SDATA (dir)) ? Qt : Qnil;
+  return file_directory_p (SSDATA (dir)) ? Qt : Qnil;
 #else
   return check_writable (SSDATA (dir), W_OK | X_OK) ? Qt : Qnil;
 #endif
@@ -2664,13 +2660,13 @@ file_directory_p (char const *file)
 
 DEFUN ("file-accessible-directory-p", Ffile_accessible_directory_p,
        Sfile_accessible_directory_p, 1, 1, 0,
-       doc: /* Return t if file FILENAME names a directory you can open.
-For the value to be t, FILENAME must specify the name of a directory as a file,
-and the directory must allow you to open files in it.  In order to use a
-directory as a buffer's current directory, this predicate must return true.
-A directory name spec may be given instead; then the value is t
-if the directory so specified exists and really is a readable and
-searchable directory.  */)
+       doc: /* Return t if FILENAME names a directory you can open.
+For the value to be t, FILENAME must specify the name of a directory
+as a file, and the directory must allow you to open files in it.  In
+order to use a directory as a buffer's current directory, this
+predicate must return true.  A directory name spec may be given
+instead; then the value is t if the directory so specified exists and
+really is a readable and searchable directory.  */)
   (Lisp_Object filename)
 {
   Lisp_Object absname;
@@ -2775,7 +2771,7 @@ See `file-symlink-p' to distinguish symlinks.  */)
 
     /* Tell stat to use expensive method to get accurate info.  */
     Vw32_get_true_file_attributes = Qt;
-    result = stat (SDATA (absname), &st);
+    result = stat (SSDATA (absname), &st);
     Vw32_get_true_file_attributes = tem;
 
     if (result < 0)
@@ -3363,6 +3359,21 @@ restore_window_points (Lisp_Object window_markers, ptrdiff_t inserted,
       }
 }
 
+/* Make sure the gap is at Z_BYTE.  This is required to treat buffer
+   text as a linear C char array.  */
+static void
+maybe_move_gap (struct buffer *b)
+{
+  if (BUF_GPT_BYTE (b) != BUF_Z_BYTE (b))
+    {
+      struct buffer *cb = current_buffer;
+
+      set_buffer_internal (b);
+      move_gap_both (Z, Z_BYTE);
+      set_buffer_internal (cb);
+    }
+}
+
 /* FIXME: insert-file-contents should be split with the top-level moved to
    Elisp and only the core kept in C.  */
 
@@ -3946,6 +3957,7 @@ by calling `format-decode', which see.  */)
 
       coding_system = CODING_ID_NAME (coding.id);
       set_coding_system = true;
+      maybe_move_gap (XBUFFER (conversion_buffer));
       decoded = BUF_BEG_ADDR (XBUFFER (conversion_buffer));
       inserted = (BUF_Z_BYTE (XBUFFER (conversion_buffer))
 		  - BUF_BEG_BYTE (XBUFFER (conversion_buffer)));
@@ -4689,7 +4701,7 @@ write_region (Lisp_Object start, Lisp_Object end, Lisp_Object filename,
 {
   int open_flags;
   int mode;
-  off_t offset IF_LINT (= 0);
+  off_t offset UNINIT;
   bool open_and_close_file = desc < 0;
   bool ok;
   int save_errno = 0;
@@ -4697,7 +4709,7 @@ write_region (Lisp_Object start, Lisp_Object end, Lisp_Object filename,
   struct stat st;
   struct timespec modtime;
   ptrdiff_t count = SPECPDL_INDEX ();
-  ptrdiff_t count1 IF_LINT (= 0);
+  ptrdiff_t count1 UNINIT;
   Lisp_Object handler;
   Lisp_Object visit_file;
   Lisp_Object annotations;
@@ -4806,7 +4818,7 @@ write_region (Lisp_Object start, Lisp_Object end, Lisp_Object filename,
 
   encoded_filename = ENCODE_FILE (filename);
   fn = SSDATA (encoded_filename);
-  open_flags = O_WRONLY | O_BINARY | O_CREAT;
+  open_flags = O_WRONLY | O_CREAT;
   open_flags |= EQ (mustbenew, Qexcl) ? O_EXCL : !NILP (append) ? 0 : O_TRUNC;
   if (NUMBERP (append))
     offset = file_offset (append);
@@ -4925,7 +4937,7 @@ write_region (Lisp_Object start, Lisp_Object end, Lisp_Object filename,
   if (timespec_valid_p (modtime)
       && ! (valid_timestamp_file_system && st.st_dev == timestamp_file_system))
     {
-      int desc1 = emacs_open (fn, O_WRONLY | O_BINARY, 0);
+      int desc1 = emacs_open (fn, O_WRONLY, 0);
       if (desc1 >= 0)
 	{
 	  struct stat st1;
@@ -5378,25 +5390,15 @@ An argument specifies the modification time value to use
 static Lisp_Object
 auto_save_error (Lisp_Object error_val)
 {
-  Lisp_Object msg;
-  int i;
-
   auto_save_error_occurred = 1;
 
   ring_bell (XFRAME (selected_frame));
 
   AUTO_STRING (format, "Auto-saving %s: %s");
-  msg = CALLN (Fformat, format, BVAR (current_buffer, name),
-	       Ferror_message_string (error_val));
-
-  for (i = 0; i < 3; ++i)
-    {
-      if (i == 0)
-	message3 (msg);
-      else
-	message3_nolog (msg);
-      Fsleep_for (make_number (1), Qnil);
-    }
+  Lisp_Object msg = CALLN (Fformat, format, BVAR (current_buffer, name),
+			   Ferror_message_string (error_val));
+  call3 (intern ("display-warning"),
+         intern ("auto-save"), msg, intern ("error"));
 
   return Qnil;
 }

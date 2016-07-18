@@ -299,7 +299,8 @@ FORM is of the form (ARGS . BODY)."
                                ;; Be careful with make-symbol and (back)quote,
                                ;; see bug#12884.
                                (help--docstring-quote
-                                (let ((print-gensym nil) (print-quoted t))
+                                (let ((print-gensym nil) (print-quoted t)
+                                      (print-escape-newlines t))
                                   (format "%S" (cons 'fn (cl--make-usage-args
                                                           orig-args))))))
                               header)))
@@ -850,9 +851,9 @@ This is compatible with Common Lisp, but note that `defun' and
   "The Common Lisp `loop' macro.
 Valid clauses include:
   For clauses:
-    for VAR from/upfrom/downfrom EXPR1 to/upto/downto/above/below EXPR2 by EXPR3
+    for VAR from/upfrom/downfrom EXPR1 to/upto/downto/above/below EXPR2 [by EXPR3]
     for VAR = EXPR1 then EXPR2
-    for VAR in/on/in-ref LIST by FUNC
+    for VAR in/on/in-ref LIST [by FUNC]
     for VAR across/across-ref ARRAY
     for VAR being:
       the elements of/of-ref SEQUENCE [using (index VAR2)]
@@ -1807,6 +1808,27 @@ Labels have lexical scope and dynamic extent."
                     `(throw ',catch-tag ',label))))
          ,@macroexpand-all-environment)))))
 
+(defun cl--prog (binder bindings body)
+  (let (decls)
+    (while (eq 'declare (car-safe (car body)))
+      (push (pop body) decls))
+    `(cl-block nil
+       (,binder ,bindings
+         ,@(nreverse decls)
+         (cl-tagbody . ,body)))))
+
+;;;###autoload
+(defmacro cl-prog (bindings &rest body)
+  "Run BODY like a `cl-tagbody' after setting up the BINDINGS.
+Shorthand for (cl-block nil (let BINDINGS (cl-tagbody BODY)))"
+  (cl--prog 'let bindings body))
+
+;;;###autoload
+(defmacro cl-prog* (bindings &rest body)
+  "Run BODY like a `cl-tagbody' after setting up the BINDINGS.
+Shorthand for (cl-block nil (let* BINDINGS (cl-tagbody BODY)))"
+  (cl--prog 'let* bindings body))
+
 ;;;###autoload
 (defmacro cl-do-symbols (spec &rest body)
   "Loop over all symbols.
@@ -2671,7 +2693,11 @@ non-nil value, that slot cannot be set via `setf'.
 	    (let ((accessor (intern (format "%s%s" conc-name slot))))
 	      (push slot slots)
 	      (push (nth 1 desc) defaults)
+	      ;; The arg "cl-x" is referenced by name in eg pred-form
+	      ;; and pred-check, so changing it is not straightforward.
 	      (push `(cl-defsubst ,accessor (cl-x)
+                       ,(format "Access slot \"%s\" of `%s' struct CL-X."
+                                slot struct)
                        (declare (side-effect-free t))
                        ,@(and pred-check
 			      (list `(or ,pred-check

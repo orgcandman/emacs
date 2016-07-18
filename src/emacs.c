@@ -54,13 +54,18 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #ifdef MSDOS
 #include <binary-io.h>
+#include "dosfns.h"
+#endif
+
+#ifdef HAVE_LIBSYSTEMD
+# include <systemd/sd-daemon.h>
+# include <sys/socket.h>
 #endif
 
 #ifdef HAVE_WINDOW_SYSTEM
 #include TERM_HEADER
 #endif /* HAVE_WINDOW_SYSTEM */
 
-#include "coding.h"
 #include "intervals.h"
 #include "character.h"
 #include "buffer.h"
@@ -85,6 +90,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "systime.h"
 #include "puresize.h"
 
+#include "getpagesize.h"
 #include "gnutls.h"
 
 #if (defined PROFILING \
@@ -106,7 +112,7 @@ extern void moncontrol (int mode);
 #include <sys/resource.h>
 #endif
 
-#ifdef HAVE_PERSONALITY_LINUX32
+#ifdef HAVE_PERSONALITY_ADDR_NO_RANDOMIZE
 #include <sys/personality.h>
 #endif
 
@@ -666,9 +672,6 @@ main (int argc, char **argv)
   bool do_initial_setlocale;
   bool dumping;
   int skip_args = 0;
-#ifdef HAVE_SETRLIMIT
-  struct rlimit rlim;
-#endif
   bool no_loadup = 0;
   char *junk = 0;
   char *dname_arg = 0;
@@ -721,6 +724,7 @@ main (int argc, char **argv)
     unexec_init_emacs_zone ();
 #endif
 
+  init_standard_fds ();
   atexit (close_output_streams);
 
 #ifdef HAVE_MODULES
@@ -792,24 +796,22 @@ main (int argc, char **argv)
   dumping = !initialized && (strcmp (argv[argc - 1], "dump") == 0
 			     || strcmp (argv[argc - 1], "bootstrap") == 0);
 
-#ifdef HAVE_PERSONALITY_LINUX32
-  if (dumping && ! getenv ("EMACS_HEAP_EXEC"))
+#ifdef HAVE_PERSONALITY_ADDR_NO_RANDOMIZE
+  if (dumping)
     {
-      /* Set this so we only do this once.  */
-      xputenv ("EMACS_HEAP_EXEC=true");
+      int pers = personality (0xffffffff);
+      if (! (pers & ADDR_NO_RANDOMIZE)
+	  && 0 <= personality (pers | ADDR_NO_RANDOMIZE))
+	{
+	  /* Address randomization was enabled, but is now disabled.
+	     Re-execute Emacs to get a clean slate.  */
+	  execvp (argv[0], argv);
 
-      /* A flag to turn off address randomization which is introduced
-         in linux kernel shipped with fedora core 4 */
-#define ADD_NO_RANDOMIZE 0x0040000
-      personality (PER_LINUX32 | ADD_NO_RANDOMIZE);
-#undef  ADD_NO_RANDOMIZE
-
-      execvp (argv[0], argv);
-
-      /* If the exec fails, try to dump anyway.  */
-      emacs_perror (argv[0]);
+	  /* If the exec fails, warn and then try without a clean slate.  */
+	  perror (argv[0]);
+	}
     }
-#endif /* HAVE_PERSONALITY_LINUX32 */
+#endif
 
 #if defined (HAVE_SETRLIMIT) && defined (RLIMIT_STACK) && !defined (CYGWIN)
   /* Extend the stack space available.  Don't do that if dumping,
@@ -818,38 +820,54 @@ main (int argc, char **argv)
      is built with an 8MB stack.  Moreover, the setrlimit call can
      cause problems on Cygwin
      (https://www.cygwin.com/ml/cygwin/2015-07/msg00096.html).  */
-  if (1
-#ifndef CANNOT_DUMP
-      && (!noninteractive || initialized)
-#endif
-      && !getrlimit (RLIMIT_STACK, &rlim))
+  struct rlimit rlim;
+  if (getrlimit (RLIMIT_STACK, &rlim) == 0
+      && 0 <= rlim.rlim_cur && rlim.rlim_cur <= LONG_MAX)
     {
-      long newlim;
-      /* Approximate the amount regex.c needs per unit of re_max_failures.  */
-      int ratio = 20 * sizeof (char *);
-      /* Then add 33% to cover the size of the smaller stacks that regex.c
-	 successively allocates and discards, on its way to the maximum.  */
-      ratio += ratio / 3;
-      /* Add in some extra to cover
-	 what we're likely to use for other reasons.  */
-      newlim = re_max_failures * ratio + 200000;
-#ifdef __NetBSD__
-      /* NetBSD (at least NetBSD 1.2G and former) has a bug in its
-       stack allocation routine for new process that the allocation
-       fails if stack limit is not on page boundary.  So, round up the
-       new limit to page boundary.  */
-      newlim = (newlim + getpagesize () - 1) / getpagesize () * getpagesize ();
-#endif
-      if (newlim > rlim.rlim_max)
-	{
-	  newlim = rlim.rlim_max;
-	  /* Don't let regex.c overflow the stack we have.  */
-	  re_max_failures = (newlim - 200000) / ratio;
-	}
-      if (rlim.rlim_cur < newlim)
-	rlim.rlim_cur = newlim;
+      long lim = rlim.rlim_cur;
 
-      setrlimit (RLIMIT_STACK, &rlim);
+      /* Approximate the amount regex.c needs per unit of
+	 re_max_failures, then add 33% to cover the size of the
+	 smaller stacks that regex.c successively allocates and
+	 discards on its way to the maximum.  */
+      int ratio = 20 * sizeof (char *);
+      ratio += ratio / 3;
+
+      /* Extra space to cover what we're likely to use for other reasons.  */
+      int extra = 200000;
+
+      bool try_to_grow_stack = true;
+#ifndef CANNOT_DUMP
+      try_to_grow_stack = !noninteractive || initialized;
+#endif
+
+      if (try_to_grow_stack)
+	{
+	  long newlim = re_max_failures * ratio + extra;
+
+	  /* Round the new limit to a page boundary; this is needed
+	     for Darwin kernel 15.4.0 (see Bug#23622) and perhaps
+	     other systems.  Do not shrink the stack and do not exceed
+	     rlim_max.  Don't worry about exact values of
+	     RLIM_INFINITY etc. since in practice when they are
+	     nonnegative they are so large that the code does the
+	     right thing anyway.  */
+	  long pagesize = getpagesize ();
+	  newlim += pagesize - 1;
+	  if (0 <= rlim.rlim_max && rlim.rlim_max < newlim)
+	    newlim = rlim.rlim_max;
+	  newlim -= newlim % pagesize;
+
+	  if (pagesize <= newlim - lim)
+	    {
+	      rlim.rlim_cur = newlim;
+	      if (setrlimit (RLIMIT_STACK, &rlim) == 0)
+		lim = newlim;
+	    }
+	}
+
+      /* Don't let regex.c overflow the stack.  */
+      re_max_failures = lim < extra ? 0 : min (lim - extra, SIZE_MAX) / ratio;
     }
 #endif /* HAVE_SETRLIMIT and RLIMIT_STACK and not CYGWIN */
 
@@ -899,24 +917,25 @@ main (int argc, char **argv)
       char *term;
       if (argmatch (argv, argc, "-t", "--terminal", 4, &term, &skip_args))
 	{
-	  int result;
-	  emacs_close (0);
-	  emacs_close (1);
-	  result = emacs_open (term, O_RDWR, 0);
-	  if (result < 0 || fcntl (0, F_DUPFD_CLOEXEC, 1) < 0)
+	  emacs_close (STDIN_FILENO);
+	  emacs_close (STDOUT_FILENO);
+	  int result = emacs_open (term, O_RDWR, 0);
+	  if (result != STDIN_FILENO
+	      || (fcntl (STDIN_FILENO, F_DUPFD_CLOEXEC, STDOUT_FILENO)
+		  != STDOUT_FILENO))
 	    {
 	      char *errstring = strerror (errno);
 	      fprintf (stderr, "%s: %s: %s\n", argv[0], term, errstring);
-	      exit (1);
+	      exit (EXIT_FAILURE);
 	    }
-	  if (! isatty (0))
+	  if (! isatty (STDIN_FILENO))
 	    {
 	      fprintf (stderr, "%s: %s: not a tty\n", argv[0], term);
-	      exit (1);
+	      exit (EXIT_FAILURE);
 	    }
 	  fprintf (stderr, "Using %s\n", term);
 #ifdef HAVE_WINDOW_SYSTEM
-	  inhibit_window_system = 1; /* -t => -nw */
+	  inhibit_window_system = true; /* -t => -nw */
 #endif
 	}
       else
@@ -964,6 +983,9 @@ main (int argc, char **argv)
   w32_daemon_event = NULL;
 #endif
 
+
+  int sockfd = -1;
+
   if (argmatch (argv, argc, "-daemon", "--daemon", 5, NULL, &skip_args)
       || argmatch (argv, argc, "-daemon", "--daemon", 5, &dname_arg, &skip_args))
     {
@@ -996,6 +1018,21 @@ main (int argc, char **argv)
 	  fprintf (stderr, "Cannot pipe!\n");
 	  exit (1);
 	}
+
+#ifdef HAVE_LIBSYSTEMD
+      /* Read the number of sockets passed through by systemd.  */
+      int systemd_socket = sd_listen_fds (1);
+
+      if (systemd_socket > 1)
+        fprintf (stderr,
+		 ("\n"
+		  "Warning: systemd passed more than one socket to Emacs.\n"
+		  "Try 'Accept=false' in the Emacs socket unit file.\n"));
+      else if (systemd_socket == 1
+	       && (0 < sd_is_socket (SD_LISTEN_FDS_START,
+				     AF_UNSPEC, SOCK_STREAM, 1)))
+	sockfd = SD_LISTEN_FDS_START;
+#endif /* HAVE_LIBSYSTEMD */
 
 #ifndef DAEMON_MUST_EXEC
 #ifdef USE_GTK
@@ -1209,7 +1246,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
       /* Started from GUI? */
       /* FIXME: Do the right thing if getenv returns NULL, or if
          chdir fails.  */
-      if (! inhibit_window_system && ! isatty (0) && ! ch_to_dir)
+      if (! inhibit_window_system && ! isatty (STDIN_FILENO) && ! ch_to_dir)
         chdir (getenv ("HOME"));
       if (skip_args < argc)
         {
@@ -1553,7 +1590,7 @@ Using an Emacs configured with --with-x-toolkit=lucid does not have this problem
   /* This can create a thread that may call getenv, so it must follow
      all calls to putenv and setenv.  Also, this sets up
      add_keyboard_wait_descriptor, which init_display uses.  */
-  init_process_emacs ();
+  init_process_emacs (sockfd);
 
   init_keyboard ();	/* This too must precede init_sys_modes.  */
   if (!noninteractive)
@@ -2186,6 +2223,15 @@ synchronize_system_messages_locale (void)
 #endif
 }
 #endif /* HAVE_SETLOCALE */
+
+/* Return a diagnostic string for ERROR_NUMBER, in the wording
+   and encoding appropriate for the current locale.  */
+char *
+emacs_strerror (int error_number)
+{
+  synchronize_system_messages_locale ();
+  return strerror (error_number);
+}
 
 
 Lisp_Object
@@ -2357,9 +2403,9 @@ from the parent process and its tty file descriptors.  */)
   /* Get rid of stdin, stdout and stderr.  */
   nfd = emacs_open ("/dev/null", O_RDWR, 0);
   err |= nfd < 0;
-  err |= dup2 (nfd, 0) < 0;
-  err |= dup2 (nfd, 1) < 0;
-  err |= dup2 (nfd, 2) < 0;
+  err |= dup2 (nfd, STDIN_FILENO) < 0;
+  err |= dup2 (nfd, STDOUT_FILENO) < 0;
+  err |= dup2 (nfd, STDERR_FILENO) < 0;
   err |= emacs_close (nfd) != 0;
 
   /* Closing the pipe will notify the parent that it can exit.

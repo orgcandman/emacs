@@ -3,7 +3,7 @@
 % Load plain if necessary, i.e., if running under initex.
 \expandafter\ifx\csname fmtname\endcsname\relax\input plain\fi
 %
-\def\texinfoversion{2016-03-06.18}
+\def\texinfoversion{2016-06-18.21}
 %
 % Copyright 1985, 1986, 1988, 1990, 1991, 1992, 1993, 1994, 1995,
 % 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006,
@@ -66,6 +66,10 @@
 % they might have appeared in the input file name.
 \everyjob{\message{[Texinfo version \texinfoversion]}%
   \catcode`+=\active \catcode`\_=\active}
+
+% LaTeX's \typeout.  This ensures that the messages it is used for
+% are identical in format to the corresponding ones from latex/pdflatex.
+\def\typeout{\immediate\write17}%
 
 \chardef\other=12
 
@@ -1188,6 +1192,7 @@ where each line of input produces a line of output.}
   \ifx\pdfescapestring\thisisundefined
     % No primitive available; should we give a warning or log?
     % Many times it won't matter.
+    \xdef#1{#1}%
   \else
     % The expandable \pdfescapestring primitive escapes parentheses,
     % backslashes, and other special chars.
@@ -1307,8 +1312,10 @@ output) for that.)}
     % We have to set dummies so commands such as @code, and characters
     % such as \, aren't expanded when present in a section title.
     \indexnofonts
-    \turnoffactive
     \makevalueexpandable
+    \turnoffactive
+    % Use ASCII approximations in destination names.
+    \passthroughcharsfalse
     \def\pdfdestname{#1}%
     \txiescapepdf\pdfdestname
     \safewhatsit{\pdfdest name{\pdfdestname} xyz}%
@@ -1353,8 +1360,21 @@ output) for that.)}
       \fi
       %
       % Also escape PDF chars in the display string.
-      \edef\pdfoutlinetext{#1}%
-      \txiescapepdf\pdfoutlinetext
+      \bgroup
+        \ifx \declaredencoding \latone
+          % The PDF format can use an extended form of Latin-1 in bookmark
+          % strings.  See Appendix D of the PDF Reference, Sixth Edition, for
+          % the "PDFDocEncoding".
+          \passthroughcharstrue
+        \fi
+        \ifx \declaredencoding \utfeight
+          % TODO: the PDF format can use UTF-16 in bookmark strings, but the
+          % code for this isn't done yet.
+        \fi
+        \globaldefs=1
+        \edef\pdfoutlinetext{#1}%
+        \txiescapepdf\pdfoutlinetext
+      \egroup
       %
       \pdfoutline goto name{\pdfmkpgn{\pdfoutlinedest}}#2{\pdfoutlinetext}%
     }
@@ -1513,11 +1533,27 @@ output) for that.)}
 \fi  % \ifx\pdfoutput
 
 %
-% PDF outline support for XeTeX
+% For XeTeX
 %
+\newif\iftxiuseunicodedestname
 \ifx\XeTeXrevision\thisisundefined
 \else
-  \pdfmakepagedesttrue \relax
+  %
+  % XeTeX version check
+  %
+  \ifnum\strcmp{\the\XeTeXversion\XeTeXrevision}{0.99995}>-1
+    % XeTeX 0.99995+ contains xdvipdfmx 20160307+.
+    % It can handle Unicode destination name for PDF.
+    \txiuseunicodedestnametrue
+  \else
+    % XeTeX < 0.99995 can not handle Unicode destination name for PDF
+    % because xdvipdfmx 20150315 has UTF-16 convert issue.
+    % It fixed by xdvipdfmx 20160106 (TeX Live SVN r39753).
+    \txiuseunicodedestnamefalse
+  \fi
+  %
+  % PDF outline support
+  %
   % Emulate the primitive of pdfTeX
   \def\pdfdest name#1 xyz{%
     \special{pdf:dest (name#1) [@thispage /XYZ @xpos @ypos]}%
@@ -1525,23 +1561,35 @@ output) for that.)}
   \def\pdfmkdest#1{{%
     % We have to set dummies so commands such as @code, and characters
     % such as \, aren't expanded when present in a section title.
-    \indexnofonts  % For avoiding UTF-16 convert issue of xdvipdfmx 20150315.
+    \indexnofonts
+    \iftxiuseunicodedestname
+      \def\pdfdestname{#1}% Pass through Unicode characters.
+    \else
+      \edef\pdfdestname{#1}% Replace Unicode characters to ASCII.
+    \fi
+    \turnoffactive
     \makevalueexpandable
-    % In the case of XeTeX, xdvipdfmx converts strings to UTF-16.
-    % Therefore \txiescapepdf is not necessary.
-    \safewhatsit{\pdfdest name{#1} xyz}%
+    \txiescapepdf\pdfdestname
+    \safewhatsit{\pdfdest name{\pdfdestname} xyz}%
   }}
   %
   \def\dopdfoutline#1#2#3#4{%
-    \edef\pdfoutlinedest{#3}%
+    \iftxiuseunicodedestname
+      \def\pdfoutlinedest{#3}% Pass through Unicode characters.
+    \else
+      \edef\pdfoutlinedest{#3}% Replace Unicode characters to ASCII.
+    \fi
     \ifx\pdfoutlinedest\empty
       \def\pdfoutlinedest{#4}%
     \fi
     {
       \turnoffactive
-      % In the case of XeTeX, xdvipdfmx converts strings to UTF-16.
-      % Therefore \txiescapepdf is not necessary.
-      \special{pdf:out [-] #2 << /Title (#1) /A << /S /GoTo /D (name\pdfoutlinedest) >> >> }%
+      \txiescapepdf\pdfoutlinedest
+      \edef\pdfoutlinetext{#1}%
+      \txiescapepdf\pdfoutlinetext
+      %
+      \special{pdf:out [-] #2 << /Title (\pdfoutlinetext) /A
+        << /S /GoTo /D (name\pdfoutlinedest) >> >> }%
     }
   }
   %
@@ -1574,7 +1622,7 @@ output) for that.)}
       % In the case of XeTeX, xdvipdfmx converts strings to UTF-16.
       % Therefore, the encoding and the language may not be considered.
       %
-      \indexnofonts % For avoiding UTF-16 convert issue of xdvipdfmx 20150315.
+      \indexnofonts
       \setupdatafile
       % We can have normal brace characters in the PDF outlines, unlike
       % Texinfo index files.  So set that up.
@@ -1596,14 +1644,71 @@ output) for that.)}
   % However, due to UTF-16 convert issue of xdvipdfmx 20150315,
   % ``\special{pdf:dest ...}'' can not handle non-ASCII strings.
   % It fixed by xdvipdfmx 20160106 (TeX Live SVN r39753).
-\fi
-
 %
-% @image support for XeTeX
+  \def\skipspaces#1{\def\PP{#1}\def\D{|}%
+    \ifx\PP\D\let\nextsp\relax
+    \else\let\nextsp\skipspaces
+      \addtokens{\filename}{\PP}%
+      \advance\filenamelength by 1
+    \fi
+    \nextsp}
+  \def\getfilename#1{%
+    \filenamelength=0
+    % If we don't expand the argument now, \skipspaces will get
+    % snagged on things like "@value{foo}".
+    \edef\temp{#1}%
+    \expandafter\skipspaces\temp|\relax
+  }
+  % make a live url in pdf output.
+  \def\pdfurl#1{%
+    \begingroup
+      % it seems we really need yet another set of dummies; have not
+      % tried to figure out what each command should do in the context
+      % of @url.  for now, just make @/ a no-op, that's the only one
+      % people have actually reported a problem with.
+      %
+      \normalturnoffactive
+      \def\@{@}%
+      \let\/=\empty
+      \makevalueexpandable
+      % do we want to go so far as to use \indexnofonts instead of just
+      % special-casing \var here?
+      \def\var##1{##1}%
+      %
+      \leavevmode\setcolor{\urlcolor}%
+      \special{pdf:bann << /Border [0 0 0]
+        /Subtype /Link /A << /S /URI /URI (#1) >> >>}%
+    \endgroup}
+  \def\endlink{\setcolor{\maincolor}\special{pdf:eann}}
+  \def\pdfgettoks#1.{\setbox\boxA=\hbox{\toksA={#1.}\toksB={}\maketoks}}
+  \def\addtokens#1#2{\edef\addtoks{\noexpand#1={\the#1#2}}\addtoks}
+  \def\adn#1{\addtokens{\toksC}{#1}\global\countA=1\let\next=\maketoks}
+  \def\poptoks#1#2|ENDTOKS|{\let\first=#1\toksD={#1}\toksA={#2}}
+  \def\maketoks{%
+    \expandafter\poptoks\the\toksA|ENDTOKS|\relax
+    \ifx\first0\adn0
+    \else\ifx\first1\adn1 \else\ifx\first2\adn2 \else\ifx\first3\adn3
+    \else\ifx\first4\adn4 \else\ifx\first5\adn5 \else\ifx\first6\adn6
+    \else\ifx\first7\adn7 \else\ifx\first8\adn8 \else\ifx\first9\adn9
+    \else
+      \ifnum0=\countA\else\makelink\fi
+      \ifx\first.\let\next=\done\else
+        \let\next=\maketoks
+        \addtokens{\toksB}{\the\toksD}
+        \ifx\first,\addtokens{\toksB}{\space}\fi
+      \fi
+    \fi\fi\fi\fi\fi\fi\fi\fi\fi\fi
+    \next}
+  \def\makelink{\addtokens{\toksB}%
+    {\noexpand\pdflink{\the\toksC}}\toksC={}\global\countA=0}
+  \def\pdflink#1{%
+    \special{pdf:bann << /Border [0 0 0]
+      /Type /Annot /Subtype /Link /A << /S /GoTo /D (name#1) >> >>}%
+    \setcolor{\linkcolor}#1\endlink}
+  \def\done{\edef\st{\global\noexpand\toksA={\the\toksB}}\st}
 %
-\newif\ifxeteximgpdf
-\ifx\XeTeXrevision\thisisundefined
-\else
+  %
+  % @image support
   %
   % #1 is image name, #2 width (might be empty/whitespace), #3 height (ditto).
   \def\doxeteximage#1#2#3{%
@@ -1615,7 +1720,6 @@ output) for that.)}
     % someone has a scalable image, presumably better to use that than a
     % bitmap.
     \let\xeteximgext=\empty
-    \xeteximgpdffalse
     \begingroup
       \openin 1 #1.pdf \ifeof 1
         \openin 1 #1.PDF \ifeof 1
@@ -1632,17 +1736,23 @@ output) for that.)}
             \fi
           \else \gdef\xeteximgext{png}%
           \fi
-        \else \gdef\xeteximgext{PDF} \global\xeteximgpdftrue%
+        \else \gdef\xeteximgext{PDF}%
         \fi
-      \else \gdef\xeteximgext{pdf} \global\xeteximgpdftrue%
+      \else \gdef\xeteximgext{pdf}%
       \fi
       \closein 1
     \endgroup
     %
-    \ifxeteximgpdf
+    \def\xetexpdfext{pdf}%
+    \ifx\xeteximgext\xetexpdfext
       \XeTeXpdffile "#1".\xeteximgext ""
     \else
-      \XeTeXpicfile "#1".\xeteximgext ""
+      \def\xetexpdfext{PDF}%
+      \ifx\xeteximgext\xetexpdfext
+        \XeTeXpdffile "#1".\xeteximgext ""
+      \else
+        \XeTeXpicfile "#1".\xeteximgext ""
+      \fi
     \fi
     \ifdim \wd0 >0pt width \xeteximagewidth \fi
     \ifdim \wd2 >0pt height \xeteximageheight \fi \relax
@@ -2808,6 +2918,7 @@ end
     \setbox0 = \hbox{\ignorespaces #2}% look for second arg
     \ifdim\wd0 > 0pt
       \ifpdf
+        % For pdfTeX and LuaTeX
         \ifurefurlonlylink
           % PDF plus option to not display url, show just arg
           \unhbox0             
@@ -2817,7 +2928,19 @@ end
           \unhbox0\ (\urefcode{#1})%
         \fi
       \else
-        \unhbox0\ (\urefcode{#1})% DVI, always show arg and url
+        \ifx\XeTeXrevision\thisisundefined
+          \unhbox0\ (\urefcode{#1})% DVI, always show arg and url
+        \else
+          % For XeTeX
+          \ifurefurlonlylink
+            % PDF plus option to not display url, show just arg
+            \unhbox0             
+          \else
+            % PDF, normally display both arg and url for consistency,
+            % visibility, if the pdf is eventually used to print, etc.
+            \unhbox0\ (\urefcode{#1})%
+          \fi
+        \fi
       \fi
     \else
       \urefcode{#1}% only url given, so show it
@@ -2918,7 +3041,18 @@ end
     \endlink
   \endgroup}
 \else
-  \let\email=\uref
+  \ifx\XeTeXrevision\thisisundefined
+    \let\email=\uref
+  \else
+    \def\email#1{\doemail#1,,\finish}
+    \def\doemail#1,#2,#3\finish{\begingroup
+      \unsepspaces
+      \pdfurl{mailto:#1}%
+      \setbox0 = \hbox{\ignorespaces #2}%
+      \ifdim\wd0>0pt\unhbox0\else\code{#1}\fi
+      \endlink
+    \endgroup}
+  \fi
 \fi
 
 % @kbdinputstyle -- arg is `distinct' (@kbd uses slanted tty font always),
@@ -3155,8 +3289,8 @@ end
 % @{ @} @lbracechar{} @rbracechar{} all generate brace characters.
 % Unless we're in typewriter, use \ecfont because the CM text fonts do
 % not have braces, and we don't want to switch into math.
-\def\mylbrace{{\ifmonospace\else\ecfont\fi \char123}}
-\def\myrbrace{{\ifmonospace\else\ecfont\fi \char125}}
+\def\mylbrace{{\ifmonospace\char123\else\ensuremath\lbrace\fi}}
+\def\myrbrace{{\ifmonospace\char125\else\ensuremath\rbrace\fi}}
 \let\{=\mylbrace \let\lbracechar=\{
 \let\}=\myrbrace \let\rbracechar=\}
 \begingroup
@@ -4488,6 +4622,31 @@ end
   \fi
 }
 
+% Like \expandablevalue, but completely expandable (the \message in the
+% definition above operates at the execution level of TeX).  Used when
+% writing to auxiliary files, due to the expansion that \write does.
+% If flag is undefined, pass through an unexpanded @value command: maybe it 
+% will be set by the time it is read back in.
+%
+% NB flag names containing - or _ may not work here.
+\def\dummyvalue#1{%
+  \expandafter\ifx\csname SET#1\endcsname\relax
+    \noexpand\value{#1}%
+  \else
+    \csname SET#1\endcsname
+  \fi
+}
+
+% Used for @value's in index entries to form the sort key: expand the @value
+% if possible, otherwise sort late.
+\def\indexnofontsvalue#1{%
+  \expandafter\ifx\csname SET#1\endcsname\relax
+    ZZZZZZZ
+  \else
+    \csname SET#1\endcsname
+  \fi
+}
+
 % @ifset VAR ... @end ifset reads the `...' iff VAR has been defined
 % with @set.
 % 
@@ -4629,7 +4788,7 @@ end
 
 % Define \doindex, the driver for all index macros.
 % Argument #1 is generated by the calling \fooindex macro,
-% and it the two-letter name of the index.
+% and it is the two-letter name of the index.
 
 \def\doindex#1{\edef\indexname{#1}\parsearg\doindexxxx}
 \def\doindexxxx #1{\doind{\indexname}{#1}}
@@ -4638,7 +4797,8 @@ end
 \def\docodeindex#1{\edef\indexname{#1}\parsearg\docodeindexxxx}
 \def\docodeindexxxx #1{\doind{\indexname}{\code{#1}}}
 
-% Used when writing an index entry out to an index file, to prevent
+
+% Used when writing an index entry out to an index file to prevent
 % expansion of Texinfo commands that can appear in an index entry.
 %
 \def\indexdummies{%
@@ -4656,9 +4816,11 @@ end
   \def\}{{\tt\char125}}%
   %
   % Do the redefinitions.
-  \commondummies
+  \definedummies
 }
 
+% Used for the aux and toc files, where @ is the escape character.
+%
 % For the aux and toc files, @ is the escape character.  So we want to
 % redefine everything using @ as the escape character (instead of
 % \realbackslash, still used for index files).  When everything uses @,
@@ -4671,30 +4833,35 @@ end
   \let\} = \rbraceatcmd
   %
   % Do the redefinitions.
-  \commondummies
+  \definedummies
   \otherbackslash
 }
 
-% Called from \indexdummies and \atdummies.
+% \definedummyword defines \#1 as \string\#1\space, thus effectively
+% preventing its expansion.  This is used only for control words,
+% not control letters, because the \space would be incorrect for
+% control characters, but is needed to separate the control word
+% from whatever follows.
 %
-\def\commondummies{%
-  % \definedummyword defines \#1 as \string\#1\space, thus effectively
-  % preventing its expansion.  This is used only for control words,
-  % not control letters, because the \space would be incorrect for
-  % control characters, but is needed to separate the control word
-  % from whatever follows.
+% These can be used both for control words that take an argument and
+% those that do not.  If it is followed by {arg} in the input, then
+% that will dutifully get written to the index (or wherever).
+%
+% For control letters, we have \definedummyletter, which omits the
+% space.
+%
+\def\definedummyword  #1{\def#1{\string#1\space}}%
+\def\definedummyletter#1{\def#1{\string#1}}%
+\let\definedummyaccent\definedummyletter
+
+% Called from \indexdummies and \atdummies, to effectively prevent
+% the expansion of commands.
+%
+\def\definedummies{%
   %
-  % For control letters, we have \definedummyletter, which omits the
-  % space.
-  %
-  % These can be used both for control words that take an argument and
-  % those that do not.  If it is followed by {arg} in the input, then
-  % that will dutifully get written to the index (or wherever).
-  %
-  \def\definedummyword  ##1{\def##1{\string##1\space}}%
-  \def\definedummyletter##1{\def##1{\string##1}}%
-  \let\definedummyaccent\definedummyletter
-  %
+  \let\commondummyword\definedummyword
+  \let\commondummyletter\definedummyletter
+  \let\commondummyaccent\definedummyaccent
   \commondummiesnofonts
   %
   \definedummyletter\_%
@@ -4774,85 +4941,82 @@ end
   %
   % We want to disable all macros so that they are not expanded by \write.
   \macrolist
+  \let\value\dummyvalue
   %
   \normalturnoffactive
-  %
-  % Handle some cases of @value -- where it does not contain any
-  % (non-fully-expandable) commands.
-  \makevalueexpandable
 }
 
-% \commondummiesnofonts: common to \commondummies and \indexnofonts.
-% Define \definedumyletter, \definedummyaccent and \definedummyword before
-% using.
+% \commondummiesnofonts: common to \definedummies and \indexnofonts.
+% Define \commondummyletter, \commondummyaccent and \commondummyword before
+% using.  Used for accents, font commands, and various control letters.
 %
 \def\commondummiesnofonts{%
   % Control letters and accents.
-  \definedummyletter\!%
-  \definedummyaccent\"%
-  \definedummyaccent\'%
-  \definedummyletter\*%
-  \definedummyaccent\,%
-  \definedummyletter\.%
-  \definedummyletter\/%
-  \definedummyletter\:%
-  \definedummyaccent\=%
-  \definedummyletter\?%
-  \definedummyaccent\^%
-  \definedummyaccent\`%
-  \definedummyaccent\~%
-  \definedummyword\u
-  \definedummyword\v
-  \definedummyword\H
-  \definedummyword\dotaccent
-  \definedummyword\ogonek
-  \definedummyword\ringaccent
-  \definedummyword\tieaccent
-  \definedummyword\ubaraccent
-  \definedummyword\udotaccent
-  \definedummyword\dotless
+  \commondummyletter\!%
+  \commondummyaccent\"%
+  \commondummyaccent\'%
+  \commondummyletter\*%
+  \commondummyaccent\,%
+  \commondummyletter\.%
+  \commondummyletter\/%
+  \commondummyletter\:%
+  \commondummyaccent\=%
+  \commondummyletter\?%
+  \commondummyaccent\^%
+  \commondummyaccent\`%
+  \commondummyaccent\~%
+  \commondummyword\u
+  \commondummyword\v
+  \commondummyword\H
+  \commondummyword\dotaccent
+  \commondummyword\ogonek
+  \commondummyword\ringaccent
+  \commondummyword\tieaccent
+  \commondummyword\ubaraccent
+  \commondummyword\udotaccent
+  \commondummyword\dotless
   %
   % Texinfo font commands.
-  \definedummyword\b
-  \definedummyword\i
-  \definedummyword\r
-  \definedummyword\sansserif
-  \definedummyword\sc
-  \definedummyword\slanted
-  \definedummyword\t
+  \commondummyword\b
+  \commondummyword\i
+  \commondummyword\r
+  \commondummyword\sansserif
+  \commondummyword\sc
+  \commondummyword\slanted
+  \commondummyword\t
   %
   % Commands that take arguments.
-  \definedummyword\abbr
-  \definedummyword\acronym
-  \definedummyword\anchor
-  \definedummyword\cite
-  \definedummyword\code
-  \definedummyword\command
-  \definedummyword\dfn
-  \definedummyword\dmn
-  \definedummyword\email
-  \definedummyword\emph
-  \definedummyword\env
-  \definedummyword\file
-  \definedummyword\image
-  \definedummyword\indicateurl
-  \definedummyword\inforef
-  \definedummyword\kbd
-  \definedummyword\key
-  \definedummyword\math
-  \definedummyword\option
-  \definedummyword\pxref
-  \definedummyword\ref
-  \definedummyword\samp
-  \definedummyword\strong
-  \definedummyword\tie
-  \definedummyword\U
-  \definedummyword\uref
-  \definedummyword\url
-  \definedummyword\var
-  \definedummyword\verb
-  \definedummyword\w
-  \definedummyword\xref
+  \commondummyword\abbr
+  \commondummyword\acronym
+  \commondummyword\anchor
+  \commondummyword\cite
+  \commondummyword\code
+  \commondummyword\command
+  \commondummyword\dfn
+  \commondummyword\dmn
+  \commondummyword\email
+  \commondummyword\emph
+  \commondummyword\env
+  \commondummyword\file
+  \commondummyword\image
+  \commondummyword\indicateurl
+  \commondummyword\inforef
+  \commondummyword\kbd
+  \commondummyword\key
+  \commondummyword\math
+  \commondummyword\option
+  \commondummyword\pxref
+  \commondummyword\ref
+  \commondummyword\samp
+  \commondummyword\strong
+  \commondummyword\tie
+  \commondummyword\U
+  \commondummyword\uref
+  \commondummyword\url
+  \commondummyword\var
+  \commondummyword\verb
+  \commondummyword\w
+  \commondummyword\xref
 }
 
 % For testing: output @{ and @} in index sort strings as \{ and \}.
@@ -4908,11 +5072,11 @@ end
 %
 \def\indexnofonts{%
   % Accent commands should become @asis.
-  \def\definedummyaccent##1{\let##1\asis}%
+  \def\commondummyaccent##1{\let##1\asis}%
   % We can just ignore other control letters.
-  \def\definedummyletter##1{\let##1\empty}%
+  \def\commondummyletter##1{\let##1\empty}%
   % All control words become @asis by default; overrides below.
-  \let\definedummyword\definedummyaccent
+  \let\commondummyword\commondummyaccent
   \commondummiesnofonts
   %
   % Don't no-op \tt, since it isn't a user-level command
@@ -4997,7 +5161,10 @@ end
   % goes to end-of-line is not handled.
   %
   \macrolist
+  \let\value\indexnofontsvalue
 }
+
+
 
 
 \let\SETmarginindex=\relax % put index entries in margin (undocumented)?
@@ -5044,9 +5211,10 @@ end
   \ifx\suffix\indexisfl\def\suffix{f1}\fi
   % Open the file
   \immediate\openout\csname#1indfile\endcsname \jobname.\suffix
-  % Using \immediate here prevents an object entering into the current box,
-  % which could confound checks such as those in \safewhatsit for preceding
-  % skips.
+  % Using \immediate above here prevents an object entering into the current 
+  % box, which could confound checks such as those in \safewhatsit for
+  % preceding skips.
+  \typeout{Writing index file \jobname.\suffix}%
 \fi}
 \def\indexisfl{fl}
 
@@ -5254,9 +5422,9 @@ end
     % index.  The easiest way to prevent this problem is to make sure
     % there is some text.
     \putwordIndexNonexistent
+    \typeout{No file \jobname.\indexname s.}%
   \else
     \catcode`\\ = 0
-    \escapechar = `\\
     %
     % If the index file exists but is empty, then \openin leaves \ifeof
     % false.  We have to make TeX try to read something from the file, so
@@ -5430,7 +5598,14 @@ end
         % preserve coloured links across page boundaries.  Otherwise the marks
         % would get in the way of \lastbox in \insertindexentrybox.
       \else
-        \hskip\skip\thinshrinkable #1%
+        \ifx\XeTeXrevision\thisisundefined
+          \hskip\skip\thinshrinkable #1%
+        \else
+          \pdfgettoks#1.%
+          \bgroup\let\domark\relax
+            \hskip\skip\thinshrinkable\the\toksA
+          \egroup
+        \fi
       \fi
     \fi
     \egroup % end \boxA
@@ -5565,7 +5740,11 @@ end
   \ifpdf
     \pdfgettoks#2.\ \the\toksA % The page number ends the paragraph.
   \else
-    #2
+    \ifx\XeTeXrevision\thisisundefined
+      #2
+    \else
+      \pdfgettoks#2.\ \the\toksA % The page number ends the paragraph.
+    \fi
   \fi
   \par
 }}
@@ -5785,18 +5964,32 @@ end
         \global\advance\dimen@ by 1pt
       \repeat
     }%
-    \multiply\dimen@ii by 4
-    \divide\dimen@ii by 5
-    \ifdim\ht3<\dimen@ii
-      % Column heights are too different, so don't make their bottoms
-      % flush with each other.  The glue at the end of the second column
-      % allows a second column to stretch, reducing the difference in
-      % height between the two.
-      \setbox0=\vbox to\dimen@{\unvbox1\vfill}%
-      \setbox2=\vbox to\dimen@{\unvbox3\vskip 0pt plus 0.3\ht0}%
+    \ifdim2\ht1>\vsize
+      % The left column has come out longer than the page itself.  (Note
+      % that we have doubled \vsize for the double columns, so
+      % the actual height of the page is 0.5\vsize).  Just split the last
+      % of the double column material roughly in half.
+      \setbox2=\box0
+      \setbox0 = \vsplit2 to \dimen@ii
+      \setbox0=\vbox to\dimen@ii{\unvbox0}%
+      \setbox2=\vbox to\dimen@ii{\unvbox2}%
     \else
-      \setbox0=\vbox to\dimen@{\unvbox1}%
-      \setbox2=\vbox to\dimen@{\unvbox3}%
+      \multiply\dimen@ii by 5
+      \divide\dimen@ii by 4
+      \global\setbox3 = \copy0
+      \global\setbox1 = \vsplit3 to \dimen@ii
+      \global\setbox\balancedcolumns=\vbox{\pagesofar}%
+      \ifdim\ht3<\dimen@ii
+        % Column heights are too different, so don't make their bottoms
+        % flush with each other.  The glue at the end of the second column
+        % allows a second column to stretch, reducing the difference in
+        % height between the two.
+        \setbox0=\vbox to\dimen@{\unvbox1\vfill}%
+        \setbox2=\vbox to\dimen@{\unvbox3\vskip 0pt plus 0.3\ht0}%
+      \else
+        \setbox0=\vbox to\dimen@{\unvbox1}%
+        \setbox2=\vbox to\dimen@{\unvbox3}%
+      \fi
     \fi
   \fi
   %
@@ -6557,7 +6750,14 @@ end
   % 1 and 2 (the page numbers aren't printed), and so are the first
   % two pages of the document.  Thus, we'd have two destinations named
   % `1', and two named `2'.
-  \ifpdf \global\pdfmakepagedesttrue \fi
+  \ifpdf
+    \global\pdfmakepagedesttrue
+  \else
+    \ifx\XeTeXrevision\thisisundefined
+    \else
+      \global\pdfmakepagedesttrue
+    \fi
+  \fi
 }
 
 
@@ -6817,7 +7017,6 @@ end
   \catcode `\>=\other
   \catcode `\`=\other
   \catcode `\'=\other
-  \escapechar=`\\
   %
   % ' is active in math mode (mathcode"8000).  So reset it, and all our
   % other math active characters (just in case), to plain's definitions.
@@ -7795,16 +7994,30 @@ end
 % alias because \c means cedilla in @tex or @math
 \let\texinfoc=\c
 
+\newcount\savedcatcodeone
+\newcount\savedcatcodetwo
+
 % Used at the time of macro expansion.
 % Argument is macro body with arguments substituted
 \def\scanmacro#1{%
   \newlinechar`\^^M
   \def\xeatspaces{\eatspaces}%
   %
-  % Process the macro body under the current catcode regime.
-  \scantokens{#1\texinfoc}\aftermacro%
+  % Temporarily undo catcode changes of \printindex.  Set catcode of @ to
+  % 0 so that @-commands in macro expansions aren't printed literally when 
+  % formatting an index file, where \ is used as the escape character.
+  \savedcatcodeone=\catcode`\@
+  \savedcatcodetwo=\catcode`\\
+  \catcode`\@=0
+  \catcode`\\=\active
   %
-  % The \c is to remove the \newlinechar added by \scantokens, and
+  % Process the macro body under the current catcode regime.
+  \scantokens{#1@texinfoc}\aftermacro%
+  %
+  \catcode`\@=\savedcatcodeone
+  \catcode`\\=\savedcatcodetwo
+  %
+  % The \texinfoc is to remove the \newlinechar added by \scantokens, and
   % can be noticed by \parsearg.
   %   The \aftermacro allows a \comment at the end of the macro definition
   % to duplicate itself past the final \newlinechar added by \scantokens:
@@ -7817,15 +8030,7 @@ end
 
 % Used for copying and captions
 \def\scanexp#1{%
-  \bgroup
-  % Undo catcode changes of \startcontents and \printindex
-  % When called from @insertcopying or (short)caption, we need active
-  % backslash to get it printed correctly.
-  % FIXME: This may not be needed.
-  %\catcode`\@=0 \catcode`\\=\active \escapechar=`\@
-  \edef\temp{\noexpand\scanmacro{#1}}%
-  \temp
-  \egroup
+  \expandafter\scanmacro\expandafter{#1}%
 }
 
 \newcount\paramno   % Count of parameters
@@ -8568,6 +8773,8 @@ end
     {%
       \requireauxfile
       \atdummies  % preserve commands, but don't expand them
+      % match definition in \xrdef, \refx, \xrefX.
+      \def\value##1{##1}%
       \edef\writexrdef##1##2{%
 	\write\auxfile{@xrdef{#1-% #1 of \setref, expanded by the \edef
 	  ##1}{##2}}% these are parameters of \writexrdef
@@ -8658,6 +8865,7 @@ end
   %
   % Make link in pdf output.
   \ifpdf
+    % For pdfTeX and LuaTeX
     {\indexnofonts
      \turnoffactive
      \makevalueexpandable
@@ -8684,12 +8892,54 @@ end
      \fi
     }%
     \setcolor{\linkcolor}%
+  \else
+    \ifx\XeTeXrevision\thisisundefined
+    \else
+      % For XeTeX
+      {\indexnofonts
+       \turnoffactive
+       \makevalueexpandable
+       % This expands tokens, so do it after making catcode changes, so _
+       % etc. don't get their TeX definitions.  This ignores all spaces in
+       % #4, including (wrongly) those in the middle of the filename.
+       \getfilename{#4}%
+       %
+       % This (wrongly) does not take account of leading or trailing
+       % spaces in #1, which should be ignored.
+       \iftxiuseunicodedestname
+         \def\pdfxrefdest{#1}% Pass through Unicode characters.
+       \else
+         \edef\pdfxrefdest{#1}% Replace Unicode characters to ASCII.
+       \fi
+       \ifx\pdfxrefdest\empty
+         \def\pdfxrefdest{Top}% no empty targets
+       \else
+         \txiescapepdf\pdfxrefdest  % escape PDF special chars
+       \fi
+       %
+       \leavevmode
+       \ifnum\filenamelength>0
+         % By the default settings,
+         % XeTeX (xdvipdfmx) replaces link destination names with integers.
+         % In this case, the replaced destination names of
+         % remote PDF cannot be known. In order to avoid replacement,
+         % you can use commandline option `-C 0x0010' for xdvipdfmx.
+         \special{pdf:bann << /Border [0 0 0] /Type /Annot /Subtype /Link /A
+           << /S /GoToR /F (\the\filename.pdf) /D (name\pdfxrefdest) >> >>}%
+       \else
+         \special{pdf:bann << /Border [0 0 0] /Type /Annot /Subtype /Link /A
+           << /S /GoTo /D (name\pdfxrefdest) >> >>}%
+       \fi
+      }%
+      \setcolor{\linkcolor}%
+    \fi
   \fi
   {%
     % Have to otherify everything special to allow the \csname to
     % include an _ in the xref name, etc.
     \indexnofonts
     \turnoffactive
+    \def\value##1{##1}%
     \expandafter\global\expandafter\let\expandafter\Xthisreftitle
       \csname XR#1-title\endcsname
   }%
@@ -8830,14 +9080,14 @@ end
   \fi\fi\fi
 }
 
-% Define \refx{NAME}{SUFFIX} to reference a cross-reference string named NAME.
-% If its value is nonempty, SUFFIX is output afterward.
-%
+% \refx{NAME}{SUFFIX} - reference a cross-reference string named NAME.  SUFFIX 
+% is output afterwards if non-empty.
 \def\refx#1#2{%
   \requireauxfile
   {%
     \indexnofonts
     \otherbackslash
+    \def\value##1{##1}%
     \expandafter\global\expandafter\let\expandafter\thisrefX
       \csname XR#1\endcsname
   }%
@@ -8862,16 +9112,18 @@ end
   #2% Output the suffix in any case.
 }
 
-% This is the macro invoked by entries in the aux file.  Usually it's
-% just a \def (we prepend XR to the control sequence name to avoid
-% collisions).  But if this is a float type, we have more work to do.
+% This is the macro invoked by entries in the aux file.  Define a control 
+% sequence for a cross-reference target (we prepend XR to the control sequence 
+% name to avoid collisions).  The value is the page number.  If this is a float 
+% type, we have more work to do.
 %
 \def\xrdef#1#2{%
-  {% The node name might contain 8-bit characters, which in our current
-   % implementation are changed to commands like @'e.  Don't let these
-   % mess up the control sequence name.
+  {% Expand the node or anchor name to remove control sequences.
+   % \turnoffactive stops 8-bit characters being changed to commands
+   % like @'e.  \refx does the same to retrieve the value in the definition.
     \indexnofonts
     \turnoffactive
+    \def\value##1{##1}%
     \xdef\safexrefname{#1}%
   }%
   %
@@ -9371,7 +9623,7 @@ end
     %
     \ifx\thiscaption\empty \else
       \ifx\floatident\empty \else
-	\appendtomacro\captionline{: }% had ident, so need a colon between
+        \appendtomacro\captionline{: }% had ident, so need a colon between
       \fi
       %
       % caption text.
@@ -9398,29 +9650,16 @@ end
         \requireauxfile
         \atdummies
         %
-        % since we read the caption text in the macro world, where ^^M
-        % is turned into a normal character, we have to scan it back, so
-        % we don't write the literal three characters "^^M" into the aux file.
-	\scanexp{%
-	  \xdef\noexpand\gtemp{%
-	    \ifx\thisshortcaption\empty
-	      \thiscaption
-	    \else
-	      \thisshortcaption
-	    \fi
-	  }%
-	}%
+        \ifx\thisshortcaption\empty
+          \def\gtemp{\thiscaption}%
+        \else
+          \def\gtemp{\thisshortcaption}%
+        \fi
         \immediate\write\auxfile{@xrdef{\floatlabel-lof}{\floatident
-	  \ifx\gtemp\empty \else : \gtemp \fi}}%
+          \ifx\gtemp\empty \else : \gtemp \fi}}%
       }%
     \fi
   \egroup  % end of \vtop
-  %
-  % place the captured inserts
-  %
-  % BEWARE: when the floats start floating, we have to issue warning
-  % whenever an insert appears inside a float which could possibly
-  % float. --kasal, 26may04
   %
   \checkinserts
 }
@@ -10041,7 +10280,7 @@ directory should work if nowhere else does.}
   \countUTFx = "80
   \countUTFy = "C2
   \def\UTFviiiTmp{%
-    \gdef~{
+    \gdef~{%
         \ifpassthroughchars $\fi}}%
   \UTFviiiLoop
 
@@ -10092,6 +10331,15 @@ directory should work if nowhere else does.}
   \fi
 }
 
+% These macros are used here to construct the name of a control
+% sequence to be defined.
+\def\UTFviiiTwoOctetsName#1#2{%
+  \csname u8:#1\string #2\endcsname}%
+\def\UTFviiiThreeOctetsName#1#2#3{%
+  \csname u8:#1\string #2\string #3\endcsname}%
+\def\UTFviiiFourOctetsName#1#2#3#4{%
+  \csname u8:#1\string #2\string #3\string #4\endcsname}%
+
 % For UTF-8 byte sequence (TeX, e-TeX and pdfTeX)
 % Definition macro to replace the Unicode character
 % Definition macro that is used by @U command
@@ -10108,17 +10356,18 @@ directory should work if nowhere else does.}
     \countUTFz = "#1\relax
     \begingroup
       \parseXMLCharref
+    
+      % Give \u8:... its definition.  The sequence of seven \expandafter's
+      % expands after the \gdef three times, e.g.
       %
-      % Access definitions of characters given UTF-8 sequences
-      \def\UTFviiiTwoOctets##1##2{%
-        \csname u8:##1\string ##2\endcsname}%
-      \def\UTFviiiThreeOctets##1##2##3{%
-        \csname u8:##1\string ##2\string ##3\endcsname}%
-      \def\UTFviiiFourOctets##1##2##3##4{%
-        \csname u8:##1\string ##2\string ##3\string ##4\endcsname}%
-      \expandafter\expandafter\expandafter\expandafter
-       \expandafter\expandafter\expandafter
-       \gdef\UTFviiiTmp{#2}%
+      % 1.  \UTFviiTwoOctetsName B1 B2
+      % 2.  \csname u8:B1 \string B2 \endcsname
+      % 3.  \u8: B1 B2  (a single control sequence token)
+      %
+      \expandafter\expandafter
+      \expandafter\expandafter
+      \expandafter\expandafter
+      \expandafter\gdef       \UTFviiiTmp{#2}%
       % 
       \expandafter\ifx\csname uni:#1\endcsname \relax \else
        \message{Internal error, already defined: #1}%
@@ -10128,37 +10377,53 @@ directory should work if nowhere else does.}
       \expandafter\globallet\csname uni:#1\endcsname \UTFviiiTmp
     \endgroup}
   %
-  % Given the value in \countUTFz as a Unicode code point, set \UTFviiiTmp.
+  % Given the value in \countUTFz as a Unicode code point, set \UTFviiiTmp
+  % to the corresponding UTF-8 sequence.
   \gdef\parseXMLCharref{%
     \ifnum\countUTFz < "A0\relax
       \errhelp = \EMsimple
       \errmessage{Cannot define Unicode char value < 00A0}%
     \else\ifnum\countUTFz < "800\relax
       \parseUTFviiiA,%
-      \parseUTFviiiB C\UTFviiiTwoOctets.,%
+      \parseUTFviiiB C\UTFviiiTwoOctetsName.,%
     \else\ifnum\countUTFz < "10000\relax
       \parseUTFviiiA;%
       \parseUTFviiiA,%
-      \parseUTFviiiB E\UTFviiiThreeOctets.{,;}%
+      \parseUTFviiiB E\UTFviiiThreeOctetsName.{,;}%
     \else
       \parseUTFviiiA;%
       \parseUTFviiiA,%
       \parseUTFviiiA!%
-      \parseUTFviiiB F\UTFviiiFourOctets.{!,;}%
+      \parseUTFviiiB F\UTFviiiFourOctetsName.{!,;}%
     \fi\fi\fi
   }
 
+  % Extract a byte from the end of the UTF-8 representation of \countUTFx.
+  % It must be a non-initial byte in the sequence.
+  % Change \uccode of #1 for it to be used in \parseUTFviiiB as one
+  % of the bytes.
   \gdef\parseUTFviiiA#1{%
     \countUTFx = \countUTFz
     \divide\countUTFz by 64
-    \countUTFy = \countUTFz
+    \countUTFy = \countUTFz  % Save to be the future value of \countUTFz.
     \multiply\countUTFz by 64
+    
+    % \countUTFz is now \countUTFx with the last 5 bits cleared.  Subtract
+    % in order to get the last five bits.
     \advance\countUTFx by -\countUTFz
+
+    % Convert this to the byte in the UTF-8 sequence.
     \advance\countUTFx by 128
     \uccode `#1\countUTFx
     \countUTFz = \countUTFy}
 
-  % Used to set \UTFviiiTmp to a UTF-8 byte sequence
+  % Used to put a UTF-8 byte sequence into \UTFviiiTmp
+  % #1 is the increment for \countUTFz to yield a the first byte of the UTF-8
+  %    sequence.
+  % #2 is one of the \UTFviii*OctetsName macros.
+  % #3 is always a full stop (.)
+  % #4 is a template for the other bytes in the sequence.  The values for these
+  %    bytes is substituted in here with \uppercase using the \uccode's.
   \gdef\parseUTFviiiB#1#2#3#4{%
     \advance\countUTFz by "#10\relax
     \uccode `#3\countUTFz
@@ -10865,6 +11130,10 @@ directory should work if nowhere else does.}
   \unicodechardefs
 }
 
+% Whether the active definitions of non-ASCII characters expand to
+% non-active tokens with the same character code.  This is used to
+% write characters literally, instead of using active definitions for
+% printing the correct glyphs.
 \newif\ifpassthroughchars
 \passthroughcharsfalse
 
@@ -10916,13 +11185,6 @@ directory should work if nowhere else does.}
 \def\asciichardefs{% nothing need be done
    \relax
 }
-
-% Whether the active definitions of non-ASCII characters expand to
-% non-active tokens with the same character code.  This is used to
-% write characters literally, instead of using active definitions for
-% printing the correct glyphs.
-\newif\ifpassthroughchars
-\passthroughcharsfalse
 
 % define all the unicode characters we know about, for the sake of @U.
 \iftxinativeunicodecapable
@@ -11004,6 +11266,13 @@ directory should work if nowhere else does.}
     % whatever layout pdftex was dumped with.
     \pdfhorigin = 1 true in
     \pdfvorigin = 1 true in
+  \else
+    \ifx\XeTeXrevision\thisisundefined
+    \else
+      \pdfpageheight #7\relax
+      \pdfpagewidth #8\relax
+      % XeTeX does not have \pdfhorigin and \pdfvorigin.
+    \fi
   \fi
   %
   \setleading{\textleading}

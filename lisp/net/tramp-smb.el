@@ -129,7 +129,8 @@ call, letting the SMB client use the default one."
 	 "ERRnosuchshare"
 	 ;; Windows 4.0 (Windows NT), Windows 5.0 (Windows 2000),
 	 ;; Windows 5.1 (Windows XP), Windows 5.2 (Windows Server 2003),
-	 ;; Windows 6.0 (Windows Vista), Windows 6.1 (Windows 7).
+	 ;; Windows 6.0 (Windows Vista), Windows 6.1 (Windows 7),
+	 ;; Windows 6.3 (Windows 10).
 	 "NT_STATUS_ACCESS_DENIED"
 	 "NT_STATUS_ACCOUNT_LOCKED_OUT"
 	 "NT_STATUS_BAD_NETWORK_NAME"
@@ -425,7 +426,7 @@ pass to the OPERATION."
 		(delete-directory tmpdir 'recursive))))
 
 	   ;; We can copy recursively.
-	   ((or t1 t2)
+	   ((and (or t1 t2) (tramp-smb-get-cifs-capabilities v))
 	    (when (and (file-directory-p newname)
 		       (not (string-equal (file-name-nondirectory dirname)
 					  (file-name-nondirectory newname))))
@@ -596,15 +597,14 @@ PRESERVE-UID-GID and PRESERVE-EXTENDED-ATTRIBUTES are completely ignored."
   "Like `delete-directory' for Tramp files."
   (setq directory (directory-file-name (expand-file-name directory)))
   (when (file-exists-p directory)
-    (if recursive
-	(mapc
-	 (lambda (file)
-	   (if (file-directory-p file)
-	       (delete-directory file recursive)
-	     (delete-file file)))
-	 ;; We do not want to delete "." and "..".
-	 (directory-files
-	  directory 'full "^\\([^.]\\|\\.\\([^.]\\|\\..\\)\\).*")))
+    (when recursive
+      (mapc
+       (lambda (file)
+	 (if (file-directory-p file)
+	     (delete-directory file recursive)
+	   (delete-file file)))
+       ;; We do not want to delete "." and "..".
+       (directory-files directory 'full directory-files-no-dot-files-regexp)))
 
     (with-parsed-tramp-file-name directory nil
       ;; We must also flush the cache of the directory, because
@@ -663,8 +663,7 @@ PRESERVE-UID-GID and PRESERVE-EXTENDED-ATTRIBUTES are completely ignored."
 	     result)))
     ;; Sort them if necessary.
     (unless nosort (setq result (sort result 'string-lessp)))
-    ;; Remove double entries.
-    (delete-dups result)))
+    result))
 
 (defun tramp-smb-handle-expand-file-name (name &optional dir)
   "Like `expand-file-name' for Tramp files."
@@ -907,17 +906,17 @@ PRESERVE-UID-GID and PRESERVE-EXTENDED-ATTRIBUTES are completely ignored."
   "Like `file-name-all-completions' for Tramp files."
   (all-completions
    filename
-   (with-parsed-tramp-file-name directory nil
+   (with-parsed-tramp-file-name (expand-file-name directory) nil
      (with-tramp-file-property v localname "file-name-all-completions"
        (save-match-data
-	 (let ((entries (tramp-smb-get-file-entries directory)))
-	   (mapcar
-	    (lambda (x)
-	      (list
-	       (if (string-match "d" (nth 1 x))
-		   (file-name-as-directory (nth 0 x))
-		 (nth 0 x))))
-	    entries)))))))
+	 (delete-dups
+	  (mapcar
+	   (lambda (x)
+	     (list
+	      (if (string-match "d" (nth 1 x))
+		  (file-name-as-directory (nth 0 x))
+		(nth 0 x))))
+	   (tramp-smb-get-file-entries directory))))))))
 
 (defun tramp-smb-handle-file-writable-p (filename)
   "Like `file-writable-p' for Tramp files."
@@ -1389,16 +1388,18 @@ target of the symlink differ."
 (defun tramp-smb-handle-start-file-process (name buffer program &rest args)
   "Like `start-file-process' for Tramp files."
   (with-parsed-tramp-file-name default-directory nil
-    (let ((command (mapconcat 'identity (cons program args) " "))
-	  (bmp (and (buffer-live-p buffer) (buffer-modified-p buffer)))
-	  (name1 name)
-	  (i 0))
+    (let* ((buffer
+	    (if buffer
+		(get-buffer-create buffer)
+	      ;; BUFFER can be nil.  We use a temporary buffer.
+	      (generate-new-buffer tramp-temp-buffer-name)))
+	   (command (mapconcat 'identity (cons program args) " "))
+	   (bmp (and (buffer-live-p buffer) (buffer-modified-p buffer)))
+	   (name1 name)
+	   (i 0))
       (unwind-protect
 	  (save-excursion
 	    (save-restriction
-	      (unless buffer
-		;; BUFFER can be nil.  We use a temporary buffer.
-		(setq buffer (generate-new-buffer tramp-temp-buffer-name)))
 	      (while (get-process name1)
 		;; NAME must be unique as process name.
 		(setq i (1+ i)
