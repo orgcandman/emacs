@@ -23,11 +23,11 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 #include "sysstdio.h"
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/file.h>
 #include <errno.h>
-#include <limits.h>	/* For CHAR_BIT.  */
 #include <math.h>
 #include <stat-time.h>
 #include "lisp.h"
@@ -2471,7 +2471,7 @@ read_integer (Lisp_Object readcharfun, EMACS_INT radix)
 {
   /* Room for sign, leading 0, other digits, trailing null byte.
      Also, room for invalid syntax diagnostic.  */
-  char buf[max (1 + 1 + sizeof (uintmax_t) * CHAR_BIT + 1,
+  char buf[max (1 + 1 + UINTMAX_WIDTH + 1,
 		sizeof "integer, radix " + INT_STRLEN_BOUND (EMACS_INT))];
 
   int valid = -1; /* 1 if valid, 0 if not, -1 if incomplete.  */
@@ -2895,19 +2895,17 @@ read1 (Lisp_Object readcharfun, int *pch, bool first_in_list)
 	{
 	  EMACS_INT n = 0;
 	  Lisp_Object tem;
+	  bool overflow = false;
 
 	  /* Read a non-negative integer.  */
 	  while (c >= '0' && c <= '9')
 	    {
-	      if (MOST_POSITIVE_FIXNUM / 10 < n
-		  || MOST_POSITIVE_FIXNUM < n * 10 + c - '0')
-		n = MOST_POSITIVE_FIXNUM + 1;
-	      else
-		n = n * 10 + c - '0';
+	      overflow |= INT_MULTIPLY_WRAPV (n, 10, &n);
+	      overflow |= INT_ADD_WRAPV (n, c - '0', &n);
 	      c = READCHAR;
 	    }
 
-	  if (n <= MOST_POSITIVE_FIXNUM)
+	  if (!overflow && n <= MOST_POSITIVE_FIXNUM)
 	    {
 	      if (c == 'r' || c == 'R')
 		return read_integer (readcharfun, n);

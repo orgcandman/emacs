@@ -52,9 +52,18 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "region-cache.h"
 #include "frame.h"
 
+#ifdef HAVE_LINUX_FS_H
+# include <sys/ioctl.h>
+# include <linux/fs.h>
+#endif
+
 #ifdef WINDOWSNT
 #define NOMINMAX 1
 #include <windows.h>
+/* The redundant #ifdef is to avoid compiler warning about unused macro.  */
+#ifdef NOMINMAX
+#undef NOMINMAX
+#endif
 #include <sys/file.h>
 #include "w32.h"
 #endif /* not WINDOWSNT */
@@ -508,7 +517,8 @@ This operation exists because a directory is also a file, but its name as
 a directory is different from its name as a file.
 The result can be used as the value of `default-directory'
 or passed as second argument to `expand-file-name'.
-For a Unix-syntax file name, just appends a slash.  */)
+For a Unix-syntax file name, just appends a slash unless a trailing slash
+is already present.  */)
   (Lisp_Object file)
 {
   char *buf;
@@ -1828,6 +1838,18 @@ barf_or_query_if_file_exists (Lisp_Object absname, bool known_to_exist,
     }
 }
 
+#ifndef WINDOWSNT
+/* Copy data to DEST from SOURCE if possible.  Return true if OK.  */
+static bool
+clone_file (int dest, int source)
+{
+#ifdef FICLONE
+  return ioctl (dest, FICLONE, source) == 0;
+#endif
+  return false;
+}
+#endif
+
 DEFUN ("copy-file", Fcopy_file, Scopy_file, 2, 6,
        "fCopy file: \nGCopy %s to file: \np\nP",
        doc: /* Copy FILE to NEWNAME.  Both args must be strings.
@@ -1974,7 +1996,7 @@ permissions.  */)
 
   record_unwind_protect_int (close_file_unwind, ofd);
 
-  off_t oldsize = 0, newsize = 0;
+  off_t oldsize = 0, newsize;
 
   if (already_exists)
     {
@@ -1990,17 +2012,19 @@ permissions.  */)
 
   immediate_quit = 1;
   QUIT;
-  while (true)
+
+  if (clone_file (ofd, ifd))
+    newsize = st.st_size;
+  else
     {
       char buf[MAX_ALLOCA];
-      ptrdiff_t n = emacs_read (ifd, buf, sizeof buf);
+      ptrdiff_t n;
+      for (newsize = 0; 0 < (n = emacs_read (ifd, buf, sizeof buf));
+	   newsize += n)
+	if (emacs_write_sig (ofd, buf, n) != n)
+	  report_file_error ("Write error", newname);
       if (n < 0)
 	report_file_error ("Read error", file);
-      if (n == 0)
-	break;
-      if (emacs_write_sig (ofd, buf, n) != n)
-	report_file_error ("Write error", newname);
-      newsize += n;
     }
 
   /* Truncate any existing output file after writing the data.  This
@@ -3838,6 +3862,7 @@ by calling `format-decode', which see.  */)
       if (! giveup_match_end)
 	{
 	  ptrdiff_t temp;
+          ptrdiff_t this_count = SPECPDL_INDEX ();
 
 	  /* We win!  We can handle REPLACE the optimized way.  */
 
@@ -3867,13 +3892,19 @@ by calling `format-decode', which see.  */)
 	  beg_offset += same_at_start - BEGV_BYTE;
 	  end_offset -= ZV_BYTE - same_at_end;
 
-	  invalidate_buffer_caches (current_buffer,
-				    BYTE_TO_CHAR (same_at_start),
-				    same_at_end_charpos);
-	  del_range_byte (same_at_start, same_at_end, 0);
+          /* This binding is to avoid ask-user-about-supersession-threat
+	     being called in insert_from_buffer or del_range_bytes (via
+	     prepare_to_modify_buffer).
+             AFAICT we could avoid ask-user-about-supersession-threat by setting
+             current_buffer->modtime earlier, but we could still end up calling
+             ask-user-about-supersession-threat if the file is modified while
+             we read it, so we bind buffer-file-name instead.  */
+          specbind (intern ("buffer-file-name"), Qnil);
+	  del_range_byte (same_at_start, same_at_end);
 	  /* Insert from the file at the proper position.  */
 	  temp = BYTE_TO_CHAR (same_at_start);
 	  SET_PT_BOTH (temp, same_at_start);
+          unbind_to (this_count, Qnil);
 
 	  /* If display currently starts at beginning of line,
 	     keep it that way.  */
@@ -3978,10 +4009,9 @@ by calling `format-decode', which see.  */)
 	  /* Truncate the buffer to the size of the file.  */
 	  if (same_at_start != same_at_end)
 	    {
-	      invalidate_buffer_caches (current_buffer,
-					BYTE_TO_CHAR (same_at_start),
-					BYTE_TO_CHAR (same_at_end));
-	      del_range_byte (same_at_start, same_at_end, 0);
+              /* See previous specbind for the reason behind this.  */
+              specbind (intern ("buffer-file-name"), Qnil);
+	      del_range_byte (same_at_start, same_at_end);
 	    }
 	  inserted = 0;
 
@@ -4029,12 +4059,11 @@ by calling `format-decode', which see.  */)
 	 we are taking from the decoded string.  */
       inserted -= (ZV_BYTE - same_at_end) + (same_at_start - BEGV_BYTE);
 
+      /* See previous specbind for the reason behind this.  */
+      specbind (intern ("buffer-file-name"), Qnil);
       if (same_at_end != same_at_start)
 	{
-	  invalidate_buffer_caches (current_buffer,
-				    BYTE_TO_CHAR (same_at_start),
-				    same_at_end_charpos);
-	  del_range_byte (same_at_start, same_at_end, 0);
+	  del_range_byte (same_at_start, same_at_end);
 	  temp = GPT;
 	  eassert (same_at_start == GPT_BYTE);
 	  same_at_start = GPT_BYTE;
@@ -4055,10 +4084,6 @@ by calling `format-decode', which see.  */)
 				   same_at_start + inserted - BEGV_BYTE
 				  + BUF_BEG_BYTE (XBUFFER (conversion_buffer)))
 	   - same_at_start_charpos);
-      /* This binding is to avoid ask-user-about-supersession-threat
-	 being called in insert_from_buffer (via in
-	 prepare_to_modify_buffer).  */
-      specbind (intern ("buffer-file-name"), Qnil);
       insert_from_buffer (XBUFFER (conversion_buffer),
 			  same_at_start_charpos, inserted_chars, 0);
       /* Set `inserted' to the number of inserted characters.  */
@@ -4513,7 +4538,7 @@ by calling `format-decode', which see.  */)
                              PT - BEG, Z - PT - inserted);
 
   if (read_quit)
-    Fsignal (Qquit, Qnil);
+    quit ();
 
   /* Retval needs to be dealt with in all cases consistently.  */
   if (NILP (val))
@@ -4653,7 +4678,8 @@ DEFUN ("write-region", Fwrite_region, Swrite_region, 3, 7,
 When called from a program, requires three arguments:
 START, END and FILENAME.  START and END are normally buffer positions
 specifying the part of the buffer to write.
-If START is nil, that means to use the entire buffer contents.
+If START is nil, that means to use the entire buffer contents; END is
+ignored.
 If START is a string, then output that string to the file
 instead of any buffer contents; END is ignored.
 

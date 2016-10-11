@@ -1388,6 +1388,9 @@ is converted into a string by expressing it in decimal."
 (make-obsolete 'process-filter-multibyte-p nil "23.1")
 (make-obsolete 'set-process-filter-multibyte nil "23.1")
 
+(make-obsolete-variable 'command-debug-status
+                        "expect it to be removed in a future version." "25.2")
+
 ;; Lisp manual only updated in 22.1.
 (define-obsolete-variable-alias 'executing-macro 'executing-kbd-macro
   "before 19.34")
@@ -1635,7 +1638,7 @@ can do the job."
                           ;; FIXME: We should also emit a warning for let-bound
                           ;; variables with dynamic binding.
                           (when (assq sym byte-compile--lexical-environment)
-                            (byte-compile-log-warning msg t :error))))
+                            (byte-compile-report-error msg :fill))))
                (code
                 (macroexp-let2 macroexp-copyable-p x element
                   `(if ,(if compare-fn
@@ -2286,171 +2289,6 @@ keyboard-quit events while waiting for a valid input."
     (message "%s%s" prompt (char-to-string char))
     char))
 
-(defun read-multiple-choice (prompt choices)
-  "Ask user a multiple choice question.
-PROMPT should be a string that will be displayed as the prompt.
-
-CHOICES is an alist where the first element in each entry is a
-character to be entered, the second element is a short name for
-the entry to be displayed while prompting (if there's room, it
-might be shortened), and the third, optional entry is a longer
-explanation that will be displayed in a help buffer if the user
-requests more help.
-
-This function translates user input into responses by consulting
-the bindings in `query-replace-map'; see the documentation of
-that variable for more information.  In this case, the useful
-bindings are `recenter', `scroll-up', and `scroll-down'.  If the
-user enters `recenter', `scroll-up', or `scroll-down' responses,
-perform the requested window recentering or scrolling and ask
-again.
-
-The return value is the matching entry from the CHOICES list.
-
-Usage example:
-
-\(read-multiple-choice \"Continue connecting?\"
-                      '((?a \"always\")
-                        (?s \"session only\")
-                        (?n \"no\")))"
-  (let* ((altered-names nil)
-         (full-prompt
-          (format
-           "%s (%s): "
-           prompt
-           (mapconcat
-            (lambda (elem)
-              (let* ((name (cadr elem))
-                     (pos (seq-position name (car elem)))
-                     (altered-name
-                      (cond
-                       ;; Not in the name string.
-                       ((not pos)
-                        (format "[%c] %s" (car elem) name))
-                       ;; The prompt character is in the name, so highlight
-                       ;; it on graphical terminals...
-                       ((display-supports-face-attributes-p
-                         '(:underline t) (window-frame))
-                        (setq name (copy-sequence name))
-                        (put-text-property pos (1+ pos)
-                                           'face 'read-multiple-choice-face
-                                           name)
-                        name)
-                       ;; And put it in [bracket] on non-graphical terminals.
-                       (t
-                        (concat
-                         (substring name 0 pos)
-                         "["
-                         (upcase (substring name pos (1+ pos)))
-                         "]"
-                         (substring name (1+ pos)))))))
-                (push (cons (car elem) altered-name)
-                      altered-names)
-                altered-name))
-            (append choices '((?? "?")))
-            ", ")))
-         tchar buf wrong-char answer)
-    (save-window-excursion
-      (save-excursion
-	(while (not tchar)
-	  (message "%s%s"
-                   (if wrong-char
-                       "Invalid choice.  "
-                     "")
-                   full-prompt)
-          (setq tchar
-                (if (and (display-popup-menus-p)
-                         last-input-event ; not during startup
-                         (listp last-nonmenu-event)
-                         use-dialog-box)
-                    (x-popup-dialog
-                     t
-                     (cons prompt
-                           (mapcar
-                            (lambda (elem)
-                              (cons (capitalize (cadr elem))
-                                    (car elem)))
-                            choices)))
-                  (condition-case nil
-                      (let ((cursor-in-echo-area t))
-                        (read-char))
-                    (error nil))))
-          (setq answer (lookup-key query-replace-map (vector tchar) t))
-          (setq tchar
-                (cond
-                 ((eq answer 'recenter)
-                  (recenter) t)
-                 ((eq answer 'scroll-up)
-                  (ignore-errors (scroll-up-command)) t)
-                 ((eq answer 'scroll-down)
-                  (ignore-errors (scroll-down-command)) t)
-                 ((eq answer 'scroll-other-window)
-                  (ignore-errors (scroll-other-window)) t)
-                 ((eq answer 'scroll-other-window-down)
-                  (ignore-errors (scroll-other-window-down)) t)
-                 (t tchar)))
-          (when (eq tchar t)
-            (setq wrong-char nil
-                  tchar nil))
-          ;; The user has entered an invalid choice, so display the
-          ;; help messages.
-          (when (and (not (eq tchar nil))
-                     (not (assq tchar choices)))
-	    (setq wrong-char (not (memq tchar '(?? ?\C-h)))
-                  tchar nil)
-            (when wrong-char
-              (ding))
-            (with-help-window (setq buf (get-buffer-create
-                                         "*Multiple Choice Help*"))
-              (with-current-buffer buf
-                (erase-buffer)
-                (pop-to-buffer buf)
-                (insert prompt "\n\n")
-                (let* ((columns (/ (window-width) 25))
-                       (fill-column 21)
-                       (times 0)
-                       (start (point)))
-                  (dolist (elem choices)
-                    (goto-char start)
-                    (unless (zerop times)
-                      (if (zerop (mod times columns))
-                          ;; Go to the next "line".
-                          (goto-char (setq start (point-max)))
-                        ;; Add padding.
-                        (while (not (eobp))
-                          (end-of-line)
-                          (insert (make-string (max (- (* (mod times columns)
-                                                          (+ fill-column 4))
-                                                       (current-column))
-                                                    0)
-                                               ?\s))
-                          (forward-line 1))))
-                    (setq times (1+ times))
-                    (let ((text
-                           (with-temp-buffer
-                             (insert (format
-                                      "%c: %s\n"
-                                      (car elem)
-                                      (cdr (assq (car elem) altered-names))))
-                             (fill-region (point-min) (point-max))
-                             (when (nth 2 elem)
-                               (let ((start (point)))
-                                 (insert (nth 2 elem))
-                                 (unless (bolp)
-                                   (insert "\n"))
-                                 (fill-region start (point-max))))
-                             (buffer-string))))
-                      (goto-char start)
-                      (dolist (line (split-string text "\n"))
-                        (end-of-line)
-                        (if (bolp)
-                            (insert line "\n")
-                          (insert line))
-                        (forward-line 1)))))))))))
-    (when (buffer-live-p buf)
-      (kill-buffer buf))
-    (assq tchar choices)))
-
 (defun sit-for (seconds &optional nodisp obsolete)
   "Redisplay, then wait for SECONDS seconds.  Stop when input is available.
 SECONDS may be a floating-point value.
@@ -2700,26 +2538,27 @@ This finishes the change group by reverting all of its changes."
 	;; Widen buffer temporarily so if the buffer was narrowed within
 	;; the body of `atomic-change-group' all changes can be undone.
 	(widen)
-	(let ((old-car
-	       (if (consp elt) (car elt)))
-	      (old-cdr
-	       (if (consp elt) (cdr elt))))
-	  ;; Temporarily truncate the undo log at ELT.
-	  (when (consp elt)
-	    (setcar elt nil) (setcdr elt nil))
-	  (unless (eq last-command 'undo) (undo-start))
-	  ;; Make sure there's no confusion.
-	  (when (and (consp elt) (not (eq elt (last pending-undo-list))))
-	    (error "Undoing to some unrelated state"))
-	  ;; Undo it all.
-	  (save-excursion
-	    (while (listp pending-undo-list) (undo-more 1)))
-	  ;; Reset the modified cons cell ELT to its original content.
-	  (when (consp elt)
-	    (setcar elt old-car)
-	    (setcdr elt old-cdr))
-	  ;; Revert the undo info to what it was when we grabbed the state.
-	  (setq buffer-undo-list elt))))))
+	(let ((old-car (car-safe elt))
+	      (old-cdr (cdr-safe elt)))
+          (unwind-protect
+              (progn
+                ;; Temporarily truncate the undo log at ELT.
+                (when (consp elt)
+                  (setcar elt nil) (setcdr elt nil))
+                (unless (eq last-command 'undo) (undo-start))
+                ;; Make sure there's no confusion.
+                (when (and (consp elt) (not (eq elt (last pending-undo-list))))
+                  (error "Undoing to some unrelated state"))
+                ;; Undo it all.
+                (save-excursion
+                  (while (listp pending-undo-list) (undo-more 1)))
+                ;; Revert the undo info to what it was when we grabbed
+                ;; the state.
+                (setq buffer-undo-list elt))
+            ;; Reset the modified cons cell ELT to its original content.
+            (when (consp elt)
+              (setcar elt old-car)
+              (setcdr elt old-cdr))))))))
 
 ;;;; Display-related functions.
 
@@ -3057,9 +2896,11 @@ remove properties specified by `yank-excluded-properties'."
 (defvar yank-undo-function)
 
 (defun insert-for-yank (string)
-  "Call `insert-for-yank-1' repetitively for each `yank-handler' segment.
+  "Insert STRING at point for the `yank' command.
 
-See `insert-for-yank-1' for more details."
+This function is like `insert', except it honors the variables
+`yank-handled-properties' and `yank-excluded-properties', and the
+`yank-handler' text property, in the way that `yank' does."
   (let (to)
     (while (setq to (next-single-property-change 0 'yank-handler string))
       (insert-for-yank-1 (substring string 0 to))
@@ -3067,31 +2908,7 @@ See `insert-for-yank-1' for more details."
   (insert-for-yank-1 string))
 
 (defun insert-for-yank-1 (string)
-  "Insert STRING at point for the `yank' command.
-This function is like `insert', except it honors the variables
-`yank-handled-properties' and `yank-excluded-properties', and the
-`yank-handler' text property.
-
-Properties listed in `yank-handled-properties' are processed,
-then those listed in `yank-excluded-properties' are discarded.
-
-If STRING has a non-nil `yank-handler' property on its first
-character, the normal insert behavior is altered.  The value of
-the `yank-handler' property must be a list of one to four
-elements, of the form (FUNCTION PARAM NOEXCLUDE UNDO).
-FUNCTION, if non-nil, should be a function of one argument, an
- object to insert; it is called instead of `insert'.
-PARAM, if present and non-nil, replaces STRING as the argument to
- FUNCTION or `insert'; e.g. if FUNCTION is `yank-rectangle', PARAM
- may be a list of strings to insert as a rectangle.
-If NOEXCLUDE is present and non-nil, the normal removal of
- `yank-excluded-properties' is not performed; instead FUNCTION is
- responsible for the removal.  This may be necessary if FUNCTION
- adjusts point before or after inserting the object.
-UNDO, if present and non-nil, should be a function to be called
- by `yank-pop' to undo the insertion of the current object.  It is
- given two arguments, the start and end of the region.  FUNCTION
- may set `yank-undo-function' to override UNDO."
+  "Helper for `insert-for-yank', which see."
   (let* ((handler (and (stringp string)
 		       (get-text-property 0 'yank-handler string)))
 	 (param (or (nth 1 handler) string))
@@ -3242,6 +3059,28 @@ Similar to `call-process-shell-command', but calls `process-file'."
    infile buffer display
    (if (file-remote-p default-directory) "-c" shell-command-switch)
    (mapconcat 'identity (cons command args) " ")))
+
+(defun call-shell-region (start end command &optional delete buffer)
+  "Send text from START to END as input to an inferior shell running COMMAND.
+Delete the text if fourth arg DELETE is non-nil.
+
+Insert output in BUFFER before point; t means current buffer; nil for
+ BUFFER means discard it; 0 means discard and don't wait; and `(:file
+ FILE)', where FILE is a file name string, means that it should be
+ written to that file (if the file already exists it is overwritten).
+BUFFER can also have the form (REAL-BUFFER STDERR-FILE); in that case,
+REAL-BUFFER says what to do with standard output, as above,
+while STDERR-FILE says what to do with standard error in the child.
+STDERR-FILE may be nil (discard standard error output),
+t (mix it with ordinary output), or a file name string.
+
+If BUFFER is 0, `call-shell-region' returns immediately with value nil.
+Otherwise it waits for COMMAND to terminate
+and returns a numeric exit status or a signal description string.
+If you quit, the process is killed with SIGINT, or SIGKILL if you quit again."
+  (call-process-region start end
+                       shell-file-name delete buffer nil
+                       shell-command-switch command))
 
 ;;;; Lisp macros to do various things temporarily.
 
@@ -3904,7 +3743,10 @@ Modifies the match data; use `save-match-data' if necessary."
   "Concatenate the STRINGS, adding the SEPARATOR (default \" \").
 This tries to quote the strings to avoid ambiguity such that
   (split-string-and-unquote (combine-and-quote-strings strs)) == strs
-Only some SEPARATORs will work properly."
+Only some SEPARATORs will work properly.
+
+Note that this is not intended to protect STRINGS from
+interpretation by shells, use `shell-quote-argument' for that."
   (let* ((sep (or separator " "))
          (re (concat "[\\\"]" "\\|" (regexp-quote sep))))
     (mapconcat
@@ -4197,7 +4039,7 @@ This function is called directly from the C code."
 				       (expand-file-name
 					byte-compile-current-file
 					byte-compile-root-dir)))
-	    (byte-compile-log-warning msg))
+	    (byte-compile-warn "%s" msg))
 	(run-with-timer 0 nil
 			(lambda (msg)
 			  (message "%s" msg))
@@ -4706,7 +4548,8 @@ to deactivate this transient map, regardless of KEEP-PRED."
             (with-demoted-errors "set-transient-map PCH: %S"
               (unless (cond
                        ((null keep-pred) nil)
-                       ((not (eq map (cadr overriding-terminal-local-map)))
+                       ((and (not (eq map (cadr overriding-terminal-local-map)))
+                             (memq map (cddr overriding-terminal-local-map)))
                         ;; There's presumably some other transient-map in
                         ;; effect.  Wait for that one to terminate before we
                         ;; remove ourselves.

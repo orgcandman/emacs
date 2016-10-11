@@ -288,6 +288,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <limits.h>
 
 #include "lisp.h"
@@ -1317,8 +1318,9 @@ pos_visible_p (struct window *w, ptrdiff_t charpos, int *x, int *y,
   SET_TEXT_POS_FROM_MARKER (top, w->start);
   /* Scrolling a minibuffer window via scroll bar when the echo area
      shows long text sometimes resets the minibuffer contents behind
-     our backs.  */
-  if (CHARPOS (top) > ZV)
+     our backs.  Also, someone might narrow-to-region and immediately
+     call a scroll function.  */
+  if (CHARPOS (top) > ZV || CHARPOS (top) < BEGV)
     SET_TEXT_POS (top, BEGV, BEGV_BYTE);
 
   /* If the top of the window is after CHARPOS, the latter is surely
@@ -6302,9 +6304,10 @@ forward_to_next_line_start (struct it *it, bool *skipped_p,
 	}
       else
 	{
-	  while (get_next_display_element (it)
-		 && !newline_found_p)
+	  while (!newline_found_p)
 	    {
+	      if (!get_next_display_element (it))
+		break;
 	      newline_found_p = ITERATOR_AT_END_OF_LINE_P (it);
 	      if (newline_found_p && it->bidi_p && bidi_it_prev)
 		*bidi_it_prev = it->bidi_it;
@@ -11744,6 +11747,12 @@ x_consider_frame_title (Lisp_Object frame)
       record_unwind_protect (unwind_format_mode_line,
 			     format_mode_line_unwind_data
 			       (f, current_buffer, selected_window, false));
+      /* select-frame calls resize_mini_window, which could resize the
+	 mini-window and by that undo the effect of this redisplay
+	 cycle wrt minibuffer and echo-area display.  Binding
+	 inhibit-redisplay to t makes the call to resize_mini_window a
+	 no-op, thus avoiding the adverse side effects.  */
+      specbind (Qinhibit_redisplay, Qt);
 
       Fselect_window (f->selected_window, Qt);
       set_buffer_internal_1
@@ -15313,6 +15322,40 @@ try_scrolling (Lisp_Object window, bool just_this_one_p,
 	  if (dy > 0)
 	    scroll_down_p = true;
 	}
+      else if (PT == IT_CHARPOS (it)
+	       && IT_CHARPOS (it) < ZV
+	       && it.method == GET_FROM_STRING
+	       && arg_scroll_conservatively > scroll_limit
+	       && it.current_x == 0)
+	{
+	  enum move_it_result skip;
+	  int y1 = it.current_y;
+	  int vpos;
+
+	  /* A before-string that includes newlines and is displayed
+	     on the last visible screen line could fail us under
+	     scroll-conservatively > 100, because we will be unable to
+	     position the cursor on that last visible line.  Try to
+	     recover by finding the first screen line that has some
+	     glyphs coming from the buffer text.  */
+	  do {
+	    skip = move_it_in_display_line_to (&it, ZV, -1, MOVE_TO_POS);
+	    if (skip != MOVE_NEWLINE_OR_CR
+		|| IT_CHARPOS (it) != PT
+		|| it.method == GET_FROM_BUFFER)
+	      break;
+	    vpos = it.vpos;
+	    move_it_to (&it, -1, -1, -1, vpos + 1, MOVE_TO_VPOS);
+	  } while (it.vpos > vpos);
+
+	  dy = it.current_y - y1;
+
+	  if (dy > scroll_max)
+	    return SCROLLING_FAILED;
+
+	  if (dy > 0)
+	    scroll_down_p = true;
+	}
     }
 
   if (scroll_down_p)
@@ -16154,6 +16197,7 @@ redisplay_window (Lisp_Object window, bool just_this_one_p)
   ptrdiff_t beg_unchanged, end_unchanged;
   int frame_line_height;
   bool use_desired_matrix;
+  void *itdata = NULL;
 
   SET_TEXT_POS (lpoint, PT, PT_BYTE);
   opoint = lpoint;
@@ -16875,6 +16919,11 @@ redisplay_window (Lisp_Object window, bool just_this_one_p)
   /* Run scroll hooks.  */
   startp = run_window_scroll_functions (window, it.current.pos);
 
+  /* We invoke try_window and try_window_reusing_current_matrix below,
+     and they manipulate the bidi cache.  Save and restore the cache
+     state of our iterator, so we could continue using it after that.  */
+  itdata = bidi_shelve_cache ();
+
   /* Redisplay the window.  */
   use_desired_matrix = false;
   if (!current_matrix_up_to_date_p
@@ -16888,6 +16937,8 @@ redisplay_window (Lisp_Object window, bool just_this_one_p)
       || !(used_current_matrix_p
 	   = try_window_reusing_current_matrix (w)))
     use_desired_matrix = (try_window (window, startp, 0) == 1);
+
+  bidi_unshelve_cache (itdata, false);
 
   /* If new fonts have been loaded (due to fontsets), give up.  We
      have to start a new redisplay since we need to re-adjust glyph
@@ -16912,6 +16963,27 @@ redisplay_window (Lisp_Object window, bool just_this_one_p)
 	{
 	  clear_glyph_matrix (w->desired_matrix);
 	  move_it_by_lines (&it, -1);
+	  try_window (window, it.current.pos, 0);
+	}
+      else if (scroll_conservatively > SCROLL_LIMIT
+	       && (it.method == GET_FROM_STRING
+		   || overlay_touches_p (IT_CHARPOS (it)))
+	       && IT_CHARPOS (it) < ZV)
+	{
+	  /* If the window starts with a before-string that spans more
+	     than one screen line, using that position to display the
+	     window might fail to bring point into the view, because
+	     start_display will always start by displaying the string,
+	     whereas the code above determines where to set w->start
+	     by the buffer position of the place where it takes screen
+	     coordinates.  Try to recover by finding the next screen
+	     line that displays buffer text.  */
+	  ptrdiff_t pos0 = IT_CHARPOS (it);
+
+	  clear_glyph_matrix (w->desired_matrix);
+	  do {
+	    move_it_by_lines (&it, 1);
+	  } while (IT_CHARPOS (it) == pos0);
 	  try_window (window, it.current.pos, 0);
 	}
       else
@@ -17114,16 +17186,7 @@ redisplay_window (Lisp_Object window, bool just_this_one_p)
 	    ignore_mouse_drag_p = true;
 #endif
         }
-      ptrdiff_t count1 = SPECPDL_INDEX ();
-      /* x_consider_frame_title calls select-frame, which calls
-	 resize_mini_window, which could resize the mini-window and by
-	 that undo the effect of this redisplay cycle wrt minibuffer
-	 and echo-area display.  Binding inhibit-redisplay to t makes
-	 the call to resize_mini_window a no-op, thus avoiding the
-	 adverse side effects.  */
-      specbind (Qinhibit_redisplay, Qt);
       x_consider_frame_title (w->frame);
-      unbind_to (count1, Qnil);
 #endif
     }
 
@@ -23387,6 +23450,16 @@ decode_mode_spec_coding (Lisp_Object coding_system, char *buf, bool eol_flag)
   return buf;
 }
 
+/* Return the approximate percentage N is of D (rounding upward), or 99,
+   whichever is less.  Assume 0 < D and 0 <= N <= D * INT_MAX / 100.  */
+
+static int
+percent99 (ptrdiff_t n, ptrdiff_t d)
+{
+  int percent = (d - 1 + 100.0 * n) / d;
+  return min (percent, 99);
+}
+
 /* Return a string for the output of a mode line %-spec for window W,
    generated by character C.  FIELD_WIDTH > 0 means pad the string
    returned with spaces to that value.  Return a Lisp string in
@@ -23674,29 +23747,17 @@ decode_mode_spec (struct window *w, register int c, int field_width,
     case 'p':
       {
 	ptrdiff_t pos = marker_position (w->start);
-	ptrdiff_t total = BUF_ZV (b) - BUF_BEGV (b);
+	ptrdiff_t begv = BUF_BEGV (b);
+	ptrdiff_t zv = BUF_ZV (b);
 
-	if (w->window_end_pos <= BUF_Z (b) - BUF_ZV (b))
-	  {
-	    if (pos <= BUF_BEGV (b))
-	      return "All";
-	    else
-	      return "Bottom";
-	  }
-	else if (pos <= BUF_BEGV (b))
+	if (w->window_end_pos <= BUF_Z (b) - zv)
+	  return pos <= begv ? "All" : "Bottom";
+	else if (pos <= begv)
 	  return "Top";
 	else
 	  {
-	    if (total > 1000000)
-	      /* Do it differently for a large value, to avoid overflow.  */
-	      total = ((pos - BUF_BEGV (b)) + (total / 100) - 1) / (total / 100);
-	    else
-	      total = ((pos - BUF_BEGV (b)) * 100 + total - 1) / total;
-	    /* We can't normally display a 3-digit number,
-	       so get us a 2-digit number that is close.  */
-	    if (total == 100)
-	      total = 99;
-	    sprintf (decode_mode_spec_buf, "%2"pD"d%%", total);
+	    sprintf (decode_mode_spec_buf, "%2d%%",
+		     percent99 (pos - begv, zv - begv));
 	    return decode_mode_spec_buf;
 	  }
       }
@@ -23706,30 +23767,16 @@ decode_mode_spec (struct window *w, register int c, int field_width,
       {
 	ptrdiff_t toppos = marker_position (w->start);
 	ptrdiff_t botpos = BUF_Z (b) - w->window_end_pos;
-	ptrdiff_t total = BUF_ZV (b) - BUF_BEGV (b);
+	ptrdiff_t begv = BUF_BEGV (b);
+	ptrdiff_t zv = BUF_ZV (b);
 
-	if (botpos >= BUF_ZV (b))
-	  {
-	    if (toppos <= BUF_BEGV (b))
-	      return "All";
-	    else
-	      return "Bottom";
-	  }
+	if (zv <= botpos)
+	  return toppos <= begv ? "All" : "Bottom";
 	else
 	  {
-	    if (total > 1000000)
-	      /* Do it differently for a large value, to avoid overflow.  */
-	      total = ((botpos - BUF_BEGV (b)) + (total / 100) - 1) / (total / 100);
-	    else
-	      total = ((botpos - BUF_BEGV (b)) * 100 + total - 1) / total;
-	    /* We can't normally display a 3-digit number,
-	       so get us a 2-digit number that is close.  */
-	    if (total == 100)
-	      total = 99;
-	    if (toppos <= BUF_BEGV (b))
-	      sprintf (decode_mode_spec_buf, "Top%2"pD"d%%", total);
-	    else
-	      sprintf (decode_mode_spec_buf, "%2"pD"d%%", total);
+	    sprintf (decode_mode_spec_buf,
+		     &"Top%2d%%"[begv < toppos ? sizeof "Top" - 1 : 0],
+		     percent99 (botpos - begv, zv - begv));
 	    return decode_mode_spec_buf;
 	  }
       }
@@ -26866,7 +26913,7 @@ produce_glyphless_glyph (struct it *it, bool for_no_font, Lisp_Object acronym)
     }
   else if (it->glyphless_method == GLYPHLESS_DISPLAY_EMPTY_BOX)
     {
-      width = CHAR_WIDTH (it->c);
+      width = CHARACTER_WIDTH (it->c);
       if (width == 0)
 	width = 1;
       else if (width > 4)
@@ -28459,8 +28506,7 @@ display_and_set_cursor (struct window *w, bool on,
     }
 
   glyph = NULL;
-  if (!glyph_row->exact_window_width_line_p
-      || (0 <= hpos && hpos < glyph_row->used[TEXT_AREA]))
+  if (0 <= hpos && hpos < glyph_row->used[TEXT_AREA])
     glyph = glyph_row->glyphs[TEXT_AREA] + hpos;
 
   eassert (input_blocked_p ());

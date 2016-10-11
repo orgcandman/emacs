@@ -1933,6 +1933,7 @@ expressions; a `progn' form will be returned enclosing these forms."
 (def-edebug-spec defun
   (&define name lambda-list
 	   [&optional stringp]
+           [&optional ("declare" &rest sexp)]
 	   [&optional ("interactive" interactive)]
 	   def-body))
 (def-edebug-spec defmacro
@@ -3797,7 +3798,9 @@ Otherwise call `debug' normally."
 	  (forward-line 1)
 	  (delete-region last-ok-point (point)))
 
-	 ((looking-at "^  edebug")
+	 ((looking-at (if debugger-stack-frame-as-list
+                          "^  (edebug"
+                        "^  edebug"))
 	  (forward-line 1)
 	  (delete-region last-ok-point (point))
 	  )))

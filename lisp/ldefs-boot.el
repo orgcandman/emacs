@@ -1529,7 +1529,7 @@ let-binding.")
 
 (custom-autoload 'auth-source-cache-expiry "auth-source" t)
 
-(if (fboundp 'register-definition-prefixes) (register-definition-prefixes "auth-source" '("aut")))
+(if (fboundp 'register-definition-prefixes) (register-definition-prefixes "auth-source" '("auth-source")))
 
 ;;;***
 
@@ -3228,7 +3228,7 @@ See Info node `(calc)Defining Functions'.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "calc-aent" "calc/calc-aent.el"
-;;;;;;  (22164 57533 783192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from calc/calc-aent.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "calc-aent" '("math-" "calc")))
@@ -3271,7 +3271,7 @@ See Info node `(calc)Defining Functions'.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "calc-embed" "calc/calc-embed.el"
-;;;;;;  (22164 57533 791192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from calc/calc-embed.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "calc-embed" '("calc-")))
@@ -3377,7 +3377,7 @@ See Info node `(calc)Defining Functions'.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "calc-misc" "calc/calc-misc.el"
-;;;;;;  (22164 57533 803192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from calc/calc-misc.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "calc-misc" '("math-iipow")))
@@ -3495,7 +3495,7 @@ See Info node `(calc)Defining Functions'.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "calc-yank" "calc/calc-yank.el"
-;;;;;;  (22164 57533 811192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from calc/calc-yank.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "calc-yank" '("calc-" "math-number-regexp")))
@@ -4761,7 +4761,7 @@ and runs the normal hook `command-history-hook'.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "cl-extra" "emacs-lisp/cl-extra.el"
-;;;;;;  (22323 1714 133363 124000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from emacs-lisp/cl-extra.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "cl-extra" '("cl-")))
@@ -4875,7 +4875,7 @@ a future Emacs interpreter will be able to use it.")
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "cl-macs" "emacs-lisp/cl-macs.el"
-;;;;;;  (22374 28976 748674 436000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from emacs-lisp/cl-macs.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "cl-macs" '("cl-")))
@@ -4883,7 +4883,7 @@ a future Emacs interpreter will be able to use it.")
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "cl-seq" "emacs-lisp/cl-seq.el"
-;;;;;;  (22233 28356 901820 212000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from emacs-lisp/cl-seq.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "cl-seq" '("cl--")))
@@ -7359,7 +7359,7 @@ Keybindings:
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "dired-aux" "dired-aux.el"
-;;;;;;  (22316 28459 907124 107000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from dired-aux.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "dired-aux" '("dired-" "minibuffer-default-add-dired-shell-commands")))
@@ -7367,7 +7367,7 @@ Keybindings:
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "dired-x" "dired-x.el"
-;;;;;;  (22258 27960 296487 495000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from dired-x.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "dired-x" '("dired-" "virtual-dired")))
@@ -8599,7 +8599,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/base" "cedet/ede/base.el"
-;;;;;;  (22164 57533 927192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/base.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/base" '("ede-")))
@@ -8607,7 +8607,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/config" "cedet/ede/config.el"
-;;;;;;  (22164 57533 927192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/config.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/config" '("ede-")))
@@ -8615,7 +8615,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/cpp-root"
-;;;;;;  "cedet/ede/cpp-root.el" (22164 57533 931192 607000))
+;;;;;;  "cedet/ede/cpp-root.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/cpp-root.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/cpp-root" '("ede-c")))
@@ -8623,7 +8623,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/custom" "cedet/ede/custom.el"
-;;;;;;  (22164 57533 931192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/custom.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/custom" '("eieio-ede-old-variables" "ede-")))
@@ -8638,7 +8638,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/dired" "cedet/ede/dired.el"
-;;;;;;  (22164 57533 931192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/dired.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/dired" '("ede-dired-")))
@@ -8646,7 +8646,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/emacs" "cedet/ede/emacs.el"
-;;;;;;  (22164 57533 931192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/emacs.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/emacs" '("ede-emacs-")))
@@ -8654,7 +8654,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/files" "cedet/ede/files.el"
-;;;;;;  (22164 57533 931192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/files.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/files" '("ede-")))
@@ -8662,7 +8662,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/generic"
-;;;;;;  "cedet/ede/generic.el" (22164 57533 931192 607000))
+;;;;;;  "cedet/ede/generic.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/generic.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/generic" '("ede-generic-")))
@@ -8670,7 +8670,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/linux" "cedet/ede/linux.el"
-;;;;;;  (22362 1462 489419 679000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/linux.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/linux" '("ede-linux-" "project-linux-")))
@@ -8678,7 +8678,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/locate" "cedet/ede/locate.el"
-;;;;;;  (22189 60738 37741 19000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/locate.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/locate" '("ede-locate-")))
@@ -8686,7 +8686,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/make" "cedet/ede/make.el"
-;;;;;;  (22164 57533 931192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/make.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/make" '("ede-make-")))
@@ -8811,7 +8811,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/shell" "cedet/ede/shell.el"
-;;;;;;  (22164 57533 935192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/shell.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/shell" '("ede-shell-run-command")))
@@ -8833,7 +8833,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/speedbar"
-;;;;;;  "cedet/ede/speedbar.el" (22164 57533 935192 607000))
+;;;;;;  "cedet/ede/speedbar.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/speedbar.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/speedbar" '("ede-")))
@@ -8849,7 +8849,7 @@ an EDE controlled project.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ede/util" "cedet/ede/util.el"
-;;;;;;  (22164 57533 935192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/ede/util.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ede/util" '("ede-make-buffer-writable")))
@@ -9441,7 +9441,7 @@ BUFFER is put back into its original major mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "eieio-compat"
-;;;;;;  "emacs-lisp/eieio-compat.el" (22164 57534 179192 607000))
+;;;;;;  "emacs-lisp/eieio-compat.el" (0 0 0 0))
 ;;; Generated autoloads from emacs-lisp/eieio-compat.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "eieio-compat" '("no-" "next-method-p" "generic-p" "eieio--generic-static-symbol-specializers")))
@@ -9468,7 +9468,7 @@ It creates an autoload function for CNAME's constructor.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "eieio-custom"
-;;;;;;  "emacs-lisp/eieio-custom.el" (22164 57534 179192 607000))
+;;;;;;  "emacs-lisp/eieio-custom.el" (0 0 0 0))
 ;;; Generated autoloads from emacs-lisp/eieio-custom.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "eieio-custom" '("eieio-")))
@@ -9484,7 +9484,7 @@ It creates an autoload function for CNAME's constructor.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "eieio-opt" "emacs-lisp/eieio-opt.el"
-;;;;;;  (22323 1714 165363 124000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from emacs-lisp/eieio-opt.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "eieio-opt" '("eieio-")))
@@ -9634,7 +9634,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-alias" "eshell/em-alias.el"
-;;;;;;  (22164 57534 283192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-alias.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-alias" '("eshell" "pcomplete/eshell-mode/alias")))
@@ -9642,7 +9642,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-banner" "eshell/em-banner.el"
-;;;;;;  (22164 57534 283192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-banner.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-banner" '("eshell-banner-")))
@@ -9650,7 +9650,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-basic" "eshell/em-basic.el"
-;;;;;;  (22164 57534 283192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-basic.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-basic" '("eshell")))
@@ -9658,7 +9658,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-cmpl" "eshell/em-cmpl.el"
-;;;;;;  (22164 57534 283192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-cmpl.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-cmpl" '("eshell-")))
@@ -9666,7 +9666,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-dirs" "eshell/em-dirs.el"
-;;;;;;  (22164 57534 283192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-dirs.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-dirs" '("eshell")))
@@ -9674,7 +9674,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-glob" "eshell/em-glob.el"
-;;;;;;  (22164 57534 283192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-glob.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-glob" '("eshell-")))
@@ -9682,7 +9682,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-hist" "eshell/em-hist.el"
-;;;;;;  (22164 57534 287192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-hist.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-hist" '("eshell")))
@@ -9690,7 +9690,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-ls" "eshell/em-ls.el"
-;;;;;;  (22381 2247 656310 732000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-ls.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-ls" '("eshell")))
@@ -9698,7 +9698,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-pred" "eshell/em-pred.el"
-;;;;;;  (22164 57534 287192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-pred.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-pred" '("eshell-")))
@@ -9706,7 +9706,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-prompt" "eshell/em-prompt.el"
-;;;;;;  (22164 57534 287192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-prompt.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-prompt" '("eshell-")))
@@ -9714,7 +9714,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-rebind" "eshell/em-rebind.el"
-;;;;;;  (22164 57534 291192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-rebind.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-rebind" '("eshell-")))
@@ -9722,7 +9722,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-script" "eshell/em-script.el"
-;;;;;;  (22164 57534 291192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-script.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-script" '("eshell")))
@@ -9730,7 +9730,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-smart" "eshell/em-smart.el"
-;;;;;;  (22164 57534 291192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-smart.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-smart" '("eshell-")))
@@ -9738,7 +9738,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-term" "eshell/em-term.el"
-;;;;;;  (22174 6972 512792 520000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-term.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-term" '("eshell-")))
@@ -9746,7 +9746,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-tramp" "eshell/em-tramp.el"
-;;;;;;  (22164 57534 291192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-tramp.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-tramp" '("eshell")))
@@ -9754,7 +9754,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-unix" "eshell/em-unix.el"
-;;;;;;  (22319 4659 781044 40000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-unix.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-unix" '("eshell" "nil-blank-string" "pcomplete/")))
@@ -9762,7 +9762,7 @@ displayed.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "em-xtra" "eshell/em-xtra.el"
-;;;;;;  (22164 57534 295192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from eshell/em-xtra.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "em-xtra" '("pcomplete/bcc" "eshell/")))
@@ -11323,8 +11323,6 @@ Third arg DELIMITED (prefix arg) means replace only word-delimited matches.
 If you exit (\\[keyboard-quit], RET or q), you can resume the query replace
 with the command \\[tags-loop-continue].
 Fourth arg FILE-LIST-FORM non-nil means initialize the replacement loop.
-Fifth and sixth arguments START and END are accepted, for compatibility
-with `query-replace-regexp', and ignored.
 
 If FILE-LIST-FORM is non-nil, it is a form to evaluate to
 produce the list of files to search.
@@ -13470,14 +13468,18 @@ the list) is deleted every time a new one is added (at the front).
 \(fn &optional ARG)" t nil)
 
 (autoload 'gdb "gdb-mi" "\
-Run gdb on program FILE in buffer *gud-FILE*.
-The directory containing FILE becomes the initial working directory
-and source-file directory for your debugger.
+Run gdb passing it COMMAND-LINE as arguments.
 
-COMMAND-LINE is the shell command for starting the gdb session.
-It should be a string consisting of the name of the gdb
-executable followed by command line options.  The command line
-options should include \"-i=mi\" to use gdb's MI text interface.
+If COMMAND-LINE names a program FILE to debug, gdb will run in
+a buffer named *gud-FILE*, and the directory containing FILE
+becomes the initial working directory and source-file directory
+for your debugger.
+If COMMAND-LINE requests that gdb attaches to a process PID, gdb
+will run in *gud-PID*, otherwise it will run in *gud*; in these
+cases the initial working directory is the default-directory of
+the buffer in which this command was invoked.
+
+COMMAND-LINE should include \"-i=mi\" to use gdb's MI text interface.
 Note that the old \"--annotate\" option is no longer supported.
 
 If option `gdb-many-windows' is nil (the default value) then gdb just
@@ -14605,23 +14607,6 @@ BOOKMARK is a bookmark name or a bookmark record.
 
 ;;;***
 
-;;;### (autoloads nil "gnus-sync" "gnus/gnus-sync.el" (0 0 0 0))
-;;; Generated autoloads from gnus/gnus-sync.el
-
-(autoload 'gnus-sync-initialize "gnus-sync" "\
-Initialize the Gnus sync facility.
-
-\(fn)" t nil)
-
-(autoload 'gnus-sync-install-hooks "gnus-sync" "\
-Install the sync hooks.
-
-\(fn)" t nil)
-
-(if (fboundp 'register-definition-prefixes) (register-definition-prefixes "gnus-sync" '("gnus-sync-")))
-
-;;;***
-
 ;;;### (autoloads nil "gnus-topic" "gnus/gnus-topic.el" (0 0 0 0))
 ;;; Generated autoloads from gnus/gnus-topic.el
 
@@ -14971,9 +14956,15 @@ the form \"WINDOW-ID PIXMAP-ID\".  Value is non-nil if successful.
 ;;; Generated autoloads from progmodes/gud.el
 
 (autoload 'gud-gdb "gud" "\
-Run gdb on program FILE in buffer *gud-FILE*.
-The directory containing FILE becomes the initial working
-directory and source-file directory for your debugger.
+Run gdb passing it COMMAND-LINE as arguments.
+If COMMAND-LINE names a program FILE to debug, gdb will run in
+a buffer named *gud-FILE*, and the directory containing FILE
+becomes the initial working directory and source-file directory
+for your debugger.
+If COMMAND-LINE requests that gdb attaches to a process PID, gdb
+will run in *gud-PID*, otherwise it will run in *gud*; in these
+cases the initial working directory is the default-directory of
+the buffer in which this command was invoked.
 
 \(fn COMMAND-LINE)" t nil)
 
@@ -15160,7 +15151,7 @@ The return value is the last VAL in the list.
 Return a reference to PLACE.
 This is like the `&' operator of the C language.
 Note: this only works reliably with lexical binding mode, except for very
-simple PLACEs such as (function-symbol \\='foo) which will also work in dynamic
+simple PLACEs such as (symbol-function \\='foo) which will also work in dynamic
 binding mode.
 
 \(fn PLACE)" nil t)
@@ -16381,8 +16372,9 @@ Dangerous characters in the existing buffer are turned into HTML
 entities, so you should even be able to do HTML-within-HTML
 fontified display.
 
-You should, however, note that random control or eight-bit
-characters such as ^L () or ¤ (\244) won't get mapped yet.
+You should, however, note that random control or non-ASCII
+characters such as ^L (U+000C FORM FEED (FF)) or ¤ (U+00A4
+CURRENCY SIGN) won't get mapped yet.
 
 If the SRCDIR and FILE arguments are set, lookup etags derived
 entries in the `hfy-tags-cache' and add HTML anchors and
@@ -16403,7 +16395,7 @@ You may also want to set `hfy-page-header' and `hfy-page-footer'.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ibuf-ext" "ibuf-ext.el"
-;;;;;;  (22359 22496 626933 643000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from ibuf-ext.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ibuf-ext" '("ibuffer-" "filename" "shell-command-" "size" "alphabetic" "major-mode" "mode" "print" "predicate" "content" "name" "derived-mode" "used-mode" "query-replace" "rename-uniquely" "revert" "replace-regexp" "view-and-eval" "eval")))
@@ -16484,8 +16476,13 @@ operation is complete, in the form:
 ACTIVE-OPSTRING is a string which will be displayed to the user in a
 confirmation message, in the form:
  \"Really ACTIVE-OPSTRING x buffers?\"
-COMPLEX means this function is special; see the source code of this
-macro for exactly what it does.
+COMPLEX means this function is special; if COMPLEX is nil BODY
+evaluates once for each marked buffer, MBUF, with MBUF current
+and saving the point.  If COMPLEX is non-nil, BODY evaluates
+without requiring MBUF current.
+BODY define the operation; they are forms to evaluate per each
+marked buffer.  BODY is evaluated with `buf' bound to the
+buffer object.
 
 \(fn OP ARGS DOCUMENTATION (&key INTERACTIVE MARK MODIFIER-P DANGEROUS OPSTRING ACTIVE-OPSTRING COMPLEX) &rest BODY)" nil t)
 
@@ -16551,7 +16548,7 @@ FORMATS is the value to use for `ibuffer-formats'.
 
 \(fn &optional OTHER-WINDOW-P NAME QUALIFIERS NOSELECT SHRINK FILTER-GROUPS FORMATS)" t nil)
 
-(if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ibuffer" '("ibuffer-" "filename" "process" "mark" "mod" "size" "name" "read-only")))
+(if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ibuffer" '("ibuffer-" "filename" "process" "mark" "mod" "size" "name" "locked" "read-only")))
 
 ;;;***
 
@@ -22459,7 +22456,7 @@ Many aspects this mode can be customized using
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ob-core" "org/ob-core.el"
-;;;;;;  (22328 19625 652549 735000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ob-core.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ob-core" '("org-")))
@@ -22552,7 +22549,7 @@ Many aspects this mode can be customized using
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ob-keys" "org/ob-keys.el"
-;;;;;;  (22164 57535 139192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ob-keys.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ob-keys" '("org-babel-")))
@@ -22588,7 +22585,7 @@ Many aspects this mode can be customized using
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ob-lob" "org/ob-lob.el"
-;;;;;;  (22164 57535 143192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ob-lob.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ob-lob" '("org-babel-")))
@@ -22743,7 +22740,7 @@ Many aspects this mode can be customized using
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ob-tangle" "org/ob-tangle.el"
-;;;;;;  (22328 19625 716549 735000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ob-tangle.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ob-tangle" '("org-babel-")))
@@ -23332,7 +23329,7 @@ to override `appt-message-warning-time'.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-archive"
-;;;;;;  "org/org-archive.el" (22164 57535 151192 607000))
+;;;;;;  "org/org-archive.el" (0 0 0 0))
 ;;; Generated autoloads from org/org-archive.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-archive" '("org-")))
@@ -23340,7 +23337,7 @@ to override `appt-message-warning-time'.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-attach" "org/org-attach.el"
-;;;;;;  (22164 57535 151192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-attach.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-attach" '("org-attach-")))
@@ -23348,7 +23345,7 @@ to override `appt-message-warning-time'.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-bbdb" "org/org-bbdb.el"
-;;;;;;  (22164 57535 151192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-bbdb.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-bbdb" '("org-bbdb-")))
@@ -23407,7 +23404,7 @@ Set `org-capture-templates' to be similar to `org-remember-templates'.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-clock" "org/org-clock.el"
-;;;;;;  (22328 19625 764549 735000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-clock.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-clock" '("org-")))
@@ -23506,7 +23503,7 @@ Try very hard to provide sensible version strings.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-datetree"
-;;;;;;  "org/org-datetree.el" (22164 57535 155192 607000))
+;;;;;;  "org/org-datetree.el" (0 0 0 0))
 ;;; Generated autoloads from org/org-datetree.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-datetree" '("org-datetree-")))
@@ -23521,7 +23518,7 @@ Try very hard to provide sensible version strings.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-element"
-;;;;;;  "org/org-element.el" (22189 60738 609741 19000))
+;;;;;;  "org/org-element.el" (0 0 0 0))
 ;;; Generated autoloads from org/org-element.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-element" '("org-element-")))
@@ -23551,7 +23548,7 @@ Try very hard to provide sensible version strings.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-feed" "org/org-feed.el"
-;;;;;;  (22328 19625 780549 735000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-feed.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-feed" '("org-feed-")))
@@ -23559,7 +23556,7 @@ Try very hard to provide sensible version strings.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-footnote"
-;;;;;;  "org/org-footnote.el" (22164 57535 159192 607000))
+;;;;;;  "org/org-footnote.el" (0 0 0 0))
 ;;; Generated autoloads from org/org-footnote.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-footnote" '("org-footnote-")))
@@ -23581,7 +23578,7 @@ Try very hard to provide sensible version strings.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-id" "org/org-id.el"
-;;;;;;  (22164 57535 159192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-id.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-id" '("org-id-")))
@@ -23589,7 +23586,7 @@ Try very hard to provide sensible version strings.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-indent" "org/org-indent.el"
-;;;;;;  (22164 57535 159192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-indent.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-indent" '("org-")))
@@ -23612,7 +23609,7 @@ Try very hard to provide sensible version strings.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-irc" "org/org-irc.el"
-;;;;;;  (22164 57535 163192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-irc.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-irc" '("org-irc-")))
@@ -23653,7 +23650,7 @@ Load FILE with optional arguments NOERROR and MUSTSUFFIX.  Drop the MUSTSUFFIX a
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-mobile" "org/org-mobile.el"
-;;;;;;  (22189 60738 629741 19000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-mobile.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-mobile" '("org-mobile-")))
@@ -23676,7 +23673,7 @@ Load FILE with optional arguments NOERROR and MUSTSUFFIX.  Drop the MUSTSUFFIX a
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-plot" "org/org-plot.el"
-;;;;;;  (22164 57535 163192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-plot.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-plot" '("org-plot")))
@@ -23706,7 +23703,7 @@ Load FILE with optional arguments NOERROR and MUSTSUFFIX.  Drop the MUSTSUFFIX a
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-table" "org/org-table.el"
-;;;;;;  (22164 57535 167192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-table.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-table" '("org" "*orgtbl-")))
@@ -23714,7 +23711,7 @@ Load FILE with optional arguments NOERROR and MUSTSUFFIX.  Drop the MUSTSUFFIX a
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "org-timer" "org/org-timer.el"
-;;;;;;  (22320 25516 956613 268000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/org-timer.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "org-timer" '("org-timer-")))
@@ -23791,7 +23788,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox" "org/ox.el"
-;;;;;;  (22189 60739 13741 19000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox" '("org-export-")))
@@ -23799,7 +23796,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-ascii" "org/ox-ascii.el"
-;;;;;;  (22189 60738 961741 19000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox-ascii.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-ascii" '("org-ascii-")))
@@ -23807,7 +23804,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-beamer" "org/ox-beamer.el"
-;;;;;;  (22164 57535 195192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox-beamer.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-beamer" '("org-beamer-")))
@@ -23815,7 +23812,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-html" "org/ox-html.el"
-;;;;;;  (22164 57535 195192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox-html.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-html" '("org-html-")))
@@ -23823,7 +23820,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-icalendar"
-;;;;;;  "org/ox-icalendar.el" (22274 16187 224759 99000))
+;;;;;;  "org/ox-icalendar.el" (0 0 0 0))
 ;;; Generated autoloads from org/ox-icalendar.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-icalendar" '("org-icalendar-")))
@@ -23831,7 +23828,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-latex" "org/ox-latex.el"
-;;;;;;  (22164 57535 199192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox-latex.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-latex" '("org-latex-")))
@@ -23839,7 +23836,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-man" "org/ox-man.el"
-;;;;;;  (22164 57535 199192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox-man.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-man" '("org-man-")))
@@ -23847,7 +23844,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-md" "org/ox-md.el"
-;;;;;;  (22164 57535 199192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox-md.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-md" '("org-md-")))
@@ -23855,7 +23852,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-odt" "org/ox-odt.el"
-;;;;;;  (22164 57535 203192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox-odt.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-odt" '("org-odt-")))
@@ -23863,7 +23860,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-org" "org/ox-org.el"
-;;;;;;  (22328 19625 860549 735000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox-org.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-org" '("org-org-")))
@@ -23871,7 +23868,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-publish" "org/ox-publish.el"
-;;;;;;  (22189 60738 997741 19000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox-publish.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-publish" '("org-publish-")))
@@ -23879,7 +23876,7 @@ See the command `outline-mode' for more information on this mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ox-texinfo" "org/ox-texinfo.el"
-;;;;;;  (22164 57535 203192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from org/ox-texinfo.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ox-texinfo" '("org-texinfo-")))
@@ -25656,7 +25653,7 @@ Typing \\<ps-run-mode-map>\\[ps-run-goto-error] when the cursor is at the number
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "ps-mule" "ps-mule.el"
-;;;;;;  (22164 57535 655192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from ps-mule.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "ps-mule" '("ps-mule-")))
@@ -26508,7 +26505,7 @@ With a prefix (or a FILL) argument, also fill lines where nothing has to be
 deleted.
 
 If the buffer is read-only, Emacs will beep and refrain from deleting
-the rectangle, but put it in the kill ring anyway.  This means that
+the rectangle, but put it in `killed-rectangle' anyway.  This means that
 you can use this command to copy text from a read-only buffer.
 \(If the variable `kill-read-only-ok' is non-nil, then this won't
 even beep.)
@@ -26701,7 +26698,7 @@ This enforces rescanning the buffer on next use.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "reftex-auc" "textmodes/reftex-auc.el"
-;;;;;;  (22164 57535 811192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from textmodes/reftex-auc.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "reftex-auc" '("reftex-")))
@@ -26709,7 +26706,7 @@ This enforces rescanning the buffer on next use.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "reftex-cite"
-;;;;;;  "textmodes/reftex-cite.el" (22164 57535 811192 607000))
+;;;;;;  "textmodes/reftex-cite.el" (0 0 0 0))
 ;;; Generated autoloads from textmodes/reftex-cite.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "reftex-cite" '("reftex-")))
@@ -26717,7 +26714,7 @@ This enforces rescanning the buffer on next use.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "reftex-dcr" "textmodes/reftex-dcr.el"
-;;;;;;  (22164 57535 811192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from textmodes/reftex-dcr.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "reftex-dcr" '("reftex-")))
@@ -26725,7 +26722,7 @@ This enforces rescanning the buffer on next use.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "reftex-global"
-;;;;;;  "textmodes/reftex-global.el" (22164 57535 811192 607000))
+;;;;;;  "textmodes/reftex-global.el" (0 0 0 0))
 ;;; Generated autoloads from textmodes/reftex-global.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "reftex-global" '("reftex-")))
@@ -26733,7 +26730,7 @@ This enforces rescanning the buffer on next use.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "reftex-index"
-;;;;;;  "textmodes/reftex-index.el" (22164 57535 811192 607000))
+;;;;;;  "textmodes/reftex-index.el" (0 0 0 0))
 ;;; Generated autoloads from textmodes/reftex-index.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "reftex-index" '("reftex-")))
@@ -26741,7 +26738,7 @@ This enforces rescanning the buffer on next use.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "reftex-parse"
-;;;;;;  "textmodes/reftex-parse.el" (22164 57535 811192 607000))
+;;;;;;  "textmodes/reftex-parse.el" (0 0 0 0))
 ;;; Generated autoloads from textmodes/reftex-parse.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "reftex-parse" '("reftex-")))
@@ -26749,7 +26746,7 @@ This enforces rescanning the buffer on next use.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "reftex-ref" "textmodes/reftex-ref.el"
-;;;;;;  (22189 60739 277741 19000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from textmodes/reftex-ref.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "reftex-ref" '("reftex-")))
@@ -26757,7 +26754,7 @@ This enforces rescanning the buffer on next use.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "reftex-sel" "textmodes/reftex-sel.el"
-;;;;;;  (22164 57535 815192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from textmodes/reftex-sel.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "reftex-sel" '("reftex-")))
@@ -26765,7 +26762,7 @@ This enforces rescanning the buffer on next use.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "reftex-toc" "textmodes/reftex-toc.el"
-;;;;;;  (22164 57535 815192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from textmodes/reftex-toc.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "reftex-toc" '("reftex-")))
@@ -26790,18 +26787,44 @@ This enforces rescanning the buffer on next use.
 
 (autoload 'regexp-opt "regexp-opt" "\
 Return a regexp to match a string in the list STRINGS.
-Each string should be unique in STRINGS and should not contain any regexps,
-quoted or not.  If optional PAREN is non-nil, ensure that the returned regexp
-is enclosed by at least one regexp grouping construct.
-The returned regexp is typically more efficient than the equivalent regexp:
+Each string should be unique in STRINGS and should not contain
+any regexps, quoted or not.  Optional PAREN specifies how the
+returned regexp is surrounded by grouping constructs.
 
- (let ((open (if PAREN \"\\\\(\" \"\")) (close (if PAREN \"\\\\)\" \"\")))
-   (concat open (mapconcat \\='regexp-quote STRINGS \"\\\\|\") close))
+The optional argument PAREN can be any of the following:
 
-If PAREN is `words', then the resulting regexp is additionally surrounded
-by \\=\\< and \\>.
-If PAREN is `symbols', then the resulting regexp is additionally surrounded
-by \\=\\_< and \\_>.
+a string
+    the resulting regexp is preceded by PAREN and followed by
+    \\), e.g.  use \"\\\\(?1:\" to produce an explicitly numbered
+    group.
+
+`words'
+    the resulting regexp is surrounded by \\=\\<\\( and \\)\\>.
+
+`symbols'
+    the resulting regexp is surrounded by \\_<\\( and \\)\\_>.
+
+non-nil
+    the resulting regexp is surrounded by \\( and \\).
+
+nil
+    the resulting regexp is surrounded by \\(?: and \\), if it is
+    necessary to ensure that a postfix operator appended to it will
+    apply to the whole expression.
+
+The resulting regexp is equivalent to but usually more efficient
+than that of a simplified version:
+
+ (defun simplified-regexp-opt (strings &optional paren)
+   (let ((parens
+          (cond ((stringp paren)       (cons paren \"\\\\)\"))
+                ((eq paren 'words)    '(\"\\\\\\=<\\\\(\" . \"\\\\)\\\\>\"))
+                ((eq paren 'symbols) '(\"\\\\_<\\\\(\" . \"\\\\)\\\\_>\"))
+                ((null paren)          '(\"\\\\(?:\" . \"\\\\)\"))
+                (t                       '(\"\\\\(\" . \"\\\\)\")))))
+     (concat (car paren)
+             (mapconcat 'regexp-quote strings \"\\\\|\")
+             (cdr paren))))
 
 \(fn STRINGS &optional PAREN)" nil nil)
 
@@ -27332,7 +27355,7 @@ Set PASSWORD to be used for retrieving mail from a POP or IMAP server.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "rmailedit" "mail/rmailedit.el"
-;;;;;;  (22164 57534 831192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from mail/rmailedit.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "rmailedit" '("rmail-")))
@@ -27340,7 +27363,7 @@ Set PASSWORD to be used for retrieving mail from a POP or IMAP server.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "rmailkwd" "mail/rmailkwd.el"
-;;;;;;  (22164 57534 831192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from mail/rmailkwd.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "rmailkwd" '("rmail-")))
@@ -27348,7 +27371,7 @@ Set PASSWORD to be used for retrieving mail from a POP or IMAP server.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "rmailmm" "mail/rmailmm.el"
-;;;;;;  (22164 57534 831192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from mail/rmailmm.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "rmailmm" '("rmail-")))
@@ -27422,7 +27445,7 @@ than appending to it.  Deletes the message after writing if
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "rmailsort" "mail/rmailsort.el"
-;;;;;;  (22164 57534 831192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from mail/rmailsort.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "rmailsort" '("rmail-")))
@@ -27430,7 +27453,7 @@ than appending to it.  Deletes the message after writing if
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "rmailsum" "mail/rmailsum.el"
-;;;;;;  (22164 57534 835192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from mail/rmailsum.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "rmailsum" '("rmail-")))
@@ -28344,7 +28367,7 @@ Semantic mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/analyze"
-;;;;;;  "cedet/semantic/analyze.el" (22164 57533 947192 607000))
+;;;;;;  "cedet/semantic/analyze.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/analyze.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/analyze" '("semantic-a")))
@@ -28352,8 +28375,7 @@ Semantic mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/analyze/complete"
-;;;;;;  "cedet/semantic/analyze/complete.el" (22164 57533 947192
-;;;;;;  607000))
+;;;;;;  "cedet/semantic/analyze/complete.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/analyze/complete.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/analyze/complete" '("semantic-analyze-")))
@@ -28377,7 +28399,7 @@ Semantic mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/analyze/refs"
-;;;;;;  "cedet/semantic/analyze/refs.el" (22164 57533 947192 607000))
+;;;;;;  "cedet/semantic/analyze/refs.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/analyze/refs.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/analyze/refs" '("semantic-")))
@@ -28385,7 +28407,7 @@ Semantic mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/bovine"
-;;;;;;  "cedet/semantic/bovine.el" (22164 57533 947192 607000))
+;;;;;;  "cedet/semantic/bovine.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/bovine.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/bovine" '("semantic-")))
@@ -28393,7 +28415,7 @@ Semantic mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/bovine/c"
-;;;;;;  "cedet/semantic/bovine/c.el" (22362 1462 517419 679000))
+;;;;;;  "cedet/semantic/bovine/c.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/bovine/c.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/bovine/c" '("semantic" "c++-mode" "c-mode")))
@@ -28409,7 +28431,7 @@ Semantic mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/bovine/el"
-;;;;;;  "cedet/semantic/bovine/el.el" (22362 16472 646303 103000))
+;;;;;;  "cedet/semantic/bovine/el.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/bovine/el.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/bovine/el" '("lisp-mode" "emacs-lisp-mode" "semantic-")))
@@ -28417,7 +28439,7 @@ Semantic mode.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/bovine/gcc"
-;;;;;;  "cedet/semantic/bovine/gcc.el" (22164 57533 951192 607000))
+;;;;;;  "cedet/semantic/bovine/gcc.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/bovine/gcc.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/bovine/gcc" '("semantic-")))
@@ -28438,7 +28460,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/bovine/make"
-;;;;;;  "cedet/semantic/bovine/make.el" (22164 57533 951192 607000))
+;;;;;;  "cedet/semantic/bovine/make.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/bovine/make.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/bovine/make" '("semantic-" "makefile-mode")))
@@ -28446,7 +28468,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/bovine/scm"
-;;;;;;  "cedet/semantic/bovine/scm.el" (22164 57533 951192 607000))
+;;;;;;  "cedet/semantic/bovine/scm.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/bovine/scm.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/bovine/scm" '("semantic-")))
@@ -28462,7 +28484,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/complete"
-;;;;;;  "cedet/semantic/complete.el" (22362 1462 529419 679000))
+;;;;;;  "cedet/semantic/complete.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/complete.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/complete" '("semantic-")))
@@ -28470,7 +28492,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/ctxt"
-;;;;;;  "cedet/semantic/ctxt.el" (22164 57533 951192 607000))
+;;;;;;  "cedet/semantic/ctxt.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/ctxt.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/ctxt" '("semantic-")))
@@ -28478,7 +28500,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/db"
-;;;;;;  "cedet/semantic/db.el" (22362 1462 533419 679000))
+;;;;;;  "cedet/semantic/db.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/db.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/db" '("semanticdb-")))
@@ -28510,7 +28532,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/db-file"
-;;;;;;  "cedet/semantic/db-file.el" (22220 16330 615423 271000))
+;;;;;;  "cedet/semantic/db-file.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/db-file.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/db-file" '("semanticdb-")))
@@ -28518,7 +28540,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/db-find"
-;;;;;;  "cedet/semantic/db-find.el" (22164 57533 951192 607000))
+;;;;;;  "cedet/semantic/db-find.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/db-find.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/db-find" '("semanticdb-")))
@@ -28526,7 +28548,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/db-global"
-;;;;;;  "cedet/semantic/db-global.el" (22164 57533 955192 607000))
+;;;;;;  "cedet/semantic/db-global.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/db-global.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/db-global" '("semanticdb-")))
@@ -28542,7 +28564,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/db-mode"
-;;;;;;  "cedet/semantic/db-mode.el" (22220 16330 615423 271000))
+;;;;;;  "cedet/semantic/db-mode.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/db-mode.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/db-mode" '("semanticdb-")))
@@ -28558,7 +28580,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/db-typecache"
-;;;;;;  "cedet/semantic/db-typecache.el" (22164 57533 955192 607000))
+;;;;;;  "cedet/semantic/db-typecache.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/db-typecache.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/db-typecache" '("semanticdb-")))
@@ -28566,7 +28588,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/debug"
-;;;;;;  "cedet/semantic/debug.el" (22164 57533 955192 607000))
+;;;;;;  "cedet/semantic/debug.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/debug.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/debug" '("semantic-debug-")))
@@ -28582,7 +28604,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/decorate/include"
-;;;;;;  "cedet/semantic/decorate/include.el" (22362 1462 541419 679000))
+;;;;;;  "cedet/semantic/decorate/include.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/decorate/include.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/decorate/include" '("semantic-decoration-")))
@@ -28590,7 +28612,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/decorate/mode"
-;;;;;;  "cedet/semantic/decorate/mode.el" (22362 1462 545419 679000))
+;;;;;;  "cedet/semantic/decorate/mode.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/decorate/mode.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/decorate/mode" '("semantic-" "define-semantic-decoration-style")))
@@ -28598,7 +28620,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/dep"
-;;;;;;  "cedet/semantic/dep.el" (22164 57533 955192 607000))
+;;;;;;  "cedet/semantic/dep.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/dep.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/dep" '("semantic-" "defcustom-mode-local-semantic-dependency-system-include-path")))
@@ -28606,7 +28628,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/doc"
-;;;;;;  "cedet/semantic/doc.el" (22164 57533 955192 607000))
+;;;;;;  "cedet/semantic/doc.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/doc.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/doc" '("semantic-doc")))
@@ -28622,7 +28644,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/edit"
-;;;;;;  "cedet/semantic/edit.el" (22164 57533 955192 607000))
+;;;;;;  "cedet/semantic/edit.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/edit.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/edit" '("semantic-")))
@@ -28630,7 +28652,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/find"
-;;;;;;  "cedet/semantic/find.el" (22164 57533 959192 607000))
+;;;;;;  "cedet/semantic/find.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/find.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/find" '("semantic-")))
@@ -28638,7 +28660,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/format"
-;;;;;;  "cedet/semantic/format.el" (22362 1462 553419 679000))
+;;;;;;  "cedet/semantic/format.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/format.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/format" '("semantic-")))
@@ -28670,7 +28692,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/html"
-;;;;;;  "cedet/semantic/html.el" (22164 57533 971192 607000))
+;;;;;;  "cedet/semantic/html.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/html.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/html" '("html-helper-mode" "semantic-")))
@@ -28678,7 +28700,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/ia"
-;;;;;;  "cedet/semantic/ia.el" (22362 1462 561419 679000))
+;;;;;;  "cedet/semantic/ia.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/ia.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/ia" '("semantic-ia-")))
@@ -28686,7 +28708,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/ia-sb"
-;;;;;;  "cedet/semantic/ia-sb.el" (22164 57533 971192 607000))
+;;;;;;  "cedet/semantic/ia-sb.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/ia-sb.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/ia-sb" '("semantic-ia-s")))
@@ -28694,7 +28716,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/idle"
-;;;;;;  "cedet/semantic/idle.el" (22362 1462 569419 679000))
+;;;;;;  "cedet/semantic/idle.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/idle.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/idle" '("semantic-" "global-semantic-idle-summary-mode" "define-semantic-idle-service")))
@@ -28702,7 +28724,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/imenu"
-;;;;;;  "cedet/semantic/imenu.el" (22362 1462 573419 679000))
+;;;;;;  "cedet/semantic/imenu.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/imenu.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/imenu" '("semantic-")))
@@ -28718,7 +28740,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/lex"
-;;;;;;  "cedet/semantic/lex.el" (22362 16472 670303 103000))
+;;;;;;  "cedet/semantic/lex.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/lex.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/lex" '("semantic-" "define-lex")))
@@ -28726,7 +28748,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/lex-spp"
-;;;;;;  "cedet/semantic/lex-spp.el" (22362 16472 662303 103000))
+;;;;;;  "cedet/semantic/lex-spp.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/lex-spp.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/lex-spp" '("semantic-lex-" "define-lex-spp-")))
@@ -28734,7 +28756,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/mru-bookmark"
-;;;;;;  "cedet/semantic/mru-bookmark.el" (22362 1462 593419 679000))
+;;;;;;  "cedet/semantic/mru-bookmark.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/mru-bookmark.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/mru-bookmark" '("semantic-" "global-semantic-mru-bookmark-mode")))
@@ -28750,7 +28772,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/scope"
-;;;;;;  "cedet/semantic/scope.el" (22164 57533 983192 607000))
+;;;;;;  "cedet/semantic/scope.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/scope.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/scope" '("semantic-")))
@@ -28758,7 +28780,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/senator"
-;;;;;;  "cedet/semantic/senator.el" (22189 60738 73741 19000))
+;;;;;;  "cedet/semantic/senator.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/senator.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/senator" '("semantic-up-reference" "senator-")))
@@ -28766,7 +28788,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/sort"
-;;;;;;  "cedet/semantic/sort.el" (22164 57533 983192 607000))
+;;;;;;  "cedet/semantic/sort.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/sort.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/sort" '("semantic-")))
@@ -28774,7 +28796,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/symref"
-;;;;;;  "cedet/semantic/symref.el" (22362 16472 682303 103000))
+;;;;;;  "cedet/semantic/symref.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/symref.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/symref" '("semantic-symref-")))
@@ -28782,7 +28804,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/symref/cscope"
-;;;;;;  "cedet/semantic/symref/cscope.el" (22294 1450 520812 63000))
+;;;;;;  "cedet/semantic/symref/cscope.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/symref/cscope.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/symref/cscope" '("semantic-symref-cscope--line-re")))
@@ -28798,7 +28820,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/symref/global"
-;;;;;;  "cedet/semantic/symref/global.el" (22294 1450 536812 63000))
+;;;;;;  "cedet/semantic/symref/global.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/symref/global.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/symref/global" '("semantic-symref-global--line-re")))
@@ -28806,7 +28828,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/symref/grep"
-;;;;;;  "cedet/semantic/symref/grep.el" (22294 1450 612812 63000))
+;;;;;;  "cedet/semantic/symref/grep.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/symref/grep.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/symref/grep" '("semantic-symref-")))
@@ -28814,7 +28836,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/symref/idutils"
-;;;;;;  "cedet/semantic/symref/idutils.el" (22294 1450 612812 63000))
+;;;;;;  "cedet/semantic/symref/idutils.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/symref/idutils.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/symref/idutils" '("semantic-symref-idutils--line-re")))
@@ -28822,7 +28844,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/symref/list"
-;;;;;;  "cedet/semantic/symref/list.el" (22164 57533 987192 607000))
+;;;;;;  "cedet/semantic/symref/list.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/symref/list.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/symref/list" '("semantic-symref-")))
@@ -28830,7 +28852,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/tag"
-;;;;;;  "cedet/semantic/tag.el" (22164 57533 991192 607000))
+;;;;;;  "cedet/semantic/tag.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/tag.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/tag" '("semantic-")))
@@ -28838,7 +28860,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/tag-file"
-;;;;;;  "cedet/semantic/tag-file.el" (22164 57533 987192 607000))
+;;;;;;  "cedet/semantic/tag-file.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/tag-file.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/tag-file" '("semantic-prototype-file")))
@@ -28846,7 +28868,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/tag-ls"
-;;;;;;  "cedet/semantic/tag-ls.el" (22164 57533 991192 607000))
+;;;;;;  "cedet/semantic/tag-ls.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/tag-ls.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/tag-ls" '("semantic-")))
@@ -28854,7 +28876,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/tag-write"
-;;;;;;  "cedet/semantic/tag-write.el" (22164 57533 991192 607000))
+;;;;;;  "cedet/semantic/tag-write.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/tag-write.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/tag-write" '("semantic-tag-write-")))
@@ -28862,7 +28884,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/texi"
-;;;;;;  "cedet/semantic/texi.el" (22257 7109 253189 216000))
+;;;;;;  "cedet/semantic/texi.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/texi.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/texi" '("semantic-")))
@@ -28878,7 +28900,7 @@ Major mode for editing Bovine grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/util-modes"
-;;;;;;  "cedet/semantic/util-modes.el" (22164 57534 3192 607000))
+;;;;;;  "cedet/semantic/util-modes.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/util-modes.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/util-modes" '("semantic-")))
@@ -28915,7 +28937,7 @@ Major mode for editing Wisent grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/wisent/java-tags"
-;;;;;;  "cedet/semantic/wisent/java-tags.el" (22164 57534 7192 607000))
+;;;;;;  "cedet/semantic/wisent/java-tags.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/wisent/java-tags.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/wisent/java-tags" '("semantic-" "wisent-java-parse-error")))
@@ -28923,7 +28945,7 @@ Major mode for editing Wisent grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/wisent/javascript"
-;;;;;;  "cedet/semantic/wisent/javascript.el" (22164 57534 7192 607000))
+;;;;;;  "cedet/semantic/wisent/javascript.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/wisent/javascript.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/wisent/javascript" '("js-mode" "semantic-" "wisent-javascript-jv-expand-tag")))
@@ -28931,7 +28953,7 @@ Major mode for editing Wisent grammars.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "semantic/wisent/python"
-;;;;;;  "cedet/semantic/wisent/python.el" (22164 57534 7192 607000))
+;;;;;;  "cedet/semantic/wisent/python.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/semantic/wisent/python.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "semantic/wisent/python" '("wisent-python-" "semantic-" "python-")))
@@ -30925,7 +30947,7 @@ Run vsql as an inferior process.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/compile"
-;;;;;;  "cedet/srecode/compile.el" (22164 57534 7192 607000))
+;;;;;;  "cedet/srecode/compile.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/compile.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/compile" '("srecode-")))
@@ -30933,7 +30955,7 @@ Run vsql as an inferior process.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/cpp"
-;;;;;;  "cedet/srecode/cpp.el" (22164 57534 7192 607000))
+;;;;;;  "cedet/srecode/cpp.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/cpp.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/cpp" '("srecode-")))
@@ -30957,7 +30979,7 @@ Run vsql as an inferior process.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/document"
-;;;;;;  "cedet/srecode/document.el" (22164 57534 11192 607000))
+;;;;;;  "cedet/srecode/document.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/document.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/document" '("srecode-document-")))
@@ -30965,7 +30987,7 @@ Run vsql as an inferior process.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/el" "cedet/srecode/el.el"
-;;;;;;  (22164 57534 11192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/el.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/el" '("srecode-semantic-apply-tag-to-dict")))
@@ -30973,7 +30995,7 @@ Run vsql as an inferior process.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/expandproto"
-;;;;;;  "cedet/srecode/expandproto.el" (22164 57534 11192 607000))
+;;;;;;  "cedet/srecode/expandproto.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/expandproto.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/expandproto" '("srecode-")))
@@ -31013,7 +31035,7 @@ Run vsql as an inferior process.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/getset"
-;;;;;;  "cedet/srecode/getset.el" (22164 57534 15192 607000))
+;;;;;;  "cedet/srecode/getset.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/getset.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/getset" '("srecode-")))
@@ -31021,7 +31043,7 @@ Run vsql as an inferior process.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/insert"
-;;;;;;  "cedet/srecode/insert.el" (22328 19625 560549 735000))
+;;;;;;  "cedet/srecode/insert.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/insert.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/insert" '("srecode-")))
@@ -31029,7 +31051,7 @@ Run vsql as an inferior process.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/map"
-;;;;;;  "cedet/srecode/map.el" (22164 57534 15192 607000))
+;;;;;;  "cedet/srecode/map.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/map.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/map" '("srecode-")))
@@ -31037,7 +31059,7 @@ Run vsql as an inferior process.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/mode"
-;;;;;;  "cedet/srecode/mode.el" (22164 57534 15192 607000))
+;;;;;;  "cedet/srecode/mode.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/mode.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/mode" '("srecode-")))
@@ -31053,7 +31075,7 @@ Run vsql as an inferior process.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/srt"
-;;;;;;  "cedet/srecode/srt.el" (22164 57534 19192 607000))
+;;;;;;  "cedet/srecode/srt.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/srt.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/srt" '("srecode-read-")))
@@ -31084,7 +31106,7 @@ Major-mode for writing SRecode macros.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/template"
-;;;;;;  "cedet/srecode/template.el" (22164 57534 19192 607000))
+;;;;;;  "cedet/srecode/template.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/template.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/template" '("semantic-tag-components")))
@@ -31092,7 +31114,7 @@ Major-mode for writing SRecode macros.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "srecode/texi"
-;;;;;;  "cedet/srecode/texi.el" (22164 57534 19192 607000))
+;;;;;;  "cedet/srecode/texi.el" (0 0 0 0))
 ;;; Generated autoloads from cedet/srecode/texi.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "srecode/texi" '("semantic-insert-foreign-tag" "srecode-texi-")))
@@ -31263,7 +31285,7 @@ Studlify-case the current buffer.
 ;;;### (autoloads nil "subr-x" "emacs-lisp/subr-x.el" (0 0 0 0))
 ;;; Generated autoloads from emacs-lisp/subr-x.el
 
-(if (fboundp 'register-definition-prefixes) (register-definition-prefixes "subr-x" '("string-" "hash-table-" "when-let" "internal--" "if-let" "thread-")))
+(if (fboundp 'register-definition-prefixes) (register-definition-prefixes "subr-x" '("read-multiple-choice" "string-" "hash-table-" "when-let" "internal--" "if-let" "thread-")))
 
 ;;;***
 
@@ -32040,6 +32062,13 @@ converts a table into plain text without frames.  It is a companion to
 \(fn)" t nil)
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "table" '("table-" "*table--")))
+
+;;;***
+
+;;;### (autoloads nil "tabulated-list" "emacs-lisp/tabulated-list.el"
+;;;;;;  (0 0 0 0))
+;;; Generated autoloads from emacs-lisp/tabulated-list.el
+(push (purecopy '(tabulated-list 1 0)) package--builtin-versions)
 
 ;;;***
 
@@ -33707,7 +33736,7 @@ Add Tramp file name handlers to `file-name-handler-alist' during autoload." (add
 (tramp-register-autoload-file-name-handlers)
 
 (autoload 'tramp-unload-file-name-handlers "tramp" "\
-
+Unload Tramp file name handlers from `file-name-handler-alist'.
 
 \(fn)" nil nil)
 
@@ -33761,7 +33790,7 @@ Discard Tramp from loading remote files.
 ;;; Generated autoloads from net/tramp-ftp.el
 
 (autoload 'tramp-ftp-enable-ange-ftp "tramp-ftp" "\
-
+Reenable Ange-FTP, when Tramp is unloaded.
 
 \(fn)" nil nil)
 
@@ -33806,7 +33835,7 @@ Discard Tramp from loading remote files.
 
 ;;;### (autoloads nil "trampver" "net/trampver.el" (0 0 0 0))
 ;;; Generated autoloads from net/trampver.el
-(push (purecopy '(tramp 2 3 0)) package--builtin-versions)
+(push (purecopy '(tramp 2 3 1 -1)) package--builtin-versions)
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "trampver" '("tramp-")))
 
@@ -34147,7 +34176,7 @@ which specify the range to operate on.
 ;;;***
 
 ;;;### (autoloads "actual autoloads are elsewhere" "undigest" "mail/undigest.el"
-;;;;;;  (22164 57534 843192 607000))
+;;;;;;  (0 0 0 0))
 ;;; Generated autoloads from mail/undigest.el
 
 (if (fboundp 'register-definition-prefixes) (register-definition-prefixes "undigest" '("rmail-")))
@@ -34985,6 +35014,11 @@ in any way you like.
 
 \(fn FILE OPPONENT)" nil nil)
 
+(autoload 'userlock--ask-user-about-supersession-threat "userlock" "\
+
+
+\(fn FN)" nil nil)
+
 (autoload 'ask-user-about-supersession-threat "userlock" "\
 Ask a user who is about to modify an obsolete buffer what to do.
 This function has two choices: it can return, in which case the modification
@@ -34996,7 +35030,7 @@ The buffer in question is current when this function is called.
 
 \(fn FN)" nil nil)
 
-(if (fboundp 'register-definition-prefixes) (register-definition-prefixes "userlock" '("ask-user-about-" "file-")))
+(if (fboundp 'register-definition-prefixes) (register-definition-prefixes "userlock" '("ask-user-about-" "userlock--check-content-unchanged" "file-")))
 
 ;;;***
 
@@ -36976,8 +37010,10 @@ in certain major modes.
 (autoload 'whitespace-mode "whitespace" "\
 Toggle whitespace visualization (Whitespace mode).
 With a prefix argument ARG, enable Whitespace mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-the mode if ARG is omitted or nil.
+positive, and disable it otherwise.
+
+If called from Lisp, also enables the mode if ARG is omitted or nil,
+and toggles it if ARG is `toggle'.
 
 See also `whitespace-style', `whitespace-newline' and
 `whitespace-display-mappings'.
@@ -36987,8 +37023,10 @@ See also `whitespace-style', `whitespace-newline' and
 (autoload 'whitespace-newline-mode "whitespace" "\
 Toggle newline visualization (Whitespace Newline mode).
 With a prefix argument ARG, enable Whitespace Newline mode if ARG
-is positive, and disable it otherwise.  If called from Lisp,
-enable the mode if ARG is omitted or nil.
+is positive, and disable it otherwise.
+
+If called from Lisp, also enables the mode if ARG is omitted or nil,
+and toggles it if ARG is `toggle'.
 
 Use `whitespace-newline-mode' only for NEWLINE visualization
 exclusively.  For other visualizations, including NEWLINE
@@ -37012,8 +37050,10 @@ or call the function `global-whitespace-mode'.")
 (autoload 'global-whitespace-mode "whitespace" "\
 Toggle whitespace visualization globally (Global Whitespace mode).
 With a prefix argument ARG, enable Global Whitespace mode if ARG
-is positive, and disable it otherwise.  If called from Lisp,
-enable it if ARG is omitted or nil.
+is positive, and disable it otherwise.
+
+If called from Lisp, also enables the mode if ARG is omitted or nil,
+and toggles it if ARG is `toggle'.
 
 See also `whitespace-style', `whitespace-newline' and
 `whitespace-display-mappings'.
@@ -37033,8 +37073,10 @@ or call the function `global-whitespace-newline-mode'.")
 (autoload 'global-whitespace-newline-mode "whitespace" "\
 Toggle global newline visualization (Global Whitespace Newline mode).
 With a prefix argument ARG, enable Global Whitespace Newline mode
-if ARG is positive, and disable it otherwise.  If called from
-Lisp, enable it if ARG is omitted or nil.
+if ARG is positive, and disable it otherwise.
+
+If called from Lisp, also enables the mode if ARG is omitted or nil,
+and toggles it if ARG is `toggle'.
 
 Use `global-whitespace-newline-mode' only for NEWLINE
 visualization exclusively.  For other visualizations, including
@@ -37802,9 +37844,10 @@ Zone out, completely.
 
 ;;;***
 
-;;;### (autoloads nil nil ("calc/calc-aent.el" "calc/calc-embed.el"
-;;;;;;  "calc/calc-loaddefs.el" "calc/calc-misc.el" "calc/calc-yank.el"
-;;;;;;  "calendar/cal-loaddefs.el" "calendar/diary-loaddefs.el" "calendar/hol-loaddefs.el"
+;;;### (autoloads nil nil ("abbrev.el" "bindings.el" "buff-menu.el"
+;;;;;;  "button.el" "calc/calc-aent.el" "calc/calc-embed.el" "calc/calc-loaddefs.el"
+;;;;;;  "calc/calc-misc.el" "calc/calc-yank.el" "calendar/cal-loaddefs.el"
+;;;;;;  "calendar/diary-loaddefs.el" "calendar/hol-loaddefs.el" "case-table.el"
 ;;;;;;  "cedet/ede/base.el" "cedet/ede/config.el" "cedet/ede/cpp-root.el"
 ;;;;;;  "cedet/ede/custom.el" "cedet/ede/dired.el" "cedet/ede/emacs.el"
 ;;;;;;  "cedet/ede/files.el" "cedet/ede/generic.el" "cedet/ede/linux.el"
@@ -37836,56 +37879,81 @@ Zone out, completely.
 ;;;;;;  "cedet/srecode/expandproto.el" "cedet/srecode/getset.el"
 ;;;;;;  "cedet/srecode/insert.el" "cedet/srecode/java.el" "cedet/srecode/loaddefs.el"
 ;;;;;;  "cedet/srecode/map.el" "cedet/srecode/mode.el" "cedet/srecode/srt.el"
-;;;;;;  "cedet/srecode/template.el" "cedet/srecode/texi.el" "dired-aux.el"
-;;;;;;  "dired-loaddefs.el" "dired-x.el" "emacs-lisp/cl-extra.el"
-;;;;;;  "emacs-lisp/cl-loaddefs.el" "emacs-lisp/cl-macs.el" "emacs-lisp/cl-seq.el"
+;;;;;;  "cedet/srecode/template.el" "cedet/srecode/texi.el" "composite.el"
+;;;;;;  "cus-face.el" "cus-start.el" "custom.el" "dired-aux.el" "dired-loaddefs.el"
+;;;;;;  "dired-x.el" "electric.el" "emacs-lisp/backquote.el" "emacs-lisp/byte-run.el"
+;;;;;;  "emacs-lisp/cl-extra.el" "emacs-lisp/cl-generic.el" "emacs-lisp/cl-loaddefs.el"
+;;;;;;  "emacs-lisp/cl-macs.el" "emacs-lisp/cl-preloaded.el" "emacs-lisp/cl-seq.el"
 ;;;;;;  "emacs-lisp/eieio-compat.el" "emacs-lisp/eieio-custom.el"
 ;;;;;;  "emacs-lisp/eieio-loaddefs.el" "emacs-lisp/eieio-opt.el"
-;;;;;;  "eshell/em-alias.el" "eshell/em-banner.el" "eshell/em-basic.el"
-;;;;;;  "eshell/em-cmpl.el" "eshell/em-dirs.el" "eshell/em-glob.el"
-;;;;;;  "eshell/em-hist.el" "eshell/em-ls.el" "eshell/em-pred.el"
-;;;;;;  "eshell/em-prompt.el" "eshell/em-rebind.el" "eshell/em-script.el"
-;;;;;;  "eshell/em-smart.el" "eshell/em-term.el" "eshell/em-tramp.el"
-;;;;;;  "eshell/em-unix.el" "eshell/em-xtra.el" "eshell/esh-groups.el"
+;;;;;;  "emacs-lisp/eldoc.el" "emacs-lisp/float-sup.el" "emacs-lisp/lisp-mode.el"
+;;;;;;  "emacs-lisp/lisp.el" "emacs-lisp/macroexp.el" "emacs-lisp/map-ynp.el"
+;;;;;;  "emacs-lisp/nadvice.el" "emacs-lisp/syntax.el" "emacs-lisp/timer.el"
+;;;;;;  "env.el" "epa-hook.el" "eshell/em-alias.el" "eshell/em-banner.el"
+;;;;;;  "eshell/em-basic.el" "eshell/em-cmpl.el" "eshell/em-dirs.el"
+;;;;;;  "eshell/em-glob.el" "eshell/em-hist.el" "eshell/em-ls.el"
+;;;;;;  "eshell/em-pred.el" "eshell/em-prompt.el" "eshell/em-rebind.el"
+;;;;;;  "eshell/em-script.el" "eshell/em-smart.el" "eshell/em-term.el"
+;;;;;;  "eshell/em-tramp.el" "eshell/em-unix.el" "eshell/em-xtra.el"
+;;;;;;  "eshell/esh-groups.el" "facemenu.el" "faces.el" "files.el"
+;;;;;;  "font-core.el" "font-lock.el" "format.el" "frame.el" "help.el"
 ;;;;;;  "hfy-cmap.el" "htmlfontify-loaddefs.el" "ibuf-ext.el" "ibuffer-loaddefs.el"
-;;;;;;  "international/charprop.el" "international/charscript.el"
-;;;;;;  "international/uni-bidi.el" "international/uni-brackets.el"
-;;;;;;  "international/uni-category.el" "international/uni-combining.el"
-;;;;;;  "international/uni-comment.el" "international/uni-decimal.el"
-;;;;;;  "international/uni-decomposition.el" "international/uni-digit.el"
-;;;;;;  "international/uni-lowercase.el" "international/uni-mirrored.el"
-;;;;;;  "international/uni-name.el" "international/uni-numeric.el"
-;;;;;;  "international/uni-old-name.el" "international/uni-titlecase.el"
-;;;;;;  "international/uni-uppercase.el" "ldefs-boot.el" "leim/quail/arabic.el"
-;;;;;;  "leim/quail/croatian.el" "leim/quail/cyril-jis.el" "leim/quail/cyrillic.el"
-;;;;;;  "leim/quail/czech.el" "leim/quail/georgian.el" "leim/quail/greek.el"
-;;;;;;  "leim/quail/hanja-jis.el" "leim/quail/hanja.el" "leim/quail/hanja3.el"
-;;;;;;  "leim/quail/hebrew.el" "leim/quail/ipa-praat.el" "leim/quail/latin-alt.el"
-;;;;;;  "leim/quail/latin-ltx.el" "leim/quail/latin-post.el" "leim/quail/latin-pre.el"
-;;;;;;  "leim/quail/persian.el" "leim/quail/programmer-dvorak.el"
-;;;;;;  "leim/quail/py-punct.el" "leim/quail/pypunct-b5.el" "leim/quail/rfc1345.el"
-;;;;;;  "leim/quail/sgml-input.el" "leim/quail/slovak.el" "leim/quail/symbol-ksc.el"
-;;;;;;  "leim/quail/tamil-dvorak.el" "leim/quail/vntelex.el" "leim/quail/vnvni.el"
-;;;;;;  "leim/quail/welsh.el" "loadup.el" "mail/blessmail.el" "mail/rmail-loaddefs.el"
+;;;;;;  "indent.el" "international/characters.el" "international/charprop.el"
+;;;;;;  "international/charscript.el" "international/cp51932.el"
+;;;;;;  "international/eucjp-ms.el" "international/mule-cmds.el"
+;;;;;;  "international/mule-conf.el" "international/mule.el" "international/uni-bidi.el"
+;;;;;;  "international/uni-brackets.el" "international/uni-category.el"
+;;;;;;  "international/uni-combining.el" "international/uni-comment.el"
+;;;;;;  "international/uni-decimal.el" "international/uni-decomposition.el"
+;;;;;;  "international/uni-digit.el" "international/uni-lowercase.el"
+;;;;;;  "international/uni-mirrored.el" "international/uni-name.el"
+;;;;;;  "international/uni-numeric.el" "international/uni-old-name.el"
+;;;;;;  "international/uni-titlecase.el" "international/uni-uppercase.el"
+;;;;;;  "isearch.el" "jit-lock.el" "jka-cmpr-hook.el" "language/burmese.el"
+;;;;;;  "language/cham.el" "language/chinese.el" "language/cyrillic.el"
+;;;;;;  "language/czech.el" "language/english.el" "language/ethiopic.el"
+;;;;;;  "language/european.el" "language/georgian.el" "language/greek.el"
+;;;;;;  "language/hebrew.el" "language/indian.el" "language/japanese.el"
+;;;;;;  "language/khmer.el" "language/korean.el" "language/lao.el"
+;;;;;;  "language/misc-lang.el" "language/romanian.el" "language/sinhala.el"
+;;;;;;  "language/slovak.el" "language/tai-viet.el" "language/thai.el"
+;;;;;;  "language/tibetan.el" "language/utf-8-lang.el" "language/vietnamese.el"
+;;;;;;  "ldefs-boot.el" "leim/quail/arabic.el" "leim/quail/croatian.el"
+;;;;;;  "leim/quail/cyril-jis.el" "leim/quail/cyrillic.el" "leim/quail/czech.el"
+;;;;;;  "leim/quail/georgian.el" "leim/quail/greek.el" "leim/quail/hanja-jis.el"
+;;;;;;  "leim/quail/hanja.el" "leim/quail/hanja3.el" "leim/quail/hebrew.el"
+;;;;;;  "leim/quail/ipa-praat.el" "leim/quail/latin-alt.el" "leim/quail/latin-ltx.el"
+;;;;;;  "leim/quail/latin-post.el" "leim/quail/latin-pre.el" "leim/quail/persian.el"
+;;;;;;  "leim/quail/programmer-dvorak.el" "leim/quail/py-punct.el"
+;;;;;;  "leim/quail/pypunct-b5.el" "leim/quail/rfc1345.el" "leim/quail/sgml-input.el"
+;;;;;;  "leim/quail/slovak.el" "leim/quail/symbol-ksc.el" "leim/quail/tamil-dvorak.el"
+;;;;;;  "leim/quail/vntelex.el" "leim/quail/vnvni.el" "leim/quail/welsh.el"
+;;;;;;  "loadup.el" "mail/blessmail.el" "mail/rmail-loaddefs.el"
 ;;;;;;  "mail/rmailedit.el" "mail/rmailkwd.el" "mail/rmailmm.el"
 ;;;;;;  "mail/rmailmsc.el" "mail/rmailsort.el" "mail/rmailsum.el"
-;;;;;;  "mail/undigest.el" "mh-e/mh-gnus.el" "mh-e/mh-loaddefs.el"
-;;;;;;  "net/tramp-loaddefs.el" "org/ob-core.el" "org/ob-keys.el"
-;;;;;;  "org/ob-lob.el" "org/ob-matlab.el" "org/ob-tangle.el" "org/ob.el"
-;;;;;;  "org/org-archive.el" "org/org-attach.el" "org/org-bbdb.el"
-;;;;;;  "org/org-clock.el" "org/org-datetree.el" "org/org-element.el"
-;;;;;;  "org/org-feed.el" "org/org-footnote.el" "org/org-id.el" "org/org-indent.el"
+;;;;;;  "mail/undigest.el" "menu-bar.el" "mh-e/mh-gnus.el" "mh-e/mh-loaddefs.el"
+;;;;;;  "minibuffer.el" "mouse.el" "net/tramp-loaddefs.el" "newcomment.el"
+;;;;;;  "obarray.el" "org/ob-core.el" "org/ob-keys.el" "org/ob-lob.el"
+;;;;;;  "org/ob-matlab.el" "org/ob-tangle.el" "org/ob.el" "org/org-archive.el"
+;;;;;;  "org/org-attach.el" "org/org-bbdb.el" "org/org-clock.el"
+;;;;;;  "org/org-datetree.el" "org/org-element.el" "org/org-feed.el"
+;;;;;;  "org/org-footnote.el" "org/org-id.el" "org/org-indent.el"
 ;;;;;;  "org/org-install.el" "org/org-irc.el" "org/org-loaddefs.el"
 ;;;;;;  "org/org-mobile.el" "org/org-plot.el" "org/org-table.el"
 ;;;;;;  "org/org-timer.el" "org/ox-ascii.el" "org/ox-beamer.el" "org/ox-html.el"
 ;;;;;;  "org/ox-icalendar.el" "org/ox-latex.el" "org/ox-man.el" "org/ox-md.el"
 ;;;;;;  "org/ox-odt.el" "org/ox-org.el" "org/ox-publish.el" "org/ox-texinfo.el"
-;;;;;;  "org/ox.el" "ps-def.el" "ps-mule.el" "ps-print-loaddefs.el"
-;;;;;;  "subdirs.el" "textmodes/reftex-auc.el" "textmodes/reftex-cite.el"
+;;;;;;  "org/ox.el" "progmodes/elisp-mode.el" "progmodes/prog-mode.el"
+;;;;;;  "ps-def.el" "ps-mule.el" "ps-print-loaddefs.el" "register.el"
+;;;;;;  "replace.el" "rfn-eshadow.el" "select.el" "simple.el" "startup.el"
+;;;;;;  "subdirs.el" "subr.el" "textmodes/fill.el" "textmodes/page.el"
+;;;;;;  "textmodes/paragraphs.el" "textmodes/reftex-auc.el" "textmodes/reftex-cite.el"
 ;;;;;;  "textmodes/reftex-dcr.el" "textmodes/reftex-global.el" "textmodes/reftex-index.el"
 ;;;;;;  "textmodes/reftex-loaddefs.el" "textmodes/reftex-parse.el"
-;;;;;;  "textmodes/reftex-ref.el" "textmodes/reftex-sel.el" "textmodes/reftex-toc.el")
-;;;;;;  (0 0 0 0))
+;;;;;;  "textmodes/reftex-ref.el" "textmodes/reftex-sel.el" "textmodes/reftex-toc.el"
+;;;;;;  "textmodes/text-mode.el" "uniquify.el" "vc/ediff-hook.el"
+;;;;;;  "vc/vc-hooks.el" "version.el" "widget.el" "window.el") (0
+;;;;;;  0 0 0))
 
 ;;;***
 

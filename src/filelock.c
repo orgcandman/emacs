@@ -27,6 +27,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <sys/stat.h>
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #ifdef HAVE_PWD_H
 #include <pwd.h>
@@ -684,7 +685,7 @@ lock_file (Lisp_Object fn)
     if (!NILP (subject_buf)
 	&& NILP (Fverify_visited_file_modtime (subject_buf))
 	&& !NILP (Ffile_exists_p (fn)))
-      call1 (intern ("ask-user-about-supersession-threat"), fn);
+      call1 (intern ("userlock--ask-user-about-supersession-threat"), fn);
 
   }
 

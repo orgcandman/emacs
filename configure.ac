@@ -23,7 +23,7 @@ dnl  along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
 
 AC_PREREQ(2.65)
 dnl Note this is parsed by (at least) make-dist and lisp/cedet/ede/emacs.el.
-AC_INIT(GNU Emacs, 25.1.50, bug-gnu-emacs@gnu.org)
+AC_INIT(GNU Emacs, 26.0.50, bug-gnu-emacs@gnu.org)
 
 dnl Set emacs_config_options to the options of 'configure', quoted for the shell,
 dnl and then quoted again for a C string.  Separate options with spaces.
@@ -1636,6 +1636,7 @@ fi
 
 dnl checks for header files
 AC_CHECK_HEADERS_ONCE(
+  linux/fs.h
   malloc.h
   sys/systeminfo.h
   sys/sysinfo.h
@@ -2748,7 +2749,7 @@ AC_SUBST(LIBSELINUX_LIBS)
 
 HAVE_GNUTLS=no
 if test "${with_gnutls}" = "yes" ; then
-  EMACS_CHECK_MODULES([LIBGNUTLS], [gnutls >= 2.6.6],
+  EMACS_CHECK_MODULES([LIBGNUTLS], [gnutls >= 2.12.2],
     [HAVE_GNUTLS=yes], [HAVE_GNUTLS=no])
   if test "${HAVE_GNUTLS}" = "yes"; then
     AC_DEFINE(HAVE_GNUTLS, 1, [Define if using GnuTLS.])
@@ -3568,9 +3569,9 @@ fi
 AC_SUBST(LIBGIF)
 
 dnl Check for required libraries.
+MISSING=
+WITH_NO=
 if test "${HAVE_X11}" = "yes"; then
-  MISSING=""
-  WITH_NO=""
   test "${with_xpm}" != "no" && test "${HAVE_XPM}" != "yes" &&
     MISSING="libXpm" && WITH_NO="--with-xpm=no"
   test "${with_jpeg}" != "no" && test "${HAVE_JPEG}" != "yes" &&
@@ -3581,15 +3582,16 @@ if test "${HAVE_X11}" = "yes"; then
     MISSING="$MISSING libgif/libungif" && WITH_NO="$WITH_NO --with-gif=no"
   test "${with_tiff}" != "no" && test "${HAVE_TIFF}" != "yes" &&
     MISSING="$MISSING libtiff" && WITH_NO="$WITH_NO --with-tiff=no"
-
-  if test "X${MISSING}" != X; then
-    AC_MSG_ERROR([The following required libraries were not found:
+fi
+test "${with_gnutls}" != "no" && test "${HAVE_GNUTLS}" != "yes" &&
+  MISSING="$MISSING gnutls" && WITH_NO="$WITH_NO --with-gnutls=no"
+if test "X${MISSING}" != X; then
+  AC_MSG_ERROR([The following required libraries were not found:
     $MISSING
 Maybe some development libraries/packages are missing?
 If you don't want to link with them give
     $WITH_NO
 as options to configure])
-  fi
 fi
 
 ### Use -lgpm if available, unless '--with-gpm=no'.
@@ -4880,14 +4882,6 @@ AC_DEFINE_UNQUOTED(EMACS_CONFIGURATION,  "${canonical}",
 		   [Define to the canonical Emacs configuration name.])
 AC_DEFINE_UNQUOTED(EMACS_CONFIG_OPTIONS, "${emacs_config_options}",
 		   [Define to the options passed to configure.])
-AH_TEMPLATE(config_opsysfile, [Some platforms that do not use configure
-  define this to include extra configuration information.])
-
-case $opsys in
-  mingw32)
-    AC_DEFINE(config_opsysfile, <ms-w32.h>, [])
-    ;;
-esac
 
 XMENU_OBJ=
 XOBJ=

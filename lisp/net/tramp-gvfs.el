@@ -114,7 +114,7 @@
   '("afp" "dav" "davs" "gdrive" "obex" "sftp" "synce")
   "List of methods for remote files, accessed with GVFS."
   :group 'tramp
-  :version "25.2"
+  :version "26.1"
   :type '(repeat (choice (const "afp")
 			 (const "dav")
 			 (const "davs")
@@ -123,7 +123,8 @@
 			 (const "obex")
 			 (const "sftp")
 			 (const "smb")
-			 (const "synce"))))
+			 (const "synce")))
+  :require 'tramp)
 
 ;; Add defaults for `tramp-default-user-alist' and `tramp-default-host-alist'.
 ;;;###tramp-autoload
@@ -141,7 +142,8 @@
   "Zeroconf domain to be used for discovering services, like host names."
   :group 'tramp
   :version "23.2"
-  :type 'string)
+  :type 'string
+  :require 'tramp)
 
 ;; Add the methods to `tramp-methods', in order to allow minibuffer
 ;; completion.
@@ -393,7 +395,8 @@ completion, nil means to use always cached values for discovered
 devices."
   :group 'tramp
   :version "23.2"
-  :type '(choice (const nil) integer))
+  :type '(choice (const nil) integer)
+  :require 'tramp)
 
 (defvar tramp-bluez-discovery nil
   "Indicator for a running bluetooth device discovery.
@@ -502,6 +505,7 @@ Every entry is a list (NAME ADDRESS).")
     (make-auto-save-file-name . tramp-handle-make-auto-save-file-name)
     (make-directory . tramp-gvfs-handle-make-directory)
     (make-directory-internal . ignore)
+    (make-nearby-temp-file . tramp-handle-make-nearby-temp-file)
     (make-symbolic-link . tramp-handle-make-symbolic-link)
     (process-file . ignore)
     (rename-file . tramp-gvfs-handle-rename-file)
@@ -513,6 +517,7 @@ Every entry is a list (NAME ADDRESS).")
     (shell-command . ignore)
     (start-file-process . ignore)
     (substitute-in-file-name . tramp-handle-substitute-in-file-name)
+    (temporary-file-directory . tramp-handle-temporary-file-directory)
     (unhandled-file-name-directory . ignore)
     (vc-registered . ignore)
     (verify-visited-file-modtime . tramp-handle-verify-visited-file-modtime)
@@ -625,7 +630,7 @@ is no information where to trace the message.")
 
 (defun tramp-gvfs-do-copy-or-rename-file
   (op filename newname &optional ok-if-already-exists keep-date
-      preserve-uid-gid preserve-extended-attributes)
+   preserve-uid-gid preserve-extended-attributes)
   "Copy or rename a remote file.
 OP must be `copy' or `rename' and indicates the operation to perform.
 FILENAME specifies the file to copy or rename, NEWNAME is the name of
@@ -720,7 +725,7 @@ file names."
 
 (defun tramp-gvfs-handle-copy-file
   (filename newname &optional ok-if-already-exists keep-date
-	    preserve-uid-gid preserve-extended-attributes)
+   preserve-uid-gid preserve-extended-attributes)
   "Like `copy-file' for Tramp files."
   (setq filename (expand-file-name filename))
   (setq newname (expand-file-name newname))
@@ -749,7 +754,8 @@ file names."
   (with-parsed-tramp-file-name directory nil
     (if (and recursive (not (file-symlink-p directory)))
 	(mapc (lambda (file)
-		(if (eq t (car (file-attributes file)))
+		(if (eq t (tramp-compat-file-attribute-type
+			   (file-attributes file)))
 		    (tramp-compat-delete-directory file recursive trash)
 		  (tramp-compat-delete-file file trash)))
 	      (directory-files
@@ -1012,7 +1018,8 @@ file names."
 
 (defun tramp-gvfs-handle-file-directory-p (filename)
   "Like `file-directory-p' for Tramp files."
-  (eq t (car (file-attributes (file-truename filename)))))
+  (eq t (tramp-compat-file-attribute-type
+	 (file-attributes (file-truename filename)))))
 
 (defun tramp-gvfs-handle-file-executable-p (filename)
   "Like `file-executable-p' for Tramp files."
@@ -1079,7 +1086,7 @@ file names."
 	;; There might be an error if the monitor is not supported.
 	;; Give the filter a chance to read the output.
 	(tramp-accept-process-output p 1)
-	(unless (memq (process-status p) '(run open))
+	(unless (tramp-compat-process-live-p p)
 	  (tramp-error
 	   v 'file-notify-error "Monitoring not supported for `%s'" file-name))
 	p))))
@@ -1209,7 +1216,9 @@ file-notify events."
 
     ;; Set file modification time.
     (when (or (eq visit t) (stringp visit))
-      (set-visited-file-modtime (nth 5 (file-attributes filename))))
+      (set-visited-file-modtime
+       (tramp-compat-file-attribute-modification-time
+	(file-attributes filename))))
 
     ;; The end.
     (when (or (eq visit t) (null visit) (stringp visit))
@@ -1584,9 +1593,9 @@ ID-FORMAT valid values are `string' and `integer'."
       (cond
        ((and user (equal id-format 'string)) user)
        (localname
-	(nth 2 (file-attributes
-		(tramp-make-tramp-file-name method user host localname)
-		id-format)))
+	(tramp-compat-file-attribute-user-id
+	 (file-attributes
+	  (tramp-make-tramp-file-name method user host localname) id-format)))
        ((equal id-format 'integer) tramp-unknown-id-integer)
        ((equal id-format 'string) tramp-unknown-id-string)))))
 
@@ -1601,9 +1610,9 @@ ID-FORMAT valid values are `string' and `integer'."
 	   (tramp-get-connection-property vec "default-location" nil)))
       (cond
        (localname
-	(nth 3 (file-attributes
-		(tramp-make-tramp-file-name method user host localname)
-		id-format)))
+	(tramp-compat-file-attribute-group-id
+	 (file-attributes
+	  (tramp-make-tramp-file-name method user host localname) id-format)))
        ((equal id-format 'integer) tramp-unknown-id-integer)
        ((equal id-format 'string) tramp-unknown-id-string)))))
 
@@ -1954,10 +1963,13 @@ They are retrieved from the hal daemon."
 
 ;; * Host name completion for existing mount points (afp-server,
 ;;   smb-server) or via smb-network.
+;;
 ;; * Check, how two shares of the same SMB server can be mounted in
 ;;   parallel.
+;;
 ;; * Apply SDP on bluetooth devices, in order to filter out obex
 ;;   capability.
+;;
 ;; * Implement obex for other serial communication but bluetooth.
 
 ;;; tramp-gvfs.el ends here

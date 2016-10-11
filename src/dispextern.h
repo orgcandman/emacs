@@ -1542,7 +1542,8 @@ struct glyph_string
    large vertical space.  The heuristics is in the factor of 3.  We
    ignore the ascent and descent values reported by such fonts, and
    instead go by the values reported for individual glyphs.  */
-#define FONT_TOO_HIGH(ft)  ((ft)->ascent + (ft)->descent > 3*(ft)->pixel_size)
+#define FONT_TOO_HIGH(ft)						\
+  ((ft)->pixel_size > 0 && (ft)->ascent + (ft)->descent > 3*(ft)->pixel_size)
 
 
 /***********************************************************************
@@ -2236,7 +2237,7 @@ struct composition_it
   /* Indices of the glyphs for the current grapheme cluster.  */
   int from, to;
   /* Width of the current grapheme cluster in units of columns it will
-     occupy on display; see CHAR_WIDTH.  */
+     occupy on display; see CHARACTER_WIDTH.  */
   int width;
 };
 

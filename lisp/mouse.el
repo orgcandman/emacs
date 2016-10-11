@@ -493,7 +493,8 @@ must be one of the symbols `header', `mode', or `vertical'."
 						(window-pixel-height window)))))
 		  (setq dragged t)
 		  (adjust-window-trailing-edge window growth nil t))
-		(setq last-position position))))))
+		(setq last-position position)))))
+           (old-track-mouse track-mouse))
       ;; Start tracking.  The special value 'dragging' signals the
       ;; display engine to freeze the mouse pointer shape for as long
       ;; as we drag.
@@ -526,7 +527,7 @@ must be one of the symbols `header', `mode', or `vertical'."
 	       (define-key map [right-divider] map)
 	       (define-key map [bottom-divider] map)
 	       map)
-	     t (lambda () (setq track-mouse nil)))))))
+	     t (lambda () (setq track-mouse old-track-mouse)))))))
 
 (defun mouse-drag-mode-line (start-event)
   "Change the height of a window by dragging on the mode line."
@@ -744,8 +745,9 @@ its value is returned."
 
 (defun mouse-on-link-p (pos)
   "Return non-nil if POS is on a link in the current buffer.
-POS must be a buffer position in the current buffer or a mouse
-event location in the selected window (see `event-start').
+POS must specify a buffer position in the current buffer, as a list
+of the form returned by the `event-start' and `event-end' functions,
+or a mouse event location in the selected window (see `event-start').
 However, if `mouse-1-click-in-non-selected-windows' is non-nil,
 POS may be a mouse event location in any window.
 
@@ -832,14 +834,16 @@ The region will be defined with mark and point."
   (setq mouse-selection-click-count-buffer (current-buffer))
   (deactivate-mark)
   (let* ((scroll-margin 0) ; Avoid margin scrolling (Bug#9541).
+	 (start-posn (event-start start-event))
+	 (start-point (posn-point start-posn))
+	 (start-window (posn-window start-posn))
+	 (_ (with-current-buffer (window-buffer start-window)
+	      (setq deactivate-mark nil)))
          ;; We've recorded what we needed from the current buffer and
          ;; window, now let's jump to the place of the event, where things
          ;; are happening.
          (_ (mouse-set-point start-event))
          (echo-keystrokes 0)
-	 (start-posn (event-start start-event))
-	 (start-point (posn-point start-posn))
-	 (start-window (posn-window start-posn))
 	 (bounds (window-edges start-window))
 	 (make-cursor-line-fully-visible nil)
 	 (top (nth 1 bounds))
@@ -850,7 +854,8 @@ The region will be defined with mark and point."
 	 (click-count (1- (event-click-count start-event)))
 	 ;; Suppress automatic hscrolling, because that is a nuisance
 	 ;; when setting point near the right fringe (but see below).
-	 (auto-hscroll-mode-saved auto-hscroll-mode))
+	 (auto-hscroll-mode-saved auto-hscroll-mode)
+         (old-track-mouse track-mouse))
 
     (setq mouse-selection-click-count click-count)
     ;; In case the down click is in the middle of some intangible text,
@@ -902,7 +907,7 @@ The region will be defined with mark and point."
                                       nil start-point))))))))
        map)
      t (lambda ()
-         (setq track-mouse nil)
+         (setq track-mouse old-track-mouse)
          (setq auto-hscroll-mode auto-hscroll-mode-saved)
           (deactivate-mark)
          (pop-mark)))))

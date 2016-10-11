@@ -25,6 +25,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <sys/param.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include <verify.h>
@@ -2224,7 +2225,9 @@ advance_to_char_boundary (ptrdiff_t byte_pos)
 
 DEFUN ("buffer-swap-text", Fbuffer_swap_text, Sbuffer_swap_text,
        1, 1, 0,
-       doc: /* Swap the text between current buffer and BUFFER.  */)
+       doc: /* Swap the text between current buffer and BUFFER.
+Using this function from `save-excursion' might produce surprising
+results, see Info node `(elisp)Swapping Text'.  */)
   (Lisp_Object buffer)
 {
   struct buffer *other_buffer;

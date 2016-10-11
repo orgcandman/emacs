@@ -296,7 +296,7 @@ skip_invisible (ptrdiff_t pos, ptrdiff_t *next_boundary_p, ptrdiff_t to, Lisp_Ob
 	if (dp != 0 && VECTORP (DISP_CHAR_VECTOR (dp, ch)))		\
 	  width = sanitize_char_width (ASIZE (DISP_CHAR_VECTOR (dp, ch))); \
 	else								\
-	  width = CHAR_WIDTH (ch);					\
+	  width = CHARACTER_WIDTH (ch);					\
       }									\
   } while (0)
 
@@ -1162,7 +1162,7 @@ compute_motion (ptrdiff_t from, ptrdiff_t frombyte, EMACS_INT fromvpos,
   int prev_tab_offset;		/* Previous tab offset.  */
   int continuation_glyph_width;
   struct buffer *cache_buffer = current_buffer;
-  struct region_cache *width_cache;
+  struct region_cache *width_cache = NULL;
 
   struct composition_it cmp_it;
 
@@ -1170,11 +1170,14 @@ compute_motion (ptrdiff_t from, ptrdiff_t frombyte, EMACS_INT fromvpos,
 
   if (cache_buffer->base_buffer)
     cache_buffer = cache_buffer->base_buffer;
-  width_cache = width_run_cache_on_off ();
   if (dp == buffer_display_table ())
-    width_table = (VECTORP (BVAR (current_buffer, width_table))
-                   ? XVECTOR (BVAR (current_buffer, width_table))->contents
-                   : 0);
+    {
+      width_table = (VECTORP (BVAR (current_buffer, width_table))
+		     ? XVECTOR (BVAR (current_buffer, width_table))->contents
+		     : 0);
+      if (width_table)
+	width_cache = width_run_cache_on_off ();
+    }
   else
     /* If the window has its own display table, we can't use the width
        run cache, because that's based on the buffer's display table.  */
@@ -1873,9 +1876,9 @@ vmotion (register ptrdiff_t from, register ptrdiff_t from_byte,
 	    }
 	  pos = *compute_motion (prevline, bytepos, 0, lmargin, 0, from,
 				 /* Don't care for VPOS...  */
-				 1 << (BITS_PER_SHORT - 1),
+				 1 << (SHRT_WIDTH - 1),
 				 /* ... nor HPOS.  */
-				 1 << (BITS_PER_SHORT - 1),
+				 1 << (SHRT_WIDTH - 1),
 				 -1, hscroll, 0, w);
 	  vpos -= pos.vpos;
 	  first = 0;
@@ -1923,9 +1926,9 @@ vmotion (register ptrdiff_t from, register ptrdiff_t from_byte,
 	}
       pos = *compute_motion (prevline, bytepos, 0, lmargin, 0, from,
 			     /* Don't care for VPOS...  */
-			     1 << (BITS_PER_SHORT - 1),
+			     1 << (SHRT_WIDTH - 1),
 			     /* ... nor HPOS.  */
-			     1 << (BITS_PER_SHORT - 1),
+			     1 << (SHRT_WIDTH - 1),
 			     -1, hscroll, 0, w);
       did_motion = 1;
     }
@@ -1936,7 +1939,7 @@ vmotion (register ptrdiff_t from, register ptrdiff_t from_byte,
       did_motion = 0;
     }
   return compute_motion (from, from_byte, vpos, pos.hpos, did_motion,
-			 ZV, vtarget, - (1 << (BITS_PER_SHORT - 1)),
+			 ZV, vtarget, - (1 << (SHRT_WIDTH - 1)),
 			 -1, hscroll, 0, w);
 }
 
@@ -2027,6 +2030,7 @@ whether or not it is currently displayed in some window.  */)
       struct position pos;
       pos = *vmotion (PT, PT_BYTE, XINT (lines), w);
       SET_PT_BOTH (pos.bufpos, pos.bytepos);
+      it.vpos = pos.vpos;
     }
   else
     {

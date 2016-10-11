@@ -20,6 +20,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <config.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <limits.h>
 
@@ -501,8 +502,8 @@ adjust_frame_size (struct frame *f, int new_width, int new_height, int inhibit,
       && new_lines == old_lines)
     /* No change.  Sanitize window sizes and return.  */
     {
-      sanitize_window_sizes (frame, Qt);
-      sanitize_window_sizes (frame, Qnil);
+      sanitize_window_sizes (Qt);
+      sanitize_window_sizes (Qnil);
 
       return;
     }
@@ -582,8 +583,8 @@ adjust_frame_size (struct frame *f, int new_width, int new_height, int inhibit,
   }
 
   /* Sanitize window sizes.  */
-  sanitize_window_sizes (frame, Qt);
-  sanitize_window_sizes (frame, Qnil);
+  sanitize_window_sizes (Qt);
+  sanitize_window_sizes (Qnil);
 
   adjust_frame_glyphs (f);
   calculate_costs (f);
@@ -658,6 +659,7 @@ make_frame (bool mini_p)
       mw->mini = 1;
       wset_frame (mw, frame);
       fset_minibuffer_window (f, mini_window);
+      store_frame_param (f, Qminibuffer, Qt);
     }
   else
     {
@@ -770,6 +772,7 @@ make_frame_without_minibuffer (Lisp_Object mini_window, KBOARD *kb,
     }
 
   fset_minibuffer_window (f, mini_window);
+  store_frame_param (f, Qminibuffer, mini_window);
 
   /* Make the chosen minibuffer window display the proper minibuffer,
      unless it is already showing a minibuffer.  */
@@ -807,6 +810,7 @@ make_minibuffer_frame (void)
 
   mini_window = f->root_window;
   fset_minibuffer_window (f, mini_window);
+  store_frame_param (f, Qminibuffer, Qonly);
   XWINDOW (mini_window)->mini = 1;
   wset_next (XWINDOW (mini_window), Qnil);
   wset_prev (XWINDOW (mini_window), Qnil);
@@ -1307,7 +1311,7 @@ candidate_frame (Lisp_Object candidate, Lisp_Object frame, Lisp_Object minibuf)
 		     FRAME_FOCUS_FRAME (c)))
 	    return candidate;
 	}
-      else if (XFASTINT (minibuf) == 0)
+      else if (INTEGERP (minibuf) && XINT (minibuf) == 0)
 	{
 	  if (FRAME_VISIBLE_P (c) || FRAME_ICONIFIED_P (c))
 	    return candidate;
@@ -1823,7 +1827,7 @@ delete_frame (Lisp_Object frame, Lisp_Object force)
 
 DEFUN ("delete-frame", Fdelete_frame, Sdelete_frame, 0, 2, "",
        doc: /* Delete FRAME, permanently eliminating it from use.
-FRAME defaults to the selected frame.
+FRAME must be a live frame and defaults to the selected one.
 
 A frame may not be deleted if its minibuffer serves as surrogate
 minibuffer for another frame.  Normally, you may not delete a frame if
@@ -2404,6 +2408,46 @@ store_frame_param (struct frame *f, Lisp_Object prop, Lisp_Object val)
 {
   register Lisp_Object old_alist_elt;
 
+  if (EQ (prop, Qminibuffer))
+    {
+      if (WINDOWP (val))
+	{
+	  if (!MINI_WINDOW_P (XWINDOW (val)))
+	    error ("The `minibuffer' parameter does not specify a valid minibuffer window");
+	  else if (FRAME_MINIBUF_ONLY_P (f))
+	    {
+	      if (EQ (val, FRAME_MINIBUF_WINDOW (f)))
+		val = Qonly;
+	      else
+		error ("Can't change the minibuffer window of a minibuffer-only frame");
+	    }
+	  else if (FRAME_HAS_MINIBUF_P (f))
+	    {
+	      if (EQ (val, FRAME_MINIBUF_WINDOW (f)))
+		val = Qt;
+	      else
+		error ("Can't change the minibuffer window of a frame with its own minibuffer");
+	    }
+	  else
+	    /* Store the chosen minibuffer window.  */
+	    fset_minibuffer_window (f, val);
+	}
+      else
+	{
+	  Lisp_Object old_val = Fcdr (Fassq (Qminibuffer, f->param_alist));
+
+	  if (!NILP (old_val))
+	    {
+	      if (WINDOWP (old_val) && NILP (val))
+		/* Don't change the value for a minibuffer-less frame if
+		   only nil was specified as new value.  */
+		val = old_val;
+	      else if (!EQ (old_val, val))
+		error ("Can't change the `minibuffer' parameter of this frame");
+	    }
+	}
+    }
+
   /* The buffer-list parameters are stored in a special place and not
      in the alist.  All buffers must be live.  */
   if (EQ (prop, Qbuffer_list))
@@ -2474,19 +2518,6 @@ store_frame_param (struct frame *f, Lisp_Object prop, Lisp_Object val)
 	set_menu_bar_lines (f, val, make_number (FRAME_MENU_BAR_LINES (f)));
       else if (EQ (prop, Qname))
 	set_term_frame_name (f, val);
-    }
-
-  if (EQ (prop, Qminibuffer) && WINDOWP (val))
-    {
-      if (! MINI_WINDOW_P (XWINDOW (val)))
-	error ("Surrogate minibuffer windows must be minibuffer windows");
-
-      if ((FRAME_HAS_MINIBUF_P (f) || FRAME_MINIBUF_ONLY_P (f))
-	  && !EQ (val, f->minibuffer_window))
-	error ("Can't change the surrogate minibuffer of a frame with its own minibuffer");
-
-      /* Install the chosen minibuffer window, with proper buffer.  */
-      fset_minibuffer_window (f, val);
     }
 }
 
@@ -2565,10 +2596,6 @@ If FRAME is omitted or nil, return information on the currently selected frame. 
 	   : FRAME_COLS (f));
   store_in_alist (&alist, Qwidth, make_number (width));
   store_in_alist (&alist, Qmodeline, (FRAME_WANTS_MODELINE_P (f) ? Qt : Qnil));
-  store_in_alist (&alist, Qminibuffer,
-		  (! FRAME_HAS_MINIBUF_P (f) ? Qnil
-		   : FRAME_MINIBUF_ONLY_P (f) ? Qonly
-		   : FRAME_MINIBUF_WINDOW (f)));
   store_in_alist (&alist, Qunsplittable, (FRAME_NO_SPLIT_P (f) ? Qt : Qnil));
   store_in_alist (&alist, Qbuffer_list, f->buffer_list);
   store_in_alist (&alist, Qburied_buffer_list, f->buried_buffer_list);
@@ -3110,8 +3137,7 @@ x_set_frame_parameters (struct frame *f, Lisp_Object alist)
   /* If both of these parameters are present, it's more efficient to
      set them both at once.  So we wait until we've looked at the
      entire list before we set them.  */
-  int width, height;
-  bool width_change = false, height_change = false;
+  int width = -1, height = -1;  /* -1 denotes they were not changed. */
 
   /* Same here.  */
   Lisp_Object left, top;
@@ -3187,30 +3213,18 @@ x_set_frame_parameters (struct frame *f, Lisp_Object alist)
       if (EQ (prop, Qwidth))
         {
 	  if (RANGED_INTEGERP (0, val, INT_MAX))
-	    {
-	      width = XFASTINT (val) * FRAME_COLUMN_WIDTH (f) ;
-	      width_change = true;
-	    }
+	    width = XFASTINT (val) * FRAME_COLUMN_WIDTH (f) ;
 	  else if (CONSP (val) && EQ (XCAR (val), Qtext_pixels)
 		   && RANGED_INTEGERP (0, XCDR (val), INT_MAX))
-	    {
-	      width = XFASTINT (XCDR (val));
-	      width_change = true;
-	    }
+	    width = XFASTINT (XCDR (val));
         }
       else if (EQ (prop, Qheight))
         {
 	  if (RANGED_INTEGERP (0, val, INT_MAX))
-	    {
-	      height = XFASTINT (val) * FRAME_LINE_HEIGHT (f);
-	      height_change = true;
-	    }
+	    height = XFASTINT (val) * FRAME_LINE_HEIGHT (f);
 	  else if (CONSP (val) && EQ (XCAR (val), Qtext_pixels)
 		   && RANGED_INTEGERP (0, XCDR (val), INT_MAX))
-	    {
-	      height = XFASTINT (XCDR (val));
-	      height_change = true;
-	    }
+	    height = XFASTINT (XCDR (val));
         }
       else if (EQ (prop, Qtop))
 	top = val;
@@ -3292,16 +3306,15 @@ x_set_frame_parameters (struct frame *f, Lisp_Object alist)
 
     XSETFRAME (frame, f);
 
-    if ((width_change && width != FRAME_TEXT_WIDTH (f))
-	|| (height_change && height != FRAME_TEXT_HEIGHT (f)))
+    if ((width != -1 && width != FRAME_TEXT_WIDTH (f))
+	|| (height != -1 && height != FRAME_TEXT_HEIGHT (f)))
       /* We could consider checking f->after_make_frame here, but I
 	 don't have the faintest idea why the following is needed at
 	 all.  With the old setting it can get a Heisenbug when
 	 EmacsFrameResize intermittently provokes a delayed
 	 change_frame_size in the middle of adjust_frame_size.  */
       /** 	|| (f->can_x_set_window_size && (f->new_height || f->new_width))) **/
-      adjust_frame_size (f, width_change ? width : -1,
-			 height_change ? height : -1, 1, 0, Qx_set_frame_parameters);
+      adjust_frame_size (f, width, height, 1, 0, Qx_set_frame_parameters);
 
     if ((!NILP (left) || !NILP (top))
 	&& ! (left_no_change && top_no_change)
@@ -4421,8 +4434,8 @@ XParseGeometry (char *string,
 {
   int mask = NoValue;
   char *strind;
-  unsigned long tempWidth, tempHeight;
-  long int tempX, tempY;
+  unsigned long tempWidth UNINIT, tempHeight UNINIT;
+  long int tempX UNINIT, tempY UNINIT;
   char *nextCharacter;
 
   if (string == NULL || *string == '\0')

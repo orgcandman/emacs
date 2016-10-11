@@ -37,6 +37,27 @@
 (defvar compilation-current-error)
 (defvar compilation-context-lines)
 
+(defcustom shell-command-dont-erase-buffer nil
+  "If non-nil, output buffer is not erased between shell commands.
+Also, a non-nil value set the point in the output buffer
+once the command complete.
+The value `beg-last-out' set point at the beginning of the output,
+`end-last-out' set point at the end of the buffer, `save-point'
+restore the buffer position before the command."
+  :type '(choice
+          (const :tag "Erase buffer" nil)
+          (const :tag "Set point to beginning of last output" beg-last-out)
+          (const :tag "Set point to end of last output" end-last-out)
+          (const :tag "Save point" save-point))
+  :group 'shell
+  :version "25.2")
+
+(defvar shell-command-saved-pos nil
+  "Point position in the output buffer after command complete.
+It is an alist (BUFFER . POS), where BUFFER is the output
+buffer, and POS is the point position in BUFFER once the command finish.
+This variable is used when `shell-command-dont-erase-buffer' is non-nil.")
+
 (defcustom idle-update-delay 0.5
   "Idle time delay before updating various things on the screen.
 Various Emacs features that update auxiliary information when point moves
@@ -1458,16 +1479,16 @@ result of expression evaluation."
   "Evaluate EXP and print value in the echo area.
 When called interactively, read an Emacs Lisp expression and evaluate it.
 Value is also consed on to front of the variable `values'.
-Optional argument INSERT-VALUE non-nil (interactively, with prefix
-argument) means insert the result into the current buffer instead of
-printing it in the echo area.
+If the resulting value is an integer, it will be printed in
+several additional formats (octal, hexadecimal, and character).
+Optional argument INSERT-VALUE non-nil (interactively, with
+prefix argument) means insert the result into the current buffer
+instead of printing it in the echo area.
 
 Normally, this function truncates long output according to the value
 of the variables `eval-expression-print-length' and
 `eval-expression-print-level'.  With a prefix argument of zero,
-however, there is no such truncation.  Such a prefix argument
-also causes integers to be printed in several additional formats
-\(octal, hexadecimal, and character).
+however, there is no such truncation.
 
 Runs the hook `eval-expression-minibuffer-setup-hook' on entering the
 minibuffer.
@@ -2958,6 +2979,41 @@ behavior."
   (undo-auto--boundary-ensure-timer))
 ;; End auto-boundary section
 
+(defun undo-amalgamate-change-group (handle)
+  "Amalgamate changes in change-group since HANDLE.
+Remove all undo boundaries between the state of HANDLE and now.
+HANDLE is as returned by `prepare-change-group'."
+  (dolist (elt handle)
+    (with-current-buffer (car elt)
+      (setq elt (cdr elt))
+      (when (consp buffer-undo-list)
+        (let ((old-car (car-safe elt))
+              (old-cdr (cdr-safe elt)))
+          (unwind-protect
+              (progn
+                ;; Temporarily truncate the undo log at ELT.
+                (when (consp elt)
+                  (setcar elt t) (setcdr elt nil))
+                (when
+                    (or (null elt)        ;The undo-log was empty.
+                        ;; `elt' is still in the log: normal case.
+                        (eq elt (last buffer-undo-list))
+                        ;; `elt' is not in the log any more, but that's because
+                        ;; the log is "all new", so we should remove all
+                        ;; boundaries from it.
+                        (not (eq (last buffer-undo-list) (last old-cdr))))
+                  (cl-callf (lambda (x) (delq nil x))
+                      (if (car buffer-undo-list)
+                          buffer-undo-list
+                        ;; Preserve the undo-boundaries at either ends of the
+                        ;; change-groups.
+                        (cdr buffer-undo-list)))))
+            ;; Reset the modified cons cell ELT to its original content.
+            (when (consp elt)
+              (setcar elt old-car)
+              (setcdr elt old-cdr))))))))
+
+
 (defcustom undo-ask-before-discard nil
   "If non-nil ask about discarding undo info for the current command.
 Normally, Emacs discards the undo info for the current command if
@@ -3175,6 +3231,53 @@ output buffer and running a new command in the default buffer,
   :group 'shell
   :version "24.3")
 
+(defun shell-command--save-pos-or-erase ()
+  "Store a buffer position or erase the buffer.
+See `shell-command-dont-erase-buffer'."
+  (let ((sym shell-command-dont-erase-buffer)
+        pos)
+    (setq buffer-read-only nil)
+    ;; Setting buffer-read-only to nil doesn't suffice
+    ;; if some text has a non-nil read-only property,
+    ;; which comint sometimes adds for prompts.
+    (setq pos
+          (cond ((eq sym 'save-point) (point))
+                ((eq sym 'beg-last-out) (point-max))
+                ((not sym)
+                 (let ((inhibit-read-only t))
+                   (erase-buffer) nil))))
+    (when pos
+      (goto-char (point-max))
+      (push (cons (current-buffer) pos)
+            shell-command-saved-pos))))
+
+(defun shell-command--set-point-after-cmd (&optional buffer)
+  "Set point in BUFFER after command complete.
+BUFFER is the output buffer of the command; if nil, then defaults
+to the current BUFFER.
+Set point to the `cdr' of the element in `shell-command-saved-pos'
+whose `car' is BUFFER."
+  (when shell-command-dont-erase-buffer
+    (let* ((sym  shell-command-dont-erase-buffer)
+           (buf  (or buffer (current-buffer)))
+           (pos  (alist-get buf shell-command-saved-pos)))
+      (setq shell-command-saved-pos
+            (assq-delete-all buf shell-command-saved-pos))
+      (when (buffer-live-p buf)
+        (let ((win   (car (get-buffer-window-list buf)))
+              (pmax  (with-current-buffer buf (point-max))))
+          (unless (and pos (memq sym '(save-point beg-last-out)))
+            (setq pos pmax))
+          ;; Set point in the window displaying buf, if any; otherwise
+          ;; display buf temporary in selected frame and set the point.
+          (if win
+              (set-window-point win pos)
+            (save-window-excursion
+              (let ((win (display-buffer
+                          buf
+                          '(nil (inhibit-switch-frame . t)))))
+                (set-window-point win pos)))))))))
+
 (defun async-shell-command (command &optional output-buffer error-buffer)
   "Execute string COMMAND asynchronously in background.
 
@@ -3236,7 +3339,8 @@ Noninteractive callers can specify coding systems by binding
 The optional second argument OUTPUT-BUFFER, if non-nil,
 says to put the output in some other buffer.
 If OUTPUT-BUFFER is a buffer or buffer name, erase that buffer
-and insert the output there.
+and insert the output there; a non-nil value of
+`shell-command-dont-erase-buffer' prevent to erase the buffer.
 If OUTPUT-BUFFER is not a buffer and not nil, insert the output
 in current buffer after point leaving mark after it.
 This cannot be done asynchronously.
@@ -3252,9 +3356,6 @@ Otherwise,the buffer containing the output is displayed.
 If there is output and an error, and you did not specify \"insert it
 in the current buffer\", a message about the error goes at the end
 of the output.
-
-If there is no output, or if output is inserted in the current buffer,
-then `*Shell Command Output*' is deleted.
 
 If the optional third argument ERROR-BUFFER is non-nil, it is a buffer
 or buffer name to which to direct the command's standard error output.
@@ -3376,13 +3477,8 @@ the use of a shell (with its need to quote arguments)."
 		    (setq buffer (get-buffer-create
 				  (or output-buffer "*Async Shell Command*"))))))
 		(with-current-buffer buffer
-		  (setq buffer-read-only nil)
-		  ;; Setting buffer-read-only to nil doesn't suffice
-		  ;; if some text has a non-nil read-only property,
-		  ;; which comint sometimes adds for prompts.
-		  (let ((inhibit-read-only t))
-		    (erase-buffer))
 		  (display-buffer buffer '(nil (allow-no-window . t)))
+                  (shell-command--save-pos-or-erase)
 		  (setq default-directory directory)
 		  (setq proc (start-process "Shell" buffer shell-file-name
 					    shell-command-switch command))
@@ -3465,12 +3561,14 @@ and are only used if a pop-up buffer is displayed."
 
 
 ;; We have a sentinel to prevent insertion of a termination message
-;; in the buffer itself.
+;; in the buffer itself, and to set the point in the buffer when
+;; `shell-command-dont-erase-buffer' is non-nil.
 (defun shell-command-sentinel (process signal)
-  (if (memq (process-status process) '(exit signal))
-      (message "%s: %s."
-	       (car (cdr (cdr (process-command process))))
-	       (substring signal 0 -1))))
+  (when (memq (process-status process) '(exit signal))
+    (shell-command--set-point-after-cmd (process-buffer process))
+    (message "%s: %s."
+             (car (cdr (cdr (process-command process))))
+             (substring signal 0 -1))))
 
 (defun shell-command-on-region (start end command
 				      &optional output-buffer replace
@@ -3500,13 +3598,12 @@ Otherwise it is displayed in the buffer `*Shell Command Output*'.
 The output is available in that buffer in both cases.
 
 If there is output and an error, a message about the error
-appears at the end of the output.  If there is no output, or if
-output is inserted in the current buffer, the buffer `*Shell
-Command Output*' is deleted.
+appears at the end of the output.
 
 Optional fourth arg OUTPUT-BUFFER specifies where to put the
 command's output.  If the value is a buffer or buffer name,
-erase that buffer and insert the output there.
+erase that buffer and insert the output there; a non-nil value of
+`shell-command-dont-erase-buffer' prevent to erase the buffer.
 If the value is nil, use the buffer `*Shell Command Output*'.
 Any other non-nil value means to insert the output in the
 current buffer after START.
@@ -3570,11 +3667,10 @@ interactively, this is t."
             (goto-char start)
             (and replace (push-mark (point) 'nomsg))
             (setq exit-status
-                  (call-process-region start end shell-file-name replace
+                  (call-shell-region start end command replace
                                        (if error-file
                                            (list t error-file)
-                                         t)
-                                       nil shell-command-switch command))
+                                         t)))
             ;; It is rude to delete a buffer which the command is not using.
             ;; (let ((shell-buffer (get-buffer "*Shell Command Output*")))
             ;;   (and shell-buffer (not (eq shell-buffer (current-buffer)))
@@ -3586,7 +3682,10 @@ interactively, this is t."
         (let ((buffer (get-buffer-create
                        (or output-buffer "*Shell Command Output*"))))
           (unwind-protect
-              (if (eq buffer (current-buffer))
+              (if (and (eq buffer (current-buffer))
+                       (or (not shell-command-dont-erase-buffer)
+                           (and (not (eq buffer (get-buffer "*Shell Command Output*")))
+                                (not (region-active-p)))))
                   ;; If the input is the same buffer as the output,
                   ;; delete everything but the specified region,
                   ;; then replace that region with the output.
@@ -3605,16 +3704,14 @@ interactively, this is t."
                 ;; output there.
                 (let ((directory default-directory))
                   (with-current-buffer buffer
-                    (setq buffer-read-only nil)
                     (if (not output-buffer)
                         (setq default-directory directory))
-                    (erase-buffer)))
+                    (shell-command--save-pos-or-erase)))
                 (setq exit-status
-                      (call-process-region start end shell-file-name nil
+                      (call-shell-region start end command nil
                                            (if error-file
                                                (list buffer error-file)
-                                             buffer)
-                                           nil shell-command-switch command)))
+                                             buffer))))
             ;; Report the output.
             (with-current-buffer buffer
               (setq mode-line-process
@@ -3626,8 +3723,10 @@ interactively, this is t."
                            (format " - Exit [%d]" exit-status)))))
             (if (with-current-buffer buffer (> (point-max) (point-min)))
                 ;; There's some output, display it
-                (display-message-or-buffer buffer)
-              ;; No output; error?
+                (progn
+                  (display-message-or-buffer buffer)
+                  (shell-command--set-point-after-cmd buffer))
+            ;; No output; error?
               (let ((output
                      (if (and error-file
                               (< 0 (nth 7 (file-attributes error-file))))
@@ -4022,7 +4121,8 @@ These commands include \\[set-mark-command] and \\[start-kbd-macro]."
 
 
 (defvar filter-buffer-substring-functions nil
-  "This variable is a wrapper hook around `buffer-substring--filter'.")
+  "This variable is a wrapper hook around `buffer-substring--filter'.
+\(See `with-wrapper-hook' for details about wrapper hooks.)")
 (make-obsolete-variable 'filter-buffer-substring-functions
                         'filter-buffer-substring-function "24.4")
 
@@ -4063,7 +4163,8 @@ that are special to a buffer, and should not be copied into other buffers."
 (defun buffer-substring--filter (beg end &optional delete)
   "Default function to use for `filter-buffer-substring-function'.
 Its arguments and return value are as specified for `filter-buffer-substring'.
-This respects the wrapper hook `filter-buffer-substring-functions',
+Also respects the obsolete wrapper hook `filter-buffer-substring-functions'
+\(see `with-wrapper-hook' for details about wrapper hooks),
 and the abnormal hook `buffer-substring-filters'.
 No filtering is done unless a hook says to."
   (subr--with-wrapper-hook-no-warnings
@@ -4674,9 +4775,9 @@ If N is negative, this is a more recent kill.
 The sequence of kills wraps around, so that after the oldest one
 comes the newest one.
 
-When this command inserts killed text into the buffer, it honors
-`yank-excluded-properties' and `yank-handler' as described in the
-doc string for `insert-for-yank-1', which see."
+This command honors the `yank-handled-properties' and
+`yank-excluded-properties' variables, and the `yank-handler' text
+property, in the way that `yank' does."
   (interactive "*p")
   (if (not (eq last-command 'yank))
       (user-error "Previous command was not a yank"))
@@ -4709,10 +4810,34 @@ at the end, and set mark at the beginning without activating it.
 With just \\[universal-argument] as argument, put point at beginning, and mark at end.
 With argument N, reinsert the Nth most recent kill.
 
-When this command inserts text into the buffer, it honors the
-`yank-handled-properties' and `yank-excluded-properties'
-variables, and the `yank-handler' text property.  See
-`insert-for-yank-1' for details.
+This command honors the `yank-handled-properties' and
+`yank-excluded-properties' variables, and the `yank-handler' text
+property, as described below.
+
+Properties listed in `yank-handled-properties' are processed,
+then those listed in `yank-excluded-properties' are discarded.
+
+If STRING has a non-nil `yank-handler' property anywhere, the
+normal insert behavior is altered, and instead, for each contiguous
+segment of STRING that has a given value of the `yank-handler'
+property, that value is used as follows:
+
+The value of a `yank-handler' property must be a list of one to four
+elements, of the form (FUNCTION PARAM NOEXCLUDE UNDO).
+FUNCTION, if non-nil, should be a function of one argument (the
+ object to insert); FUNCTION is called instead of `insert'.
+PARAM, if present and non-nil, is passed to FUNCTION (to be handled
+ in whatever way is appropriate; e.g. if FUNCTION is `yank-rectangle',
+ PARAM may be a list of strings to insert as a rectangle).  If PARAM
+ is nil, then the current segment of STRING is used.
+If NOEXCLUDE is present and non-nil, the normal removal of
+ `yank-excluded-properties' is not performed; instead FUNCTION is
+ responsible for the removal.  This may be necessary if FUNCTION
+ adjusts point before or after inserting the object.
+UNDO, if present and non-nil, should be a function to be called
+ by `yank-pop' to undo the insertion of the current PARAM.  It is
+ given two arguments, the start and end of the region.  FUNCTION
+ may set `yank-undo-function' to override UNDO.
 
 See also the command `yank-pop' (\\[yank-pop])."
   (interactive "*P")
@@ -5656,6 +5781,7 @@ cursor to the end of the buffer.
 If the variable `line-move-visual' is non-nil, this command moves
 by display lines.  Otherwise, it moves by buffer lines, without
 taking variable-width characters or continued lines into account.
+See \\[next-logical-line] for a command that always moves by buffer lines.
 
 The command \\[set-goal-column] can be used to create
 a semipermanent goal column for this command.
@@ -5699,6 +5825,7 @@ column, or at the end of the line if it is not long enough.
 If the variable `line-move-visual' is non-nil, this command moves
 by display lines.  Otherwise, it moves by buffer lines, without
 taking variable-width characters or continued lines into account.
+See \\[previous-logical-line] for a command that always moves by buffer lines.
 
 The command \\[set-goal-column] can be used to create
 a semipermanent goal column for this command.
@@ -8318,7 +8445,7 @@ Returns the newly created indirect buffer."
     (with-current-buffer buffer
       (run-hooks 'clone-indirect-buffer-hook))
     (when display-flag
-      (pop-to-buffer buffer norecord))
+      (pop-to-buffer buffer nil norecord))
     buffer))
 
 

@@ -23,6 +23,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <config.h>
 #include <float.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 #include <c-ctype.h>
 
@@ -264,14 +265,13 @@ font_intern_prop (const char *str, ptrdiff_t len, bool force_symbol)
 	  break;
       if (i == len)
 	{
-	  EMACS_INT n;
-
 	  i = 0;
-	  for (n = 0; (n += str[i++] - '0') <= MOST_POSITIVE_FIXNUM; n *= 10)
+	  for (EMACS_INT n = 0;
+	       (n += str[i++] - '0') <= MOST_POSITIVE_FIXNUM; )
 	    {
 	      if (i == len)
 		return make_number (n);
-	      if (MOST_POSITIVE_FIXNUM / 10 < n)
+	      if (INT_MULTIPLY_WRAPV (n, 10, &n))
 		break;
 	    }
 
@@ -5433,6 +5433,19 @@ The default value is t, which means to suppress logging.
 Set it to nil to enable logging.  If the environment variable
 EMACS_FONT_LOG is set at startup, it defaults to nil.  */);
   Vfont_log = Qnil;
+
+  DEFVAR_BOOL ("inhibit-compacting-font-caches", inhibit_compacting_font_caches,
+	       doc: /*
+If non-nil, don't compact font caches during GC.
+Some large fonts cause lots of consing and trigger GC.  If they
+are removed from the font caches, they will need to be opened
+again during redisplay, which slows down redisplay.  If you
+see font-related delays in displaying some special characters,
+and cannot switch to a smaller font for those characters, set
+this variable non-nil.
+Disabling compaction of font caches might enlarge the Emacs memory
+footprint in sessions that use lots of different fonts.  */);
+  inhibit_compacting_font_caches = 0;
 
 #ifdef HAVE_WINDOW_SYSTEM
 #ifdef HAVE_FREETYPE

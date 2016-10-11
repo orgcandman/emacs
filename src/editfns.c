@@ -49,6 +49,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <limits.h>
 
 #include <intprops.h>
+#include <stdlib.h>
 #include <strftime.h>
 #include <verify.h>
 
@@ -146,6 +147,9 @@ xtzfree (timezone_t tz)
 static timezone_t
 tzlookup (Lisp_Object zone, bool settz)
 {
+  static char const tzbuf_format[] = "<%+.*"pI"d>%s%"pI"d:%02d:%02d";
+  char const *trailing_tzbuf_format = tzbuf_format + sizeof "<%+.*"pI"d" - 1;
+  char tzbuf[sizeof tzbuf_format + 2 * INT_STRLEN_BOUND (EMACS_INT)];
   char const *zone_string;
   timezone_t new_tz;
 
@@ -158,9 +162,6 @@ tzlookup (Lisp_Object zone, bool settz)
     }
   else
     {
-      static char const tzbuf_format[] = "<%+.*"pI"d>%s%"pI"d:%02d:%02d";
-      char const *trailing_tzbuf_format = tzbuf_format + sizeof "<%+.*"pI"d" - 1;
-      char tzbuf[sizeof tzbuf_format + 2 * INT_STRLEN_BOUND (EMACS_INT)];
       bool plain_integer = INTEGERP (zone);
 
       if (EQ (zone, Qwall))
@@ -1065,7 +1066,14 @@ usage: (save-current-buffer &rest BODY)  */)
 
 DEFUN ("buffer-size", Fbuffer_size, Sbuffer_size, 0, 1, 0,
        doc: /* Return the number of characters in the current buffer.
-If BUFFER, return the number of characters in that buffer instead.  */)
+If BUFFER is not nil, return the number of characters in that buffer
+instead.
+
+This does not take narrowing into account; to count the number of
+characters in the accessible portion of the current buffer, use
+`(- (point-max) (point-min))', and to count the number of characters
+in some other BUFFER, use
+`(with-current-buffer BUFFER (- (point-max) (point-min)))'.  */)
   (Lisp_Object buffer)
 {
   if (NILP (buffer))
@@ -1516,17 +1524,8 @@ static EMACS_INT
 hi_time (time_t t)
 {
   time_t hi = t >> LO_TIME_BITS;
-
-  /* Check for overflow, helping the compiler for common cases where
-     no runtime check is needed, and taking care not to convert
-     negative numbers to unsigned before comparing them.  */
-  if (! ((! TYPE_SIGNED (time_t)
-	  || MOST_NEGATIVE_FIXNUM <= TIME_T_MIN >> LO_TIME_BITS
-	  || MOST_NEGATIVE_FIXNUM <= hi)
-	 && (TIME_T_MAX >> LO_TIME_BITS <= MOST_POSITIVE_FIXNUM
-	     || hi <= MOST_POSITIVE_FIXNUM)))
+  if (FIXNUM_OVERFLOW_P (hi))
     time_overflow ();
-
   return hi;
 }
 
@@ -1588,7 +1587,7 @@ time_arith (Lisp_Object a, Lisp_Object b,
   struct lisp_time ta = lisp_time_struct (a, &alen);
   struct lisp_time tb = lisp_time_struct (b, &blen);
   struct lisp_time t = op (ta, tb);
-  if (! (MOST_NEGATIVE_FIXNUM <= t.hi && t.hi <= MOST_POSITIVE_FIXNUM))
+  if (FIXNUM_OVERFLOW_P (t.hi))
     time_overflow ();
   Lisp_Object val = Qnil;
 
@@ -1846,7 +1845,7 @@ decode_time_components (Lisp_Object high, Lisp_Object low, Lisp_Object usec,
 
   if (result)
     {
-      if (! (MOST_NEGATIVE_FIXNUM <= hi && hi <= MOST_POSITIVE_FIXNUM))
+      if (FIXNUM_OVERFLOW_P (hi))
 	return -1;
       result->hi = hi;
       result->lo = lo;
@@ -2937,6 +2936,10 @@ Return -N if first string is less after N-1 chars, +N if first string is
 greater after N-1 chars, or 0 if strings match.
 The first substring is in BUFFER1 from START1 to END1 and the second
 is in BUFFER2 from START2 to END2.
+All arguments may be nil.  If BUFFER1 or BUFFER2 is nil, the current
+buffer is used.  If START1 or START2 is nil, the value of `point-min'
+in the respective buffers is used.  If END1 or END2 is nil, the value
+of `point-max' in the respective buffers is used.
 The value of `case-fold-search' in the current buffer
 determines whether case is significant or ignored.  */)
   (Lisp_Object buffer1, Lisp_Object start1, Lisp_Object end1, Lisp_Object buffer2, Lisp_Object start2, Lisp_Object end2)
@@ -3244,7 +3247,7 @@ Both characters must have the same length of multi-byte form.  */)
 	      /* replace_range is less efficient, because it moves the gap,
 		 but it handles combining correctly.  */
 	      replace_range (pos, pos + 1, string,
-			     0, 0, 1);
+			     0, 0, 1, 0);
 	      pos_byte_next = CHAR_TO_BYTE (pos);
 	      if (pos_byte_next > pos_byte)
 		/* Before combining happened.  We should not increment
@@ -3457,7 +3460,7 @@ It returns the number of characters changed.  */)
 		  /* This is less efficient, because it moves the gap,
 		     but it should handle multibyte characters correctly.  */
 		  string = make_multibyte_string ((char *) str, 1, str_len);
-		  replace_range (pos, pos + 1, string, 1, 0, 1);
+		  replace_range (pos, pos + 1, string, 1, 0, 1, 0);
 		  len = str_len;
 		}
 	      else
@@ -3498,7 +3501,7 @@ It returns the number of characters changed.  */)
 		{
 		  string = Fmake_string (make_number (1), val);
 		}
-	      replace_range (pos, pos + len, string, 1, 0, 1);
+	      replace_range (pos, pos + len, string, 1, 0, 1, 0);
 	      pos_byte += SBYTES (string);
 	      pos += SCHARS (string);
 	      cnt += SCHARS (string);
@@ -3860,7 +3863,8 @@ specifiers, as follows:
 
   %<flags><width><precision>character
 
-where flags is [+ #-0]+, width is [0-9]+, and precision is .[0-9]+
+where flags is [+ #-0]+, width is [0-9]+, and precision is a literal
+period "." followed by [0-9]+
 
 The + flag character inserts a + before any positive number, while a
 space inserts a space before any positive number; these flags only
@@ -3899,10 +3903,9 @@ DEFUN ("format-message", Fformat_message, Sformat_message, 1, MANY, 0,
 The first argument is a format control string.
 The other arguments are substituted into it to make the result, a string.
 
-This acts like `format', except it also replaces each left single
-quotation mark (\\=‘) and grave accent (\\=`) by a left quote, and each
-right single quotation mark (\\=’) and apostrophe (\\=') by a right quote.
-The left and right quote replacement characters are specified by
+This acts like `format', except it also replaces each grave accent (\\=`)
+by a left quote, and each apostrophe (\\=') by a right quote.  The left
+and right quote replacement characters are specified by
 `text-quoting-style'.
 
 usage: (format-message STRING &rest OBJECTS)  */)
@@ -5057,6 +5060,14 @@ Transposing beyond buffer boundaries is an error.  */)
 			 start1_byte, start1_byte + len1_byte,
 			 start2_byte, start2_byte + len2_byte);
       fix_start_end_in_overlays (start1, end2);
+    }
+  else
+    {
+      /* The character positions of the markers remain intact, but we
+	 still need to update their byte positions, because the
+	 transposed regions might include multibyte sequences which
+	 make some original byte positions of the markers invalid.  */
+      adjust_markers_bytepos (start1, start1_byte, end2, end2_byte, 0);
     }
 
   signal_after_change (start1, end2 - start1, end2 - start1);

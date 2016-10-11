@@ -1,4 +1,4 @@
-;;; faces.el --- Lisp faces
+;;; faces.el --- Lisp faces -*- lexical-binding: t -*-
 
 ;; Copyright (C) 1992-1996, 1998-2016 Free Software Foundation, Inc.
 
@@ -2749,7 +2749,7 @@ It is used for characters of no fonts too."
 (defface read-multiple-choice-face
   '((t (:inherit underline
         :weight bold)))
-  "Face for the symbol name in Apropos output."
+  "Face for the symbol name in `read-multiple-choice' output."
   :group 'basic-faces
   :version "25.2")
 
