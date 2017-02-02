@@ -1,6 +1,6 @@
 @c -*- coding: utf-8 -*-
 @c This is part of the Emacs manual.
-@c Copyright (C) 1985-1987, 1993-1995, 1997, 2000-2016 Free Software
+@c Copyright (C) 1985-1987, 1993-1995, 1997, 2000-2017 Free Software
 @c Foundation, Inc.
 
 @c See file emacs.texi for copying conditions.
@@ -656,6 +656,10 @@ when @code{show-trailing-whitespace} is non-@code{nil} (@pxref{Useless
 Whitespace}).
 @item escape-glyph
 The face for displaying control characters and escape sequences
+(@pxref{Text Display}).
+@item homoglyph
+The face for displaying lookalike characters, i.e., characters that
+look like but are not the characters being represented
 (@pxref{Text Display}).
 @item nobreak-space
 The face for displaying no-break space characters (@pxref{Text
@@ -1520,12 +1524,12 @@ for details.
 
 @cindex curly quotes
 @cindex curved quotes
-@cindex escape-glyph face
+@cindex homoglyph face
   If the curved quotes @samp{‘}, @samp{’}, @samp{“}, and @samp{”} are
 known to look just like @acronym{ASCII} characters, they are shown
-with the @code{escape-glyph} face.  Curved quotes that cannot be
+with the @code{homoglyph} face.  Curved quotes that cannot be
 displayed are shown as their @acronym{ASCII} approximations @samp{`},
-@samp{'}, and @samp{"} with the @code{escape-glyph} face.
+@samp{'}, and @samp{"} with the @code{homoglyph} face.
 
 @node Cursor Display
 @section Displaying the Cursor

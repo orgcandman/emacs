@@ -1,6 +1,6 @@
 /* Display generation from window structure and buffer text.
 
-Copyright (C) 1985-1988, 1993-1995, 1997-2016 Free Software Foundation,
+Copyright (C) 1985-1988, 1993-1995, 1997-2017 Free Software Foundation,
 Inc.
 
 This file is part of GNU Emacs.
@@ -622,15 +622,15 @@ bset_update_mode_line (struct buffer *b)
   b->text->redisplay = true;
 }
 
-void
-maybe_set_redisplay (Lisp_Object symbol)
+DEFUN ("set-buffer-redisplay", Fset_buffer_redisplay,
+       Sset_buffer_redisplay, 4, 4, 0,
+       doc: /* Mark the current buffer for redisplay.
+This function may be passed to `add-variable-watcher'.  */)
+  (Lisp_Object symbol, Lisp_Object newval, Lisp_Object op, Lisp_Object where)
 {
-  if (HASH_TABLE_P (Vredisplay__variables)
-      && hash_lookup (XHASH_TABLE (Vredisplay__variables), symbol, NULL) >= 0)
-    {
-      bset_update_mode_line (current_buffer);
-      current_buffer->prevent_redisplay_optimizations_p = true;
-    }
+  bset_update_mode_line (current_buffer);
+  current_buffer->prevent_redisplay_optimizations_p = true;
+  return Qnil;
 }
 
 #ifdef GLYPH_DEBUG
@@ -818,6 +818,8 @@ static void iterate_out_of_display_property (struct it *);
 static void pop_it (struct it *);
 static void redisplay_internal (void);
 static void echo_area_display (bool);
+static void block_buffer_flips (void);
+static void unblock_buffer_flips (void);
 static void redisplay_windows (Lisp_Object);
 static void redisplay_window (Lisp_Object, bool);
 static Lisp_Object redisplay_window_error (Lisp_Object);
@@ -1248,27 +1250,18 @@ default_line_pixel_height (struct window *w)
 static Lisp_Object
 string_from_display_spec (Lisp_Object spec)
 {
-  if (CONSP (spec))
+  if (VECTORP (spec))
     {
-      while (CONSP (spec))
-	{
-	  if (STRINGP (XCAR (spec)))
-	    return XCAR (spec);
-	  spec = XCDR (spec);
-	}
+      for (ptrdiff_t i = 0; i < ASIZE (spec); i++)
+	if (STRINGP (AREF (spec, i)))
+	  return AREF (spec, i);
     }
-  else if (VECTORP (spec))
+  else
     {
-      ptrdiff_t i;
-
-      for (i = 0; i < ASIZE (spec); i++)
-	{
-	  if (STRINGP (AREF (spec, i)))
-	    return AREF (spec, i);
-	}
-      return Qnil;
+      for (; CONSP (spec); spec = XCDR (spec))
+	if (STRINGP (XCAR (spec)))
+	  return XCAR (spec);
     }
-
   return spec;
 }
 
@@ -2501,7 +2494,7 @@ remember_mouse_glyph (struct frame *f, int gx, int gy, NativeRectangle *rect)
 
   /* Visible feedback for debugging.  */
 #if false && defined HAVE_X_WINDOWS
-  XDrawRectangle (FRAME_X_DISPLAY (f), FRAME_X_WINDOW (f),
+  XDrawRectangle (FRAME_X_DISPLAY (f), FRAME_X_DRAWABLE (f),
 		  f->output_data.x->normal_gc,
 		  gx, gy, width, height);
 #endif
@@ -11349,7 +11342,7 @@ clear_garbaged_frames (void)
 	      fset_redisplay (f);
 	      f->garbaged = false;
 	      f->resized_p = false;
-	    }
+            }
 	}
 
       frame_garbaged = false;
@@ -13047,6 +13040,17 @@ hscroll_window_tree (Lisp_Object window)
 	      init_to_row_start (&it, w, cursor_row);
 	      it.last_visible_x = INFINITY;
 	      move_it_in_display_line_to (&it, pt, -1, MOVE_TO_POS);
+	      /* If the line ends in an overlay string with a newline,
+		 we might infloop, because displaying the window will
+		 want to put the cursor after the overlay, i.e. at X
+		 coordinate of zero on the next screen line.  So we
+		 use the buffer position prior to the overlay string
+		 instead.  */
+	      if (it.method == GET_FROM_STRING && pt > 1)
+		{
+		  init_to_row_start (&it, w, cursor_row);
+		  move_it_in_display_line_to (&it, pt - 1, -1, MOVE_TO_POS);
+		}
 	      current_buffer = saved_current_buffer;
 
 	      /* Position cursor in window.  */
@@ -13528,6 +13532,12 @@ redisplay_internal (void)
   bool polling_stopped_here = false;
   Lisp_Object tail, frame;
 
+  /* Set a limit to the number of retries we perform due to horizontal
+     scrolling, this avoids getting stuck in an uninterruptible
+     infinite loop (Bug #24633).  */
+  enum { MAX_HSCROLL_RETRIES = 16 };
+  int hscroll_retries = 0;
+
   /* True means redisplay has to consider all windows on all
      frames.  False, only selected_window is considered.  */
   bool consider_all_windows_p;
@@ -13567,6 +13577,7 @@ redisplay_internal (void)
   count = SPECPDL_INDEX ();
   record_unwind_protect_void (unwind_redisplay);
   redisplaying_p = true;
+  block_buffer_flips ();
   specbind (Qinhibit_free_realized_faces, Qnil);
 
   /* Record this function, so it appears on the profiler's backtraces.  */
@@ -14044,8 +14055,12 @@ redisplay_internal (void)
 		  if (!f->already_hscrolled_p)
 		    {
 		      f->already_hscrolled_p = true;
-		      if (hscroll_windows (f->root_window))
-			goto retry_frame;
+                      if (hscroll_retries <= MAX_HSCROLL_RETRIES
+                          && hscroll_windows (f->root_window))
+                        {
+                          hscroll_retries++;
+                          goto retry_frame;
+                        }
 		    }
 
 		  /* If the frame's redisplay flag was not set before
@@ -14060,7 +14075,23 @@ redisplay_internal (void)
 		     use them in update_frame will segfault.
 		     Therefore, we must redisplay this frame.  */
 		  if (!f_redisplay_flag && f->redisplay)
-		    goto retry_frame;
+                    goto retry_frame;
+
+                  /* In some case (e.g., window resize), we notice
+                     only during window updating that the window
+                     content changed unpredictably (e.g., a GTK
+                     scrollbar moved) and that our previous estimation
+                     of the frame content was garbage.  We have to
+                     start over.  These cases should be rare, so going
+                     all the way back to the top of redisplay should
+                     be good enough.
+
+                     Why FRAME_WINDOW_P? See
+                     https://lists.gnu.org/archive/html/emacs-devel/2016-10/msg00957.html
+
+                     */
+                  if (FRAME_GARBAGED_P (f) && FRAME_WINDOW_P (f))
+                    goto retry;
 
 		  /* Prevent various kinds of signals during display
 		     update.  stdio is not robust about handling
@@ -14089,6 +14120,7 @@ redisplay_internal (void)
               if (f->updated_p)
                 {
 		  f->redisplay = false;
+		  f->garbaged = false;
                   mark_window_display_accurate (f->root_window, true);
                   if (FRAME_TERMINAL (f)->frame_up_to_date_hook)
                     FRAME_TERMINAL (f)->frame_up_to_date_hook (f);
@@ -14143,8 +14175,12 @@ redisplay_internal (void)
 
       if (FRAME_VISIBLE_P (sf) && !FRAME_OBSCURED_P (sf))
 	{
-	  if (hscroll_windows (selected_window))
-	    goto retry;
+          if (hscroll_retries <= MAX_HSCROLL_RETRIES
+              && hscroll_windows (selected_window))
+            {
+              hscroll_retries++;
+              goto retry;
+            }
 
 	  XWINDOW (selected_window)->must_be_updated_p = true;
 	  pending = update_frame (sf, false, false);
@@ -14164,8 +14200,12 @@ redisplay_internal (void)
 	  XWINDOW (mini_window)->must_be_updated_p = true;
 	  pending |= update_frame (mini_frame, false, false);
 	  mini_frame->cursor_type_changed = false;
-	  if (!pending && hscroll_windows (mini_window))
-	    goto retry;
+          if (!pending && hscroll_retries <= MAX_HSCROLL_RETRIES
+              && hscroll_windows (mini_window))
+            {
+              hscroll_retries++;
+              goto retry;
+            }
 	}
     }
 
@@ -14279,6 +14319,11 @@ redisplay_internal (void)
   RESUME_POLLING;
 }
 
+static void
+unwind_redisplay_preserve_echo_area (void)
+{
+  unblock_buffer_flips ();
+}
 
 /* Redisplay, but leave alone any recent echo area message unless
    another message has been requested in its place.
@@ -14296,6 +14341,12 @@ redisplay_preserve_echo_area (int from_where)
 {
   TRACE ((stderr, "redisplay_preserve_echo_area (%d)\n", from_where));
 
+  block_input ();
+  ptrdiff_t count = SPECPDL_INDEX ();
+  record_unwind_protect_void (unwind_redisplay_preserve_echo_area);
+  block_buffer_flips ();
+  unblock_input ();
+
   if (!NILP (echo_area_buffer[1]))
     {
       /* We have a previously displayed message, but no current
@@ -14308,6 +14359,7 @@ redisplay_preserve_echo_area (int from_where)
     redisplay_internal ();
 
   flush_frame (SELECTED_FRAME ());
+  unbind_to (count, Qnil);
 }
 
 
@@ -14317,6 +14369,7 @@ static void
 unwind_redisplay (void)
 {
   redisplaying_p = false;
+  unblock_buffer_flips ();
 }
 
 
@@ -14426,6 +14479,38 @@ disp_char_vector (struct Lisp_Char_Table *dp, int c)
   return val;
 }
 
+static int buffer_flip_blocked_depth;
+
+static void
+block_buffer_flips (void)
+{
+  eassert (buffer_flip_blocked_depth >= 0);
+  buffer_flip_blocked_depth++;
+}
+
+static void
+unblock_buffer_flips (void)
+{
+  eassert (buffer_flip_blocked_depth > 0);
+  if (--buffer_flip_blocked_depth == 0)
+    {
+      Lisp_Object tail, frame;
+      block_input ();
+      FOR_EACH_FRAME (tail, frame)
+        {
+          struct frame *f = XFRAME (frame);
+          if (FRAME_TERMINAL (f)->buffer_flipping_unblocked_hook)
+            (*FRAME_TERMINAL (f)->buffer_flipping_unblocked_hook) (f);
+        }
+      unblock_input ();
+    }
+}
+
+bool
+buffer_flipping_blocked_p (void)
+{
+  return buffer_flip_blocked_depth > 0;
+}
 
 
 /***********************************************************************
@@ -22550,7 +22635,7 @@ move_elt_to_front (Lisp_Object elt, Lisp_Object list)
       else
 	prev = tail;
       tail = XCDR (tail);
-      QUIT;
+      maybe_quit ();
     }
 
   /* Not found--return unchanged LIST.  */
@@ -24485,7 +24570,7 @@ calc_pixel_width_or_height (double *res, struct it *it, Lisp_Object prop,
 	    }
 	  if (FRAME_WINDOW_P (it->f) && valid_xwidget_spec_p (prop))
 	    {
-              // TODO: Don't return dummy size.
+              /* TODO: Don't return dummy size.  */
               return OK_PIXELS (100);
             }
 #endif
@@ -24608,7 +24693,6 @@ init_glyph_string (struct glyph_string *s,
   s->hdc = hdc;
 #endif
   s->display = FRAME_X_DISPLAY (s->f);
-  s->window = FRAME_X_WINDOW (s->f);
   s->char2b = char2b;
   s->hl = hl;
   s->row = row;
@@ -31240,6 +31324,7 @@ They are still logged to the *Messages* buffer.  */);
   message_dolog_marker3 = Fmake_marker ();
   staticpro (&message_dolog_marker3);
 
+  defsubr (&Sset_buffer_redisplay);
 #ifdef GLYPH_DEBUG
   defsubr (&Sdump_frame_glyph_matrix);
   defsubr (&Sdump_glyph_matrix);
@@ -31908,10 +31993,6 @@ display table takes effect; in this case, Emacs does not consult
   DEFVAR_LISP ("redisplay--mode-lines-cause", Vredisplay__mode_lines_cause,
 	       doc: /*  */);
   Vredisplay__mode_lines_cause = Fmake_hash_table (0, NULL);
-
-  DEFVAR_LISP ("redisplay--variables", Vredisplay__variables,
-     doc: /* A hash-table of variables changing which triggers a thorough redisplay.  */);
-  Vredisplay__variables = Qnil;
 
   DEFVAR_BOOL ("redisplay--inhibit-bidi", redisplay__inhibit_bidi,
      doc: /* Non-nil means it is not safe to attempt bidi reordering for display.  */);

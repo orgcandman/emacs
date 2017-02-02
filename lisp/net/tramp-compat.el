@@ -1,6 +1,6 @@
 ;;; tramp-compat.el --- Tramp compatibility functions
 
-;; Copyright (C) 2007-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2017 Free Software Foundation, Inc.
 
 ;; Author: Michael Albinus <michael.albinus@gmx.de>
 ;; Keywords: comm, processes
@@ -23,8 +23,9 @@
 
 ;;; Commentary:
 
-;; Tramp's main Emacs version for development is Emacs 25.  This
-;; package provides compatibility functions for Emacs 23 and Emacs 24.
+;; Tramp's main Emacs version for development is Emacs 26.  This
+;; package provides compatibility functions for Emacs 23, Emacs 24 and
+;; Emacs 25.
 
 ;;; Code:
 
@@ -36,6 +37,7 @@
 (require 'advice)
 (require 'custom)
 (require 'format-spec)
+(require 'parse-time)
 (require 'password-cache)
 (require 'shell)
 (require 'timer)
@@ -261,6 +263,13 @@ process."
 	   (memq (process-status process)
 		 '(run open listen connect stop))))))
 
+;; `user-error' has appeared in Emacs 24.3.
+(defsubst tramp-compat-user-error (vec-or-proc format &rest args)
+  "Signal a pilot error."
+  (apply
+   'tramp-error vec-or-proc
+   (if (fboundp 'user-error) 'user-error 'error) format args))
+
 ;; `file-attribute-*' are introduced in Emacs 25.1.
 
 (if (fboundp 'file-attribute-type)
@@ -328,10 +337,47 @@ This is a string of ten letters or dashes as in ls -l."
 (unless (fboundp 'format-message)
   (defalias 'format-message 'format))
 
+;; `file-missing' is introduced in Emacs 26.
+(defconst tramp-file-missing
+  (if (get 'file-missing 'error-conditions) 'file-missing 'file-error)
+  "The error symbol for the `file-missing' error.")
+
 (add-hook 'tramp-unload-hook
 	  (lambda ()
 	    (unload-feature 'tramp-loaddefs 'force)
 	    (unload-feature 'tramp-compat 'force)))
+
+;; `file-name-quoted-p', `file-name-quote' and `file-name-unquote' are
+;; introduced in Emacs 26.
+(eval-and-compile
+  (if (fboundp 'file-name-quoted-p)
+      (defalias 'tramp-compat-file-name-quoted-p 'file-name-quoted-p)
+    (defsubst tramp-compat-file-name-quoted-p (name)
+      "Whether NAME is quoted with prefix \"/:\".
+If NAME is a remote file name, check the local part of NAME."
+      (string-match "^/:" (or (file-remote-p name 'localname) name))))
+
+  (if (fboundp 'file-name-quote)
+      (defalias 'tramp-compat-file-name-quote 'file-name-quote)
+    (defsubst tramp-compat-file-name-quote (name)
+      "Add the quotation prefix \"/:\" to file NAME.
+If NAME is a remote file name, the local part of NAME is quoted."
+      (concat
+       (file-remote-p name) "/:" (or (file-remote-p name 'localname) name))))
+
+  (if (fboundp 'file-name-unquote)
+      (defalias 'tramp-compat-file-name-unquote 'file-name-unquote)
+    (defsubst tramp-compat-file-name-unquote (name)
+      "Remove quotation prefix \"/:\" from file NAME.
+If NAME is a remote file name, the local part of NAME is unquoted."
+      (save-match-data
+	(let ((localname (or (file-remote-p name 'localname) name)))
+	  (when (tramp-compat-file-name-quoted-p localname)
+	    (setq
+	     localname
+	     (replace-match
+	      (if (= (length localname) 2) "/" "") nil t localname)))
+	  (concat (file-remote-p name) localname))))))
 
 (provide 'tramp-compat)
 

@@ -1,6 +1,6 @@
 @c -*-texinfo-*-
 @c This is part of the GNU Emacs Lisp Reference Manual.
-@c Copyright (C) 1990-1995, 1998-1999, 2001-2016 Free Software
+@c Copyright (C) 1990-1995, 1998-1999, 2001-2017 Free Software
 @c Foundation, Inc.
 @c See the file elisp.texi for copying conditions.
 @node Lists
@@ -361,6 +361,39 @@ This is the same as @code{(cdr (car @var{cons-cell}))}.
 This is the same as @code{(cdr (cdr @var{cons-cell}))}
 or @code{(nthcdr 2 @var{cons-cell})}.
 @end defun
+
+@findex caaar
+@findex caadr
+@findex cadar
+@findex caddr
+@findex cdaar
+@findex cdadr
+@findex cddar
+@findex cdddr
+@findex caaaar
+@findex caaadr
+@findex caadar
+@findex caaddr
+@findex cadaar
+@findex cadadr
+@findex caddar
+@findex cadddr
+@findex cdaaar
+@findex cdaadr
+@findex cdadar
+@findex cdaddr
+@findex cddaar
+@findex cddadr
+@findex cdddar
+@findex cddddr
+In addition to the above, 24 additional compositions of @code{car} and
+@code{cdr} are defined as @code{c@var{xxx}r} and @code{c@var{xxxx}r},
+where each @code{@var{x}} is either @code{a} or @code{d}.  @code{cadr},
+@code{caddr}, and @code{cadddr} pick out the second, third or fourth
+elements of a list, respectively.  @file{cl-lib} provides the same
+under the names @code{cl-second}, @code{cl-third}, and
+@code{cl-fourth}.  @xref{List Functions,,, cl, Common Lisp
+Extensions}.
 
 @defun butlast x &optional n
 This function returns the list @var{x} with the last element,
@@ -1556,15 +1589,15 @@ keys may not be symbols:
 @end smallexample
 @end defun
 
-@defun alist-get key value &optional default remove
+@defun alist-get key alist &optional default remove
 This function is like @code{assq}, but instead of returning the entire
-association for @var{key}, @code{(@var{key} . @var{value})}, it
-returns just the @var{value}.  If @var{key} is not found in
-@var{alist} it returns @var{default}.
+association for @var{key} in @var{alist},
+@w{@code{(@var{key} . @var{value})}}, it returns just the @var{value}.
+If @var{key} is not found in @var{alist}, it returns @var{default}.
 
 This is a generalized variable (@pxref{Generalized Variables}) that
 can be used to change a value with @code{setf}.  When using it to set
-a value, optional argument @var{remove} non-nil means to remove
+a value, optional argument @var{remove} non-@code{nil} means to remove
 @var{key} from @var{alist} if the new value is @code{eql} to @var{default}.
 @end defun
 

@@ -1,6 +1,6 @@
 /* Functions for image support on window system.
 
-Copyright (C) 1989, 1992-2016 Free Software Foundation, Inc.
+Copyright (C) 1989, 1992-2017 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -36,6 +36,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include "lisp.h"
 #include "frame.h"
+#include "process.h"
 #include "window.h"
 #include "buffer.h"
 #include "dispextern.h"
@@ -220,7 +221,7 @@ x_create_bitmap_from_data (struct frame *f, char *bits, unsigned int width, unsi
 
 #ifdef HAVE_X_WINDOWS
   Pixmap bitmap;
-  bitmap = XCreateBitmapFromData (FRAME_X_DISPLAY (f), FRAME_X_WINDOW (f),
+  bitmap = XCreateBitmapFromData (FRAME_X_DISPLAY (f), FRAME_X_DRAWABLE (f),
 				  bits, width, height);
   if (! bitmap)
     return -1;
@@ -327,7 +328,7 @@ x_create_bitmap_from_file (struct frame *f, Lisp_Object file)
 
   filename = SSDATA (found);
 
-  result = XReadBitmapFile (FRAME_X_DISPLAY (f), FRAME_X_WINDOW (f),
+  result = XReadBitmapFile (FRAME_X_DISPLAY (f), FRAME_X_DRAWABLE (f),
 			    filename, &width, &height, &bitmap, &xhot, &yhot);
   if (result != BitmapSuccess)
     return -1;
@@ -793,7 +794,7 @@ parse_image_spec (Lisp_Object spec, struct image_keyword *keywords,
 
 	case IMAGE_FUNCTION_VALUE:
 	  value = indirect_function (value);
-	  if (!NILP (Ffunctionp (value)))
+	  if (FUNCTIONP (value))
 	    break;
 	  return 0;
 
@@ -1096,8 +1097,8 @@ image_ascent (struct image *img, struct face *face, struct glyph_slice *slice)
 static uint32_t
 xcolor_to_argb32 (XColor xc)
 {
-  return (0xff << 24) | ((xc.red / 256) << 16)
-      | ((xc.green / 256) << 8) | (xc.blue / 256);
+  return ((0xffu << 24) | ((xc.red / 256) << 16)
+	  | ((xc.green / 256) << 8) | (xc.blue / 256));
 }
 
 static uint32_t
@@ -1952,7 +1953,7 @@ x_create_x_image_and_pixmap (struct frame *f, int width, int height, int depth,
 {
 #ifdef HAVE_X_WINDOWS
   Display *display = FRAME_X_DISPLAY (f);
-  Window window = FRAME_X_WINDOW (f);
+  Drawable drawable = FRAME_X_DRAWABLE (f);
   Screen *screen = FRAME_X_SCREEN (f);
 
   eassert (input_blocked_p ());
@@ -1981,7 +1982,7 @@ x_create_x_image_and_pixmap (struct frame *f, int width, int height, int depth,
   (*ximg)->data = xmalloc ((*ximg)->bytes_per_line * height);
 
   /* Allocate a pixmap of the same size.  */
-  *pixmap = XCreatePixmap (display, window, width, height, depth);
+  *pixmap = XCreatePixmap (display, drawable, width, height, depth);
   if (*pixmap == NO_PIXMAP)
     {
       x_destroy_x_image (*ximg);
@@ -2742,7 +2743,7 @@ Create_Pixmap_From_Bitmap_Data (struct frame *f, struct image *img, char *data,
   img->pixmap =
    (x_check_image_size (0, img->width, img->height)
     ? XCreatePixmapFromBitmapData (FRAME_X_DISPLAY (f),
-				   FRAME_X_WINDOW (f),
+                                   FRAME_X_DRAWABLE (f),
 				   data,
 				   img->width, img->height,
 				   fg, bg,
@@ -3520,7 +3521,7 @@ x_create_bitmap_from_xpm_data (struct frame *f, const char **bits)
   xpm_init_color_cache (f, &attrs);
 #endif
 
-  rc = XpmCreatePixmapFromData (FRAME_X_DISPLAY (f), FRAME_X_WINDOW (f),
+  rc = XpmCreatePixmapFromData (FRAME_X_DISPLAY (f), FRAME_X_DRAWABLE (f),
 				(char **) bits, &bitmap, &mask, &attrs);
   if (rc != XpmSuccess)
     {
@@ -3718,7 +3719,7 @@ xpm_load (struct frame *f, struct image *img)
     }
 
 #ifdef USE_CAIRO
-  // Load very specific Xpm:s.
+  /* Load very specific Xpm:s.  */
   if (rc == XpmSuccess
       && img->ximg->format == ZPixmap
       && img->ximg->bits_per_pixel == 32
@@ -3726,10 +3727,10 @@ xpm_load (struct frame *f, struct image *img)
     {
       int width = img->ximg->width;
       int height = img->ximg->height;
-      unsigned char *data = (unsigned char *) xmalloc (width*height*4);
+      void *data = xmalloc (width * height * 4);
       int i;
-      uint32_t *od = (uint32_t *)data;
-      uint32_t *id = (uint32_t *)img->ximg->data;
+      uint32_t *od = data;
+      uint32_t *id = (uint32_t *) img->ximg->data;
       char *mid = img->mask_img ? img->mask_img->data : 0;
       uint32_t bgcolor = get_spec_bg_or_alpha_as_argb (img, f);
 
@@ -3742,7 +3743,7 @@ xpm_load (struct frame *f, struct image *img)
               int maskidx = mid ? i * img->mask_img->bytes_per_line + k/8 : 0;
               int mask = mid ? mid[maskidx] & (1 << (k % 8)) : 1;
 
-              if (mask) od[idx] = id[idx] + 0xff000000; // ff => full alpha
+              if (mask) od[idx] = id[idx] + 0xff000000; /* ff => full alpha */
               else od[idx] = bgcolor;
             }
         }
@@ -3758,7 +3759,7 @@ xpm_load (struct frame *f, struct image *img)
 #ifdef HAVE_X_WINDOWS
   if (rc == XpmSuccess)
     {
-      img->pixmap = XCreatePixmap (FRAME_X_DISPLAY (f), FRAME_X_WINDOW (f),
+      img->pixmap = XCreatePixmap (FRAME_X_DISPLAY (f), FRAME_X_DRAWABLE (f),
 				   img->ximg->width, img->ximg->height,
 				   img->ximg->depth);
       if (img->pixmap == NO_PIXMAP)
@@ -3768,7 +3769,7 @@ xpm_load (struct frame *f, struct image *img)
 	}
       else if (img->mask_img)
 	{
-	  img->mask = XCreatePixmap (FRAME_X_DISPLAY (f), FRAME_X_WINDOW (f),
+          img->mask = XCreatePixmap (FRAME_X_DISPLAY (f), FRAME_X_DRAWABLE (f),
 				     img->mask_img->width,
 				     img->mask_img->height,
 				     img->mask_img->depth);
@@ -4019,7 +4020,7 @@ xpm_make_color_table_h (void (**put_func) (Lisp_Object, const char *, int,
   return make_hash_table (hashtest_equal, make_number (DEFAULT_HASH_SIZE),
 			  make_float (DEFAULT_REHASH_SIZE),
 			  make_float (DEFAULT_REHASH_THRESHOLD),
-			  Qnil);
+			  Qnil, Qnil);
 }
 
 static void
@@ -5364,7 +5365,7 @@ pbm_load (struct frame *f, struct image *img)
   height = pbm_scan_number (&p, end);
 
 #ifdef USE_CAIRO
-  uint32_t *data = xmalloc (width * height * 4);
+  void *data = xmalloc (width * height * 4);
   uint32_t *dataptr = data;
 #endif
 
@@ -5540,7 +5541,7 @@ pbm_load (struct frame *f, struct image *img)
 	    r = (double) r * 255 / max_color_idx;
 	    g = (double) g * 255 / max_color_idx;
 	    b = (double) b * 255 / max_color_idx;
-            *dataptr++ = (0xff << 24) | (r << 16) | (g << 8) | b;
+            *dataptr++ = (0xffu << 24) | (r << 16) | (g << 8) | b;
 #else
 	    /* RGB values are now in the range 0..max_color_idx.
 	       Scale this to the range 0..0xffff supported by X.  */
@@ -6835,7 +6836,7 @@ jpeg_load_body (struct frame *f, struct image *img,
             r = mgr->cinfo.colormap[ir][i];
             g = mgr->cinfo.colormap[ig][i];
             b = mgr->cinfo.colormap[ib][i];
-            *dataptr++ = (0xff << 24) | (r << 16) | (g << 8) | b;
+            *dataptr++ = (0xffu << 24) | (r << 16) | (g << 8) | b;
           }
       }
 
@@ -7628,14 +7629,6 @@ gif_load (struct frame *f, struct image *img)
   EMACS_INT idx;
   int gif_err;
 
-#ifdef USE_CAIRO
-  unsigned char *data = 0;
-#else
-  unsigned long pixel_colors[256];
-  unsigned long bgcolor = 0;
-  XImagePtr ximg;
-#endif
-
   if (NILP (specified_data))
     {
       Lisp_Object file = x_find_image_file (specified_file);
@@ -7766,24 +7759,26 @@ gif_load (struct frame *f, struct image *img)
 
 #ifdef USE_CAIRO
   /* xzalloc so data is zero => transparent */
-  data = (unsigned char *) xzalloc (width * height * 4);
+  void *data = xzalloc (width * height * 4);
+  uint32_t *data32 = data;
   if (STRINGP (specified_bg))
     {
       XColor color;
       if (x_defined_color (f, SSDATA (specified_bg), &color, 0))
         {
-          uint32_t *dataptr = (uint32_t *)data;
+          uint32_t *dataptr = data32;
           int r = color.red/256;
           int g = color.green/256;
           int b = color.blue/256;
 
           for (y = 0; y < height; ++y)
             for (x = 0; x < width; ++x)
-              *dataptr++ = (0xff << 24) | (r << 16) | (g << 8) | b;
+              *dataptr++ = (0xffu << 24) | (r << 16) | (g << 8) | b;
         }
     }
 #else
   /* Create the X image and pixmap.  */
+  XImagePtr ximg;
   if (!image_create_x_image_and_pixmap (f, img, width, height, 0, &ximg, 0))
     {
       gif_close (gif, NULL);
@@ -7821,6 +7816,7 @@ gif_load (struct frame *f, struct image *img)
   init_color_table ();
 
 #ifndef USE_CAIRO
+  unsigned long bgcolor;
   if (STRINGP (specified_bg))
     bgcolor = x_alloc_image_color (f, img, specified_bg,
 				   FRAME_BACKGROUND_PIXEL (f));
@@ -7874,7 +7870,7 @@ gif_load (struct frame *f, struct image *img)
 
 #ifndef USE_CAIRO
       /* Allocate subimage colors.  */
-      memset (pixel_colors, 0, sizeof pixel_colors);
+      unsigned long pixel_colors[256] = { 0, };
 
       if (gif_color_map)
 	for (i = 0; i < gif_color_map->ColorCount; ++i)
@@ -7911,14 +7907,14 @@ gif_load (struct frame *f, struct image *img)
                     {
 #ifdef USE_CAIRO
                       uint32_t *dataptr =
-                        ((uint32_t*)data + ((row + subimg_top) * subimg_width
-                                            + x + subimg_left));
+                        (data32 + ((row + subimg_top) * subimg_width
+				   + x + subimg_left));
                       int r = gif_color_map->Colors[c].Red;
                       int g = gif_color_map->Colors[c].Green;
                       int b = gif_color_map->Colors[c].Blue;
 
                       if (transparency_color_index != c)
-                        *dataptr = (0xff << 24) | (r << 16) | (g << 8) | b;
+                        *dataptr = (0xffu << 24) | (r << 16) | (g << 8) | b;
 #else
                       XPutPixel (ximg, x + subimg_left, row + subimg_top,
                                  pixel_colors[c]);
@@ -7937,13 +7933,13 @@ gif_load (struct frame *f, struct image *img)
                   {
 #ifdef USE_CAIRO
                     uint32_t *dataptr =
-                      ((uint32_t*)data + ((y + subimg_top) * subimg_width
-                                          + x + subimg_left));
+                      (data32 + ((y + subimg_top) * subimg_width
+				 + x + subimg_left));
                     int r = gif_color_map->Colors[c].Red;
                     int g = gif_color_map->Colors[c].Green;
                     int b = gif_color_map->Colors[c].Blue;
                     if (transparency_color_index != c)
-                      *dataptr = (0xff << 24) | (r << 16) | (g << 8) | b;
+                      *dataptr = (0xffu << 24) | (r << 16) | (g << 8) | b;
 #else
                     XPutPixel (ximg, x + subimg_left, y + subimg_top,
                                pixel_colors[c]);
@@ -8545,6 +8541,14 @@ imagemagick_load_image (struct frame *f, struct image *img,
     status = MagickReadImage (image_wand, filename);
   else
     {
+      Lisp_Object lwidth = image_spec_value (img->spec, QCwidth, NULL);
+      Lisp_Object lheight = image_spec_value (img->spec, QCheight, NULL);
+
+      if (NATNUMP (lwidth) && NATNUMP (lheight))
+	{
+	  MagickSetSize (image_wand, XFASTINT (lwidth), XFASTINT (lheight));
+	  MagickSetDepth (image_wand, 8);
+	}
       filename_hint = imagemagick_filename_hint (img->spec, hint_buffer);
       MagickSetFilename (image_wand, filename_hint);
       status = MagickReadImageBlob (image_wand, contents, size);
@@ -9541,7 +9545,7 @@ gs_load (struct frame *f, struct image *img)
     {
       /* Only W32 version did BLOCK_INPUT here.  ++kfs */
       block_input ();
-      img->pixmap = XCreatePixmap (FRAME_X_DISPLAY (f), FRAME_X_WINDOW (f),
+      img->pixmap = XCreatePixmap (FRAME_X_DISPLAY (f), FRAME_X_DRAWABLE (f),
 				   img->width, img->height,
 				   DefaultDepthOfScreen (FRAME_X_SCREEN (f)));
       unblock_input ();
@@ -9557,7 +9561,7 @@ gs_load (struct frame *f, struct image *img)
      if successful.  We do not record_unwind_protect here because
      other places in redisplay like calling window scroll functions
      don't either.  Let the Lisp loader use `unwind-protect' instead.  */
-  printnum1 = FRAME_X_WINDOW (f);
+  printnum1 = FRAME_X_DRAWABLE (f);
   printnum2 = img->pixmap;
   window_and_pixmap_id
     = make_formatted_string (buffer, "%"pMu" %"pMu, printnum1, printnum2);
@@ -9776,6 +9780,8 @@ lookup_image_type (Lisp_Object type)
   return NULL;
 }
 
+#if !defined CANNOT_DUMP && defined HAVE_WINDOW_SYSTEM
+
 /* Reset image_types before dumping.
    Called from Fdump_emacs.  */
 
@@ -9789,6 +9795,7 @@ reset_image_types (void)
       image_types = next;
     }
 }
+#endif
 
 void
 syms_of_image (void)

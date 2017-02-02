@@ -1,5 +1,5 @@
 @c This is part of the Emacs manual.
-@c Copyright (C) 1985-1987, 1993-1995, 1997, 2000-2016 Free Software
+@c Copyright (C) 1985-1987, 1993-1995, 1997, 2000-2017 Free Software
 @c Foundation, Inc.
 @c See file emacs.texi for copying conditions.
 @node Buffers
@@ -411,6 +411,18 @@ Remove all flags from the current line, and move down
 @kindex DEL @r{(Buffer Menu)}
 Move to the previous line and remove all flags on that line
 (@code{Buffer-menu-backup-unmark}).
+
+@item M-@key{DEL}
+@findex Buffer-menu-unmark-all-buffers
+@kindex M-DEL @r{(Buffer Menu)}
+Remove a particular flag from all lines
+(@code{Buffer-menu-unmark-all-buffers}).
+
+@item U
+@findex Buffer-menu-unmark-all
+@kindex U @r{(Buffer Menu)}
+Remove all flags from all the lines
+(@code{Buffer-menu-unmark-all}).
 @end table
 
 @noindent

@@ -1,5 +1,5 @@
 /* Definitions and headers for communication on the Microsoft Windows API.
-   Copyright (C) 1995, 2001-2016 Free Software Foundation, Inc.
+   Copyright (C) 1995, 2001-2017 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -790,7 +790,7 @@ typedef struct tagTRACKMOUSEEVENT
 struct image;
 struct face;
 
-XGCValues *XCreateGC (void *, Window, unsigned long, XGCValues *);
+XGCValues *XCreateGC (void *, HWND, unsigned long, XGCValues *);
 
 typedef DWORD (WINAPI * ClipboardSequence_Proc) (void);
 typedef BOOL (WINAPI * AppendMenuW_Proc) (

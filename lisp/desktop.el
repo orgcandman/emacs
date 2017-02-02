@@ -1,6 +1,6 @@
 ;;; desktop.el --- save partial status of Emacs when killed -*- lexical-binding: t -*-
 
-;; Copyright (C) 1993-1995, 1997, 2000-2016 Free Software Foundation,
+;; Copyright (C) 1993-1995, 1997, 2000-2017 Free Software Foundation,
 ;; Inc.
 
 ;; Author: Morten Welinder <terra@diku.dk>
@@ -367,6 +367,7 @@ these won't be deleted."
     column-number-mode
     size-indication-mode
     buffer-file-coding-system
+    buffer-display-time
     indent-tabs-mode
     tab-width
     indicate-buffer-boundaries
@@ -379,7 +380,10 @@ modes are restored automatically; they should not be listed here."
   :group 'desktop)
 
 (defcustom desktop-buffers-not-to-save "\\` "
-  "Regexp identifying buffers that are to be excluded from saving."
+  "Regexp identifying buffers that are to be excluded from saving.
+This is in effect only for buffers that don't visit files.
+To exclude buffers that visit files, use `desktop-files-not-to-save'
+or `desktop-modes-not-to-save'."
   :type '(choice (const :tag "None" nil)
 		 regexp)
   :version "24.4"		    ; skip invisible temporary buffers
@@ -1157,13 +1161,13 @@ This function also sets `desktop-dirname' to nil."
 ;; ----------------------------------------------------------------------------
 (defun desktop-restoring-frameset-p ()
   "True if calling `desktop-restore-frameset' will actually restore it."
-  (and desktop-restore-frames desktop-saved-frameset t))
+  (and desktop-restore-frames desktop-saved-frameset (display-graphic-p) t))
 
 (defun desktop-restore-frameset ()
   "Restore the state of a set of frames.
 This function depends on the value of `desktop-saved-frameset'
 being set (usually, by reading it from the desktop)."
-  (when (and (display-graphic-p) (desktop-restoring-frameset-p))
+  (when (desktop-restoring-frameset-p)
     (frameset-restore desktop-saved-frameset
 		      :reuse-frames (eq desktop-restore-reuses-frames t)
 		      :cleanup-frames (not (eq desktop-restore-reuses-frames 'keep))
@@ -1233,8 +1237,8 @@ Using it may cause conflicts.  Use it anyway? " owner)))))
 		  (memq 'desktop-auto-save-set-timer window-configuration-change-hook))
 	    (desktop-auto-save-disable)
 	    ;; Evaluate desktop buffer and remember when it was modified.
-	    (load (desktop-full-file-name) t t t)
 	    (setq desktop-file-modtime (nth 5 (file-attributes (desktop-full-file-name))))
+	    (load (desktop-full-file-name) t t t)
 	    ;; If it wasn't already, mark it as in-use, to bother other
 	    ;; desktop instances.
 	    (unless (eq (emacs-pid) owner)
@@ -1536,6 +1540,19 @@ and try to load that."
 	      ;; An entry of the form `symbol'.
 	      (make-local-variable this)
 	      (makunbound this)))
+          ;; adjust `buffer-display-time' for the downtime. e.g.,
+          ;; * if `buffer-display-time' was 8:00
+          ;; * and emacs stopped at `desktop-file-modtime' == 11:00
+          ;; * and we are loading the desktop file at (current-time) 12:30,
+          ;; -> then we restore `buffer-display-time' as 9:30,
+          ;; for the sake of `clean-buffer-list': preserving the invariant
+          ;; "how much time the user spent in Emacs without looking at this buffer".
+          (setq buffer-display-time
+                (if buffer-display-time
+                    (time-add buffer-display-time
+                              (time-subtract (current-time)
+                                             desktop-file-modtime))
+                  (current-time)))
 	  (unless (< desktop-file-version 208) ; Don't misinterpret any old custom args
 	    (dolist (record compacted-vars)
 	      (let*

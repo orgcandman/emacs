@@ -1,6 +1,6 @@
 ;;; eieio-core.el --- Core implementation for eieio  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1995-1996, 1998-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1995-1996, 1998-2017 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 ;; Version: 1.4
@@ -460,7 +460,7 @@ See `defclass' for more information."
                           (cl--slot-descriptor-initform (aref slots i)))))
       (setf (eieio--class-class-allocation-values newc) v))
 
-    ;; Attach slot symbols into a hashtable, and store the index of
+    ;; Attach slot symbols into a hash table, and store the index of
     ;; this slot as the value this table.
     (let* ((slots (eieio--class-slots newc))
 	   ;; (cslots (eieio--class-class-slots newc))

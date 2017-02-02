@@ -1,6 +1,6 @@
 ;;; mm-decode.el --- Functions for decoding MIME things
 
-;; Copyright (C) 1998-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2017 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;;	MORIOKA Tomohiko <morioka@jaist.ac.jp>
@@ -655,9 +655,9 @@ MIME-Version header before proceeding."
 				 description)))))
       (if (or (not ctl)
 	      (not (string-match "/" (car ctl))))
-	    (mm-dissect-singlepart
+	  (mm-dissect-singlepart
 	   (list mm-dissect-default-type)
-	     (and cte (intern (downcase (mail-header-strip cte))))
+	   (and cte (intern (downcase (mail-header-strip-cte cte))))
 	   no-strict-mime
 	   (and cd (mail-header-parse-content-disposition cd))
 	   description)
@@ -690,7 +690,7 @@ MIME-Version header before proceeding."
 	   (mm-possibly-verify-or-decrypt
 	    (mm-dissect-singlepart
 	     ctl
-	     (and cte (intern (downcase (mail-header-strip cte))))
+	     (and cte (intern (downcase (mail-header-strip-cte cte))))
 	     no-strict-mime
 	     (and cd (mail-header-parse-content-disposition cd))
 	     description id)
@@ -1859,6 +1859,10 @@ If RECURSIVE, search recursively."
 	(dolist (key (where-is-internal #'widget-button-click widget-keymap))
 	  (unless (lookup-key keymap key)
 	    (define-key keymap key #'ignore)))
+	;; Avoid `shr-next-link' and `shr-previous-link' in `keymap' so
+	;; TAB and M-TAB run `widget-forward' and `widget-backward' instead.
+	(substitute-key-definition 'shr-next-link nil keymap)
+	(substitute-key-definition 'shr-previous-link nil keymap)
 	(dolist (overlay (overlays-at start))
 	  (overlay-put overlay 'face nil))
 	(setq start end)))))

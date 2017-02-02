@@ -1,6 +1,6 @@
 /* emacs-module.c - Module loading and runtime implementation
 
-Copyright (C) 2015-2016 Free Software Foundation, Inc.
+Copyright (C) 2015-2017 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -28,6 +28,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "lisp.h"
 #include "dynlib.h"
 #include "coding.h"
+#include "syssignal.h"
 
 #include <intprops.h>
 #include <verify.h>
@@ -41,15 +42,9 @@ enum { module_has_cleanup = true };
 enum { module_has_cleanup = false };
 #endif
 
-/* Handle to the main thread.  Used to verify that modules call us in
-   the right thread.  */
-#ifdef HAVE_PTHREAD
-# include <pthread.h>
-static pthread_t main_thread;
-#elif defined WINDOWSNT
+#ifdef WINDOWSNT
 #include <windows.h>
 #include "w32term.h"
-static DWORD main_thread;
 #endif
 
 /* True if Lisp_Object and emacs_value have the same representation.
@@ -147,8 +142,8 @@ static emacs_value const module_nil = 0;
    or a pointer to handle non-local exits.  The function must have an
    ENV parameter.  The function will return the specified value if a
    signal or throw is caught.  */
-// TODO: Have Fsignal check for CATCHER_ALL so we only have to install
-// one handler.
+/* TODO: Have Fsignal check for CATCHER_ALL so we only have to install
+   one handler.  */
 #define MODULE_HANDLE_NONLOCAL_EXIT(retval)                     \
   MODULE_SETJMP (CONDITION_CASE, module_handle_signal, retval); \
   MODULE_SETJMP (CATCHER_ALL, module_handle_throw, retval)
@@ -168,7 +163,7 @@ static emacs_value const module_nil = 0;
    code after the macro may longjmp back into the macro, which means
    its local variable C must stay live in later code.  */
 
-// TODO: Make backtraces work if this macros is used.
+/* TODO: Make backtraces work if this macros is used.  */
 
 #define MODULE_SETJMP_1(handlertype, handlerfunc, retval, c, dummy)	\
   if (module_non_local_exit_check (env) != emacs_funcall_exit_return)	\
@@ -751,9 +746,9 @@ static void
 check_main_thread (void)
 {
 #ifdef HAVE_PTHREAD
-  eassert (pthread_equal (pthread_self (), main_thread));
+  eassert (pthread_equal (pthread_self (), main_thread_id));
 #elif defined WINDOWSNT
-  eassert (GetCurrentThreadId () == main_thread);
+  eassert (GetCurrentThreadId () == dwMainThreadId);
 #endif
 }
 
@@ -1021,7 +1016,7 @@ syms_of_module (void)
     = make_hash_table (hashtest_eq, make_number (DEFAULT_HASH_SIZE),
 		       make_float (DEFAULT_REHASH_SIZE),
 		       make_float (DEFAULT_REHASH_THRESHOLD),
-		       Qnil);
+		       Qnil, Qnil);
   Funintern (Qmodule_refs_hash, Qnil);
 
   DEFSYM (Qmodule_environments, "module-environments");
@@ -1061,21 +1056,4 @@ syms_of_module (void)
 
   DEFSYM (Qinternal__module_call, "internal--module-call");
   defsubr (&Sinternal_module_call);
-}
-
-/* Unlike syms_of_module, this initializer is called even from an
-   initialized (dumped) Emacs.  */
-
-void
-module_init (void)
-{
-  /* It is not guaranteed that dynamic initializers run in the main thread,
-     therefore detect the main thread here.  */
-#ifdef HAVE_PTHREAD
-  main_thread = pthread_self ();
-#elif defined WINDOWSNT
-  /* The 'main' function already recorded the main thread's thread ID,
-     so we need just to use it . */
-  main_thread = dwMainThreadId;
-#endif
 }

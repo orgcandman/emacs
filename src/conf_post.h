@@ -1,6 +1,6 @@
 /* conf_post.h --- configure.ac includes this via AH_BOTTOM
 
-Copyright (C) 1988, 1993-1994, 1999-2002, 2004-2016 Free Software
+Copyright (C) 1988, 1993-1994, 1999-2002, 2004-2017 Free Software
 Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -186,7 +186,7 @@ You lose; /* Emacs for DOS must be compiled with DJGPP */
 #endif
 #endif  /* MSDOS */
 
-/* Mac OS X / GNUstep need a bit more pure memory.  Of the existing knobs,
+/* macOS / GNUstep need a bit more pure memory.  Of the existing knobs,
    SYSTEM_PURESIZE_EXTRA seems like the least likely to cause problems.  */
 #ifdef HAVE_NS
 #if defined NS_IMPL_GNUSTEP

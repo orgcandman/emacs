@@ -1,6 +1,6 @@
 ;;; wdired.el --- Rename files editing their names in dired buffers -*- coding: utf-8; -*-
 
-;; Copyright (C) 2004-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2017 Free Software Foundation, Inc.
 
 ;; Filename: wdired.el
 ;; Author: Juan León Lahoz García <juanleon1@gmail.com>
@@ -158,7 +158,7 @@ If non-nil, when you rename a file to a destination path within a
 nonexistent directory, wdired will create any parent directories
 necessary.  When nil, attempts to rename a file into a
 nonexistent directory will fail."
-  :version "25.2"
+  :version "26.1"
   :type 'boolean
   :group 'wdired)
 

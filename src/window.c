@@ -1,6 +1,6 @@
 /* Window creation, deletion and examination for GNU Emacs.
    Does not include redisplay.
-   Copyright (C) 1985-1987, 1993-1998, 2000-2016 Free Software
+   Copyright (C) 1985-1987, 1993-1998, 2000-2017 Free Software
    Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -521,9 +521,10 @@ select_window (Lisp_Object window, Lisp_Object norecord,
   bset_last_selected_window (XBUFFER (w->contents), window);
 
  record_and_return:
-  /* record_buffer can run QUIT, so make sure it is run only after we have
-     re-established the invariant between selected_window and selected_frame,
-     otherwise the temporary broken invariant might "escape" (bug#14161).  */
+  /* record_buffer can call maybe_quit, so make sure it is run only
+     after we have re-established the invariant between
+     selected_window and selected_frame, otherwise the temporary
+     broken invariant might "escape" (Bug#14161).  */
   if (NILP (norecord))
     {
       w->use_time = ++window_select_count;
@@ -2377,8 +2378,10 @@ candidate_window_p (Lisp_Object window, Lisp_Object owindow,
 	    == FRAME_TERMINAL (XFRAME (selected_frame)));
     }
   else if (WINDOWP (all_frames))
-    candidate_p = (EQ (FRAME_MINIBUF_WINDOW (f), all_frames)
-		   || EQ (XWINDOW (all_frames)->frame, w->frame)
+    /* 	To qualify as candidate, it's not sufficient for WINDOW's frame
+	to just share the minibuffer window - it must be active as well
+	(see Bug#24500).  */
+    candidate_p = (EQ (XWINDOW (all_frames)->frame, w->frame)
 		   || EQ (XWINDOW (all_frames)->frame, FRAME_FOCUS_FRAME (f)));
   else if (FRAMEP (all_frames))
     candidate_p = EQ (all_frames, w->frame);
@@ -4767,7 +4770,6 @@ window_scroll (Lisp_Object window, EMACS_INT n, bool whole, bool noerror)
 {
   ptrdiff_t count = SPECPDL_INDEX ();
 
-  immediate_quit = true;
   n = clip_to_bounds (INT_MIN, n, INT_MAX);
 
   wset_redisplay (XWINDOW (window));
@@ -4786,7 +4788,6 @@ window_scroll (Lisp_Object window, EMACS_INT n, bool whole, bool noerror)
 
   /* Bug#15957.  */
   XWINDOW (window)->window_end_valid = false;
-  immediate_quit = false;
 }
 
 
@@ -5681,7 +5682,7 @@ and redisplay normally--don't erase and redraw the frame.  */)
   struct buffer *buf = XBUFFER (w->contents);
   bool center_p = false;
   ptrdiff_t charpos, bytepos;
-  EMACS_INT iarg;
+  EMACS_INT iarg UNINIT;
   int this_scroll_margin;
 
   if (buf != current_buffer)
@@ -6006,7 +6007,7 @@ struct save_window_data
     struct vectorlike_header header;
     Lisp_Object selected_frame;
     Lisp_Object current_window;
-    Lisp_Object current_buffer;
+    Lisp_Object f_current_buffer;
     Lisp_Object minibuf_scroll_window;
     Lisp_Object minibuf_selected_window;
     Lisp_Object root_window;
@@ -6096,7 +6097,7 @@ the return value is nil.  Otherwise the value is t.  */)
   data = (struct save_window_data *) XVECTOR (configuration);
   saved_windows = XVECTOR (data->saved_windows);
 
-  new_current_buffer = data->current_buffer;
+  new_current_buffer = data->f_current_buffer;
   if (!BUFFER_LIVE_P (XBUFFER (new_current_buffer)))
     new_current_buffer = Qnil;
   else
@@ -6748,7 +6749,7 @@ saved by this function.  */)
   data->frame_tool_bar_height = FRAME_TOOL_BAR_HEIGHT (f);
   data->selected_frame = selected_frame;
   data->current_window = FRAME_SELECTED_WINDOW (f);
-  XSETBUFFER (data->current_buffer, current_buffer);
+  XSETBUFFER (data->f_current_buffer, current_buffer);
   data->minibuf_scroll_window = minibuf_level > 0 ? Vminibuf_scroll_window : Qnil;
   data->minibuf_selected_window = minibuf_level > 0 ? minibuf_selected_window : Qnil;
   data->root_window = FRAME_ROOT_WINDOW (f);
@@ -7203,7 +7204,7 @@ compare_window_configurations (Lisp_Object configuration1,
       || d1->frame_lines != d2->frame_lines
       || d1->frame_menu_bar_lines != d2->frame_menu_bar_lines
       || !EQ (d1->selected_frame, d2->selected_frame)
-      || !EQ (d1->current_buffer, d2->current_buffer)
+      || !EQ (d1->f_current_buffer, d2->f_current_buffer)
       || (!ignore_positions
 	  && (!EQ (d1->minibuf_scroll_window, d2->minibuf_scroll_window)
 	      || !EQ (d1->minibuf_selected_window, d2->minibuf_selected_window)))
@@ -7419,8 +7420,8 @@ same combination.
 
 Other values are reserved for future use.
 
-This variable takes no effect if the variable `window-combination-limit' is
-non-nil.  */);
+A specific split operation may ignore the value of this variable if it
+is affected by a non-nil value of `window-combination-limit'.  */);
   Vwindow_combination_resize = Qnil;
 
   DEFVAR_LISP ("window-combination-limit", Vwindow_combination_limit,

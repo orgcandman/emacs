@@ -1,6 +1,6 @@
 ;;; minibuffer.el --- Minibuffer completion functions -*- lexical-binding: t -*-
 
-;; Copyright (C) 2008-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2008-2017 Free Software Foundation, Inc.
 
 ;; Author: Stefan Monnier <monnier@iro.umontreal.ca>
 ;; Package: emacs
@@ -2052,22 +2052,22 @@ Also respects the obsolete wrapper hook `completion-in-region-functions'.
             minor-mode-map-alist))
 
 (defvar completion-at-point-functions '(tags-completion-at-point-function)
-  "Special hook to find the completion table for the thing at point.
-Each function on this hook is called in turn without any argument and should
-return either nil to mean that it is not applicable at point,
-or a function of no argument to perform completion (discouraged),
-or a list of the form (START END COLLECTION . PROPS) where
+  "Special hook to find the completion table for the entity at point.
+Each function on this hook is called in turn without any argument and
+should return either nil, meaning it is not applicable at point,
+or a function of no arguments to perform completion (discouraged),
+or a list of the form (START END COLLECTION . PROPS), where:
  START and END delimit the entity to complete and should include point,
- COLLECTION is the completion table to use to complete it, and
+ COLLECTION is the completion table to use to complete the entity, and
  PROPS is a property list for additional information.
 Currently supported properties are all the properties that can appear in
 `completion-extra-properties' plus:
  `:predicate'	a predicate that completion candidates need to satisfy.
- `:exclusive'	If `no', means that if the completion table fails to
+ `:exclusive'	value of `no' means that if the completion table fails to
    match the text at point, then instead of reporting a completion
    failure, the completion should try the next completion function.
-As is the case with most hooks, the functions are responsible to preserve
-things like point and current buffer.")
+As is the case with most hooks, the functions are responsible for
+preserving things like point and current buffer.")
 
 (defvar completion--capf-misbehave-funs nil
   "List of functions found on `completion-at-point-functions' that misbehave.
@@ -2251,6 +2251,17 @@ This is only used when the minibuffer area has no active minibuffer.")
   (replace-regexp-in-string "\\$" (lambda (dollar) (concat dollar dollar))
                             str))
 
+(defun minibuffer-maybe-quote-filename (filename)
+  "Protect FILENAME from `substitute-in-file-name', as needed.
+Useful to give the user default values that won't be substituted."
+  (if (and (not (file-name-quoted-p filename))
+           (file-name-absolute-p filename)
+           (string-match-p (if (memq system-type '(windows-nt ms-dos))
+                               "[/\\\\]~" "/~")
+                           (file-local-name filename)))
+      (file-name-quote filename)
+    (minibuffer--double-dollars filename)))
+
 (defun completion--make-envvar-table ()
   (mapcar (lambda (enventry)
             (substring enventry 0 (string-match-p "=" enventry)))
@@ -2420,7 +2431,7 @@ same as `substitute-in-file-name'."
                                    (substitute-in-file-name
                                     (substring qstr 0 (1- qpos)))))
         (setq qpos (1- qpos)))
-      (cons qpos #'minibuffer--double-dollars))))
+      (cons qpos #'minibuffer-maybe-quote-filename))))
 
 (defalias 'completion--file-name-table
   (completion-table-with-quoting #'completion-file-name-table
@@ -2596,10 +2607,10 @@ See `read-file-name' for the meaning of the arguments."
   (let ((insdef (cond
                  ((and insert-default-directory (stringp dir))
                   (if initial
-                      (cons (minibuffer--double-dollars (concat dir initial))
-                            (length (minibuffer--double-dollars dir)))
-                    (minibuffer--double-dollars dir)))
-                 (initial (cons (minibuffer--double-dollars initial) 0)))))
+                      (cons (minibuffer-maybe-quote-filename (concat dir initial))
+                            (length (minibuffer-maybe-quote-filename dir)))
+                    (minibuffer-maybe-quote-filename dir)))
+                 (initial (cons (minibuffer-maybe-quote-filename initial) 0)))))
 
     (let ((completion-ignore-case read-file-name-completion-ignore-case)
           (minibuffer-completing-file-name t)
@@ -2693,7 +2704,7 @@ See `read-file-name' for the meaning of the arguments."
             ;; with what we will actually return.  As an exception,
             ;; if that's the same as the second item in
             ;; file-name-history, it's really a repeat (Bug#4657).
-            (let ((val1 (minibuffer--double-dollars val)))
+            (let ((val1 (minibuffer-maybe-quote-filename val)))
               (if history-delete-duplicates
                   (setcdr file-name-history
                           (delete val1 (cdr file-name-history))))
@@ -2703,7 +2714,7 @@ See `read-file-name' for the meaning of the arguments."
           (if add-to-history
               ;; Add the value to the history--but not if it matches
               ;; the last value already there.
-              (let ((val1 (minibuffer--double-dollars val)))
+              (let ((val1 (minibuffer-maybe-quote-filename val)))
                 (unless (and (consp file-name-history)
                              (equal (car file-name-history) val1))
                   (setq file-name-history

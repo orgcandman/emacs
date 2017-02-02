@@ -1,6 +1,6 @@
 ;;; css-mode-tests.el --- Test suite for CSS mode  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2016 Free Software Foundation, Inc.
+;; Copyright (C) 2016-2017 Free Software Foundation, Inc.
 
 ;; Author: Simen Heggestøyl <simenheg@gmail.com>
 ;; Keywords: internal
@@ -161,13 +161,47 @@
       (should (member "filter" completions))
       (should-not (member "position" completions)))))
 
-(ert-deftest css-test-complete-selector ()
+(ert-deftest css-test-foreign-completions ()
+  (let ((other-buffer-1 (generate-new-buffer "1"))
+        (other-buffer-2 (generate-new-buffer "2")))
+    (with-current-buffer other-buffer-1
+      (setq-local css-class-list-function (lambda () '("foo" "bar"))))
+    (with-current-buffer other-buffer-2
+      (setq-local css-class-list-function (lambda () '("bar" "baz"))))
+    (let ((completions
+           (css--foreign-completions 'css-class-list-function)))
+      ;; Completions from `other-buffer-1' and `other-buffer-2' should
+      ;; be merged.
+      (should (equal (seq-sort #'string-lessp completions)
+                     '("bar" "baz" "foo"))))
+    (kill-buffer other-buffer-1)
+    (kill-buffer other-buffer-2)))
+
+(ert-deftest css-test-complete-selector-tag ()
   (with-temp-buffer
     (css-mode)
     (insert "b")
     (let ((completions (css-mode-tests--completions)))
       (should (member "body" completions))
       (should-not (member "article" completions)))))
+
+(ert-deftest css-test-complete-selector-class ()
+  (with-temp-buffer
+    (setq-local css-class-list-function (lambda () '("foo" "bar")))
+    (with-temp-buffer
+      (css-mode)
+      (insert ".f")
+      (let ((completions (css-mode-tests--completions)))
+        (should (equal completions '("foo")))))))
+
+(ert-deftest css-test-complete-selector-id ()
+  (with-temp-buffer
+    (setq-local css-id-list-function (lambda () '("foo" "bar")))
+    (with-temp-buffer
+      (css-mode)
+      (insert "#b")
+      (let ((completions (css-mode-tests--completions)))
+        (should (equal completions '("bar")))))))
 
 (ert-deftest css-test-complete-nested-selector ()
   (with-temp-buffer
@@ -183,6 +217,21 @@
     (let ((completions (css-mode-tests--completions)))
       (should (member "body" completions))
       (should-not (member "article" completions)))))
+
+(ert-deftest css-mdn-symbol-guessing ()
+  (dolist (item '(("@med" "ia" "@media")
+                  ("@keyframes " "{" "@keyframes")
+                  ("p::after" "" "::after")
+                  ("p:before" "" ":before")
+                  ("a:v" "isited" ":visited")
+                  ("border-" "color: red" "border-color")
+                  ("border-color: red" ";" "border-color")
+                  ("border-color: red; color: green" ";" "color")))
+    (with-temp-buffer
+      (css-mode)
+      (insert (nth 0 item))
+      (save-excursion (insert (nth 1 item)))
+      (should (equal (nth 2 item) (css--mdn-find-symbol))))))
 
 (provide 'css-mode-tests)
 ;;; css-mode-tests.el ends here

@@ -1,6 +1,6 @@
 ;;; mouse.el --- window system-independent mouse support  -*- lexical-binding: t -*-
 
-;; Copyright (C) 1993-1995, 1999-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1993-1995, 1999-2017 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 ;; Keywords: hardware, mouse
@@ -551,7 +551,7 @@ non-nil means move point to beginning of region."
   :type '(choice (const :tag "Don't move point" nil)
 		 (const :tag "Move point to beginning of region" t))
   :group 'mouse
-  :version "25.2")
+  :version "26.1")
 
 (defun mouse-set-point (event &optional promote-to-region)
   "Move point to the position clicked on with the mouse.

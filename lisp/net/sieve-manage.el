@@ -1,6 +1,6 @@
 ;;; sieve-manage.el --- Implementation of the managesieve protocol in elisp
 
-;; Copyright (C) 2001-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2001-2017 Free Software Foundation, Inc.
 
 ;; Author: Simon Josefsson <simon@josefsson.org>
 ;;         Albert Krewinkel <tarleb@moltkeplatz.de>
@@ -148,7 +148,7 @@ for doing the actual authentication."
 
 (defcustom sieve-manage-ignore-starttls nil
   "Ignore STARTTLS even if STARTTLS capability is provided."
-  :version "25.2"
+  :version "26.1"
   :type 'boolean
   :group 'sieve-manage)
 

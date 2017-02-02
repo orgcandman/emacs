@@ -1,6 +1,6 @@
 ;;; tramp-gvfs.el --- Tramp access functions for GVFS daemon
 
-;; Copyright (C) 2009-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2017 Free Software Foundation, Inc.
 
 ;; Author: Michael Albinus <michael.albinus@gmx.de>
 ;; Keywords: comm, processes
@@ -480,6 +480,7 @@ Every entry is a list (NAME ADDRESS).")
     (file-modes . tramp-handle-file-modes)
     (file-name-all-completions . tramp-gvfs-handle-file-name-all-completions)
     (file-name-as-directory . tramp-handle-file-name-as-directory)
+    (file-name-case-insensitive-p . tramp-handle-file-name-case-insensitive-p)
     (file-name-completion . tramp-handle-file-name-completion)
     (file-name-directory . tramp-handle-file-name-directory)
     (file-name-nondirectory . tramp-handle-file-name-nondirectory)
@@ -541,7 +542,7 @@ Operations not mentioned here will be handled by the default Emacs primitives.")
 First arg specifies the OPERATION, second arg is a list of arguments to
 pass to the OPERATION."
   (unless tramp-gvfs-enabled
-    (tramp-user-error nil "Package `tramp-gvfs' not supported"))
+    (tramp-compat-user-error nil "Package `tramp-gvfs' not supported"))
   (let ((fn (assoc operation tramp-gvfs-file-name-handler-alist)))
     (if fn
 	(save-match-data (apply (cdr fn) args))
@@ -900,6 +901,7 @@ file names."
   "Return GVFS attributes association list of FILENAME."
   (setq filename (directory-file-name (expand-file-name filename)))
   (with-parsed-tramp-file-name filename nil
+    (setq localname (tramp-compat-file-name-unquote localname))
     (if (or
 	 (and (string-match "^\\(afp\\|smb\\)$" method)
 	      (string-match "^/?\\([^/]+\\)$" localname))
@@ -1033,7 +1035,7 @@ file names."
     (let ((tmpfile (tramp-compat-make-temp-file filename)))
       (unless (file-exists-p filename)
 	(tramp-error
-	 v 'file-error
+	 v tramp-file-missing
 	 "Cannot make local copy of non-existing file `%s'" filename))
       (copy-file filename tmpfile 'ok-if-already-exists 'keep-time)
       tmpfile)))
@@ -1231,6 +1233,7 @@ file-notify events."
 (defun tramp-gvfs-url-file-name (filename)
   "Return FILENAME in URL syntax."
   ;; "/" must NOT be hexlified.
+  (setq filename (tramp-compat-file-name-unquote filename))
   (let ((url-unreserved-chars (cons ?/ url-unreserved-chars))
 	result)
     (setq
@@ -1509,7 +1512,7 @@ ADDRESS can have the form \"xx:xx:xx:xx:xx:xx\" or \"[xx:xx:xx:xx:xx:xx]\"."
 		(string-equal user (or (tramp-file-name-user vec) ""))
 		(string-equal host (tramp-file-name-host vec))
 		(string-match (concat "^" (regexp-quote prefix))
-			      (tramp-file-name-localname vec)))
+			      (tramp-file-name-unquote-localname vec)))
 	   ;; Set prefix, mountpoint and location.
 	   (unless (string-equal prefix "/")
 	     (tramp-set-file-property vec "/" "prefix" prefix))
@@ -1533,7 +1536,7 @@ It was \"a(say)\", but has changed to \"a{sv})\"."
 	 (domain (tramp-file-name-domain vec))
 	 (host (tramp-file-name-real-host vec))
 	 (port (tramp-file-name-port vec))
-	 (localname (tramp-file-name-localname vec))
+	 (localname (tramp-file-name-unquote-localname vec))
 	 (share (when (string-match "^/?\\([^/]+\\)" localname)
 		  (match-string 1 localname)))
 	 (ssl (if (string-match "^davs" method) "true" "false"))
@@ -1643,7 +1646,7 @@ connection if a previous connection has died for some reason."
     (let* ((method (tramp-file-name-method vec))
 	   (user (tramp-file-name-user vec))
 	   (host (tramp-file-name-host vec))
-	   (localname (tramp-file-name-localname vec))
+	   (localname (tramp-file-name-unquote-localname vec))
 	   (object-path
 	    (tramp-gvfs-object-path
 	     (tramp-make-tramp-file-name method user host ""))))
@@ -1722,6 +1725,9 @@ connection if a previous connection has died for some reason."
 	(when (string-equal
 	       (tramp-get-file-property vec "/" "fuse-mountpoint" "") "/")
 	  (tramp-error vec 'file-error "FUSE mount denied"))
+
+	;; Set connection-local variables.
+	(tramp-set-connection-local-variables vec)
 
 	;; Mark it as connected.
 	(tramp-set-connection-property

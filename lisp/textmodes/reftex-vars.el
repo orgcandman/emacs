@@ -1,6 +1,6 @@
 ;;; reftex-vars.el --- configuration variables for RefTeX
 
-;; Copyright (C) 1997-1999, 2001-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1997-1999, 2001-2017 Free Software Foundation, Inc.
 
 ;; Author: Carsten Dominik <dominik@science.uva.nl>
 ;; Maintainer: auctex-devel@gnu.org
@@ -24,7 +24,7 @@
 
 ;;; Code:
 (defvar reftex-tables-dirty)
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 (eval-and-compile
   (defun reftex-set-dirty (symbol value)
     (setq reftex-tables-dirty t)
@@ -150,6 +150,24 @@ distribution.  Mixed-case symbols are convenience aliases.")
       (?a    . "\\citeauthor{%l}")
       (?A    . "\\citeauthor*{%l}")
       (?y    . "\\citeyear{%l}")
+      (?n    . "\\nocite{%l}")))
+    (biblatex "The Biblatex package"
+     ((?\C-m . "\\cite[][]{%l}")
+      (?C    . "\\cite*[][]{%l}")
+      (?t    . "\\textcite[][]{%l}")
+      (?T    . "\\textcite*[][]{%l}")
+      (?p    . "\\parencite[][]{%l}")
+      (?P    . "\\parencite*[][]{%l}")
+      (?f    . "\\footcite[][]{%l}")
+      (?s    . "\\smartcite[][]{%l}")
+      (?u    . "\\autocite[][]{%l}")
+      (?U    . "\\autocite*[][]{%l}")
+      (?a    . "\\citeauthor{%l}")
+      (?A    . "\\citeauthor*{%l}")
+      (?i    . "\\citetitle{%l}")
+      (?I    . "\\citetitle*{%l}")
+      (?y    . "\\citeyear{%l}")
+      (?Y    . "\\citeyear*{%l}")
       (?n    . "\\nocite{%l}")))
     (amsrefs "The AMSRefs package"
      ((?\C-m . "\\cite{%l}")
@@ -1076,9 +1094,9 @@ used in the variable `reftex-ref-style-alist'."
 
 ;; Compatibility with obsolete variables.
 (when reftex-vref-is-default
-  (add-to-list 'reftex-ref-style-default-list "Varioref"))
+  (cl-pushnew "Varioref" reftex-ref-style-default-list :test #'equal))
 (when reftex-fref-is-default
-  (add-to-list 'reftex-ref-style-default-list "Fancyref"))
+  (cl-pushnew "Fancyref" reftex-ref-style-default-list :test #'equal))
 
 (defcustom reftex-level-indent 2
   "Number of spaces to be used for indentation per section level."

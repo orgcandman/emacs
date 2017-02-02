@@ -1,6 +1,6 @@
 /* Client process that communicates with GNU Emacs acting as server.
 
-Copyright (C) 1986-1987, 1994, 1999-2016 Free Software Foundation, Inc.
+Copyright (C) 1986-1987, 1994, 1999-2017 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -75,6 +75,7 @@ char *w32_getenv (const char *);
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <getopt.h>
 #include <unistd.h>
 

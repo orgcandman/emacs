@@ -1,6 +1,6 @@
 /* Lock files for editing.
 
-Copyright (C) 1985-1987, 1993-1994, 1996, 1998-2016 Free Software
+Copyright (C) 1985-1987, 1993-1994, 1996, 1998-2017 Free Software
 Foundation, Inc.
 
 Author: Richard King
@@ -72,8 +72,9 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 /* Normally use a symbolic link to represent a lock.
    The strategy: to lock a file FN, create a symlink .#FN in FN's
-   directory, with link data `user@host.pid'.  This avoids a single
-   mount (== failure) point for lock files.
+   directory, with link data USER@HOST.PID:BOOT.  This avoids a single
+   mount (== failure) point for lock files.  The :BOOT is omitted if
+   the boot time is not available.
 
    When the host in the lock data is the current host, we can check if
    the pid is valid with kill.
@@ -102,13 +103,11 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
    This is compatible with the locking scheme used by Interleaf (which
    has contributed this implementation for Emacs), and was designed by
-   Ethan Jacobson, Kimbo Mundy, and others.
-
-   --karl@cs.umb.edu/karl@hq.ileaf.com.
+   Karl Berry, Ethan Jacobson, Kimbo Mundy, and others.
 
    On some file systems, notably those of MS-Windows, symbolic links
-   do not work well, so instead of a symlink .#FN -> 'user@host.pid',
-   the lock is a regular file .#FN with contents 'user@host.pid'.  To
+   do not work well, so instead of a symlink .#FN -> USER@HOST.PID:BOOT,
+   the lock is a regular file .#FN with contents USER@HOST.PID:BOOT.  To
    establish a lock, a nonce file is created and then renamed to .#FN.
    On MS-Windows this renaming is atomic unless the lock is forcibly
    acquired.  On other systems the renaming is atomic if the lock is
@@ -289,8 +288,8 @@ enum { MAX_LFINFO = 8 * 1024 };
 
 typedef struct
 {
-  /* Location of '@', '.', ':' in USER.  If there's no colon, COLON
-     points to the end of USER.  */
+  /* Location of '@', '.', and ':' (or equivalent) in USER.  If there's
+     no colon or equivalent, COLON points to the end of USER.  */
   char *at, *dot, *colon;
 
   /* Lock file contents USER@HOST.PID with an optional :BOOT_TIME
@@ -408,9 +407,7 @@ create_lock_file (char *lfname, char *lock_info_str, bool force)
 	    fcntl (fd, F_SETFD, FD_CLOEXEC);
 	  lock_info_len = strlen (lock_info_str);
 	  err = 0;
-	  /* Use 'write', not 'emacs_write', as garbage collection
-	     might signal an error, which would leak FD.  */
-	  if (write (fd, lock_info_str, lock_info_len) != lock_info_len
+	  if (emacs_write (fd, lock_info_str, lock_info_len) != lock_info_len
 	      || fchmod (fd, S_IRUSR | S_IRGRP | S_IROTH) != 0)
 	    err = errno;
 	  /* There is no need to call fsync here, as the contents of
@@ -491,8 +488,7 @@ read_lock_data (char *lfname, char lfinfo[MAX_LFINFO + 1])
       int fd = emacs_open (lfname, O_RDONLY | O_NOFOLLOW, 0);
       if (0 <= fd)
 	{
-	  /* Use read, not emacs_read, since FD isn't unwind-protected.  */
-	  ptrdiff_t read_bytes = read (fd, lfinfo, MAX_LFINFO + 1);
+	  ptrdiff_t read_bytes = emacs_read (fd, lfinfo, MAX_LFINFO + 1);
 	  int read_errno = errno;
 	  if (emacs_close (fd) != 0)
 	    return -1;
@@ -506,7 +502,7 @@ read_lock_data (char *lfname, char lfinfo[MAX_LFINFO + 1])
       /* readlinkat saw a non-symlink, but emacs_open saw a symlink.
 	 The former must have been removed and replaced by the latter.
 	 Try again.  */
-      QUIT;
+      maybe_quit ();
     }
 
   return nbytes;
@@ -548,7 +544,7 @@ current_lock_owner (lock_info_type *owner, char *lfname)
   if (!dot)
     return -1;
 
-  /* The PID is everything from the last `.' to the `:'.  */
+  /* The PID is everything from the last '.' to the ':' or equivalent.  */
   if (! c_isdigit (dot[1]))
     return -1;
   errno = 0;
@@ -556,7 +552,8 @@ current_lock_owner (lock_info_type *owner, char *lfname)
   if (errno == ERANGE)
     pid = -1;
 
-  /* After the `:', if there is one, comes the boot time.  */
+  /* After the ':' or equivalent, if there is one, comes the boot time.  */
+  char *boot = owner->colon + 1;
   switch (owner->colon[0])
     {
     case 0:
@@ -564,10 +561,19 @@ current_lock_owner (lock_info_type *owner, char *lfname)
       lfinfo_end = owner->colon;
       break;
 
-    case ':':
-      if (! c_isdigit (owner->colon[1]))
+    case '\357':
+      /* Treat "\357\200\242" (U+F022 in UTF-8) as if it were ":" (Bug#24656).
+	 This works around a bug in the Linux CIFS kernel client, which can
+	 mistakenly transliterate ':' to U+F022 in symlink contents.
+	 See <https://bugzilla.redhat.com/show_bug.cgi?id=1384153>.  */
+      if (! (boot[0] == '\200' && boot[1] == '\242'))
 	return -1;
-      boot_time = strtoimax (owner->colon + 1, &lfinfo_end, 10);
+      boot += 2;
+      /* Fall through.  */
+    case ':':
+      if (! c_isdigit (boot[0]))
+	return -1;
+      boot_time = strtoimax (boot, &lfinfo_end, 10);
       break;
 
     default:

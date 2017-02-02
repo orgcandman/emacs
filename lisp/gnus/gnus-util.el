@@ -1,6 +1,6 @@
 ;;; gnus-util.el --- utility functions for Gnus
 
-;; Copyright (C) 1996-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1996-2017 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: news
@@ -81,7 +81,7 @@ If LITERAL is non-nil, insert NEWTEXT literally.  Return a new
 string containing the replacements.
 
 This is a compatibility function for different Emacsen."
-  (declare (obsolete replace-regexp-in-string "25.2"))
+  (declare (obsolete replace-regexp-in-string "26.1"))
   (replace-regexp-in-string regexp newtext string nil literal))
 
 (defun gnus-boundp (variable)

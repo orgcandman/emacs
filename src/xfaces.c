@@ -1,6 +1,6 @@
 /* xfaces.c -- "Face" primitives.
 
-Copyright (C) 1993-1994, 1998-2016 Free Software Foundation, Inc.
+Copyright (C) 1993-1994, 1998-2017 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -495,7 +495,7 @@ x_create_gc (struct frame *f, unsigned long mask, XGCValues *xgcv)
 {
   GC gc;
   block_input ();
-  gc = XCreateGC (FRAME_X_DISPLAY (f), FRAME_X_WINDOW (f), mask, xgcv);
+  gc = XCreateGC (FRAME_X_DISPLAY (f), FRAME_X_DRAWABLE (f), mask, xgcv);
   unblock_input ();
   IF_DEBUG (++ngcs);
   return gc;

@@ -1,6 +1,6 @@
 /* Keyboard and mouse input; editor command loop.
 
-Copyright (C) 1985-1989, 1993-1997, 1999-2016 Free Software Foundation,
+Copyright (C) 1985-1989, 1993-1997, 1999-2017 Free Software Foundation,
 Inc.
 
 This file is part of GNU Emacs.
@@ -87,7 +87,7 @@ char const DEV_TTY[] = "/dev/tty";
 volatile int interrupt_input_blocked;
 
 /* True means an input interrupt or alarm signal has arrived.
-   The QUIT macro checks this.  */
+   The maybe_quit function checks this.  */
 volatile bool pending_signals;
 
 #define KBD_BUFFER_SIZE 4096
@@ -148,9 +148,6 @@ static Lisp_Object regular_top_level_message;
 
 static sys_jmp_buf getcjmp;
 
-/* True while doing kbd input.  */
-bool waiting_for_input;
-
 /* True while displaying for echoing.   Delays C-g throwing.  */
 
 static bool echoing;
@@ -171,9 +168,6 @@ struct kboard *echo_kboard;
    cancel_echoing.  */
 
 Lisp_Object echo_message_buffer;
-
-/* True means C-g should cause immediate error-signal.  */
-bool immediate_quit;
 
 /* Character that causes a quit.  Normally C-g.
 
@@ -1419,7 +1413,7 @@ command_loop_1 (void)
 	  if (!NILP (Vquit_flag))
 	    {
 	      Vexecuting_kbd_macro = Qt;
-	      QUIT;		/* Make some noise.  */
+	      maybe_quit ();	/* Make some noise.  */
 				/* Will return since macro now empty.  */
 	    }
 	}
@@ -2165,9 +2159,9 @@ read_event_from_main_queue (struct timespec *end_time,
       if (CONSP (last))
         {
           while (CONSP (XCDR (last)))
-      	last = XCDR (last);
+	    last = XCDR (last);
           if (!NILP (XCDR (last)))
-      	emacs_abort ();
+	    emacs_abort ();
         }
       if (!CONSP (last))
         kset_kbd_queue (kb, list1 (c));
@@ -2574,6 +2568,9 @@ read_char (int commandflag, Lisp_Object map,
 	 so restore it now.  */
       restore_getcjmp (save_jump);
       pthread_sigmask (SIG_SETMASK, &empty_mask, 0);
+#if THREADS_ENABLED
+      maybe_reacquire_global_lock ();
+#endif
       unbind_to (jmpcount, Qnil);
       XSETINT (c, quit_char);
       internal_last_event_frame = selected_frame;
@@ -3567,24 +3564,24 @@ kbd_buffer_store_buffered_event (union buffered_input_event *event,
 #endif	/* subprocesses */
     }
 
+  Lisp_Object ignore_event;
+
+  switch (event->kind)
+    {
+    case FOCUS_IN_EVENT: ignore_event = Qfocus_in; break;
+    case FOCUS_OUT_EVENT: ignore_event = Qfocus_out; break;
+    case HELP_EVENT: ignore_event = Qhelp_echo; break;
+    case ICONIFY_EVENT: ignore_event = Qiconify_frame; break;
+    case DEICONIFY_EVENT: ignore_event = Qmake_frame_visible; break;
+    case SELECTION_REQUEST_EVENT: ignore_event = Qselection_request; break;
+    default: ignore_event = Qnil; break;
+    }
+
   /* If we're inside while-no-input, and this event qualifies
      as input, set quit-flag to cause an interrupt.  */
   if (!NILP (Vthrow_on_input)
-      && event->kind != FOCUS_IN_EVENT
-      && event->kind != FOCUS_OUT_EVENT
-      && event->kind != HELP_EVENT
-      && event->kind != ICONIFY_EVENT
-      && event->kind != DEICONIFY_EVENT)
-    {
-      Vquit_flag = Vthrow_on_input;
-      /* If we're inside a function that wants immediate quits,
-	 do it now.  */
-      if (immediate_quit && NILP (Vinhibit_quit))
-	{
-	  immediate_quit = false;
-	  QUIT;
-	}
-    }
+      && NILP (Fmemq (ignore_event, Vwhile_no_input_ignore_events)))
+    Vquit_flag = Vthrow_on_input;
 }
 
 
@@ -5417,6 +5414,36 @@ make_lispy_event (struct input_event *event)
 	  {
 	    c &= 0377;
 	    eassert (c == event->code);
+          }
+
+        /* Caps-lock shouldn't affect interpretation of key chords:
+           Control+s should produce C-s whether caps-lock is on or
+           not.  And Control+Shift+s should produce C-S-s whether
+           caps-lock is on or not.  */
+        if (event->modifiers & ~shift_modifier)
+        {
+            /* This is a key chord: some non-shift modifier is
+               depressed.  */
+
+            if (uppercasep (c) &&
+                !(event->modifiers & shift_modifier))
+            {
+                /* Got a capital letter without a shift.  The caps
+                   lock is on.   Un-capitalize the letter.  */
+                c = downcase (c);
+            }
+            else if (lowercasep (c) &&
+                     (event->modifiers & shift_modifier))
+            {
+                /* Got a lower-case letter even though shift is
+                   depressed.  The caps lock is on.  Capitalize the
+                   letter.  */
+                c = upcase (c);
+            }
+        }
+
+	if (event->kind == ASCII_KEYSTROKE_EVENT)
+	  {
 	    /* Turn ASCII characters into control characters
 	       when proper.  */
 	    if (event->modifiers & ctrl_modifier)
@@ -7014,40 +7041,22 @@ tty_read_avail_input (struct terminal *terminal,
 
   /* Now read; for one reason or another, this will not block.
      NREAD is set to the number of chars read.  */
-  do
-    {
-      nread = emacs_read (fileno (tty->input), (char *) cbuf, n_to_read);
-      /* POSIX infers that processes which are not in the session leader's
-         process group won't get SIGHUPs at logout time.  BSDI adheres to
-         this part standard and returns -1 from read (0) with errno==EIO
-         when the control tty is taken away.
-         Jeffrey Honig <jch@bsdi.com> says this is generally safe.  */
-      if (nread == -1 && errno == EIO)
-        return -2;          /* Close this terminal.  */
-#if defined (AIX) && defined (_BSD)
-      /* The kernel sometimes fails to deliver SIGHUP for ptys.
-         This looks incorrect, but it isn't, because _BSD causes
-         O_NDELAY to be defined in fcntl.h as O_NONBLOCK,
-         and that causes a value other than 0 when there is no input.  */
-      if (nread == 0)
-        return -2;          /* Close this terminal.  */
+  nread = emacs_read (fileno (tty->input), (char *) cbuf, n_to_read);
+  /* POSIX infers that processes which are not in the session leader's
+     process group won't get SIGHUPs at logout time.  BSDI adheres to
+     this part standard and returns -1 from read (0) with errno==EIO
+     when the control tty is taken away.
+     Jeffrey Honig <jch@bsdi.com> says this is generally safe.  */
+  if (nread == -1 && errno == EIO)
+    return -2;          /* Close this terminal.  */
+#if defined AIX && defined _BSD
+  /* The kernel sometimes fails to deliver SIGHUP for ptys.
+     This looks incorrect, but it isn't, because _BSD causes
+     O_NDELAY to be defined in fcntl.h as O_NONBLOCK,
+     and that causes a value other than 0 when there is no input.  */
+  if (nread == 0)
+    return -2;          /* Close this terminal.  */
 #endif
-    }
-  while (
-         /* We used to retry the read if it was interrupted.
-            But this does the wrong thing when O_NONBLOCK causes
-            an EAGAIN error.  Does anybody know of a situation
-            where a retry is actually needed?  */
-#if 0
-         nread < 0 && (errno == EAGAIN || errno == EFAULT
-#ifdef EBADSLT
-                       || errno == EBADSLT
-#endif
-                       )
-#else
-         0
-#endif
-         );
 
 #ifndef USABLE_FIONREAD
 #if defined (USG) || defined (CYGWIN)
@@ -7387,7 +7396,7 @@ menu_bar_items (Lisp_Object old)
   USE_SAFE_ALLOCA;
 
   /* In order to build the menus, we need to call the keymap
-     accessors.  They all call QUIT.  But this function is called
+     accessors.  They all call maybe_quit.  But this function is called
      during redisplay, during which a quit is fatal.  So inhibit
      quitting while building the menus.
      We do this instead of specbind because (1) errors will clear it anyway
@@ -7948,7 +7957,7 @@ tool_bar_items (Lisp_Object reuse, int *nitems)
   *nitems = 0;
 
   /* In order to build the menus, we need to call the keymap
-     accessors.  They all call QUIT.  But this function is called
+     accessors.  They all call maybe_quit.  But this function is called
      during redisplay, during which a quit is fatal.  So inhibit
      quitting while building the menus.  We do this instead of
      specbind because (1) errors will clear it anyway and (2) this
@@ -9767,7 +9776,7 @@ read_key_sequence_vs (Lisp_Object prompt, Lisp_Object continue_echo,
 
   if (!NILP (prompt))
     CHECK_STRING (prompt);
-  QUIT;
+  maybe_quit ();
 
   specbind (Qinput_method_exit_on_first_char,
 	    (NILP (cmd_loop) ? Qt : Qnil));
@@ -9801,7 +9810,7 @@ read_key_sequence_vs (Lisp_Object prompt, Lisp_Object continue_echo,
   if (i == -1)
     {
       Vquit_flag = Qt;
-      QUIT;
+      maybe_quit ();
     }
 
   return unbind_to (count,
@@ -10239,7 +10248,7 @@ clear_waiting_for_input (void)
 
    If we have a frame on the controlling tty, we assume that the
    SIGINT was generated by C-g, so we call handle_interrupt.
-   Otherwise, tell QUIT to kill Emacs.  */
+   Otherwise, tell maybe_quit to kill Emacs.  */
 
 static void
 handle_interrupt_signal (int sig)
@@ -10250,7 +10259,7 @@ handle_interrupt_signal (int sig)
     {
       /* If there are no frames there, let's pretend that we are a
          well-behaving UN*X program and quit.  We must not call Lisp
-         in a signal handler, so tell QUIT to exit when it is
+         in a signal handler, so tell maybe_quit to exit when it is
          safe.  */
       Vquit_flag = Qkill_emacs;
     }
@@ -10406,30 +10415,12 @@ handle_interrupt (bool in_signal_handler)
     }
   else
     {
-      /* If executing a function that wants to be interrupted out of
-	 and the user has not deferred quitting by binding `inhibit-quit'
-	 then quit right away.  */
-      if (immediate_quit && NILP (Vinhibit_quit))
-	{
-	  struct gl_state_s saved;
-
-	  immediate_quit = false;
-	  pthread_sigmask (SIG_SETMASK, &empty_mask, 0);
-	  saved = gl_state;
-	  quit ();
-	  gl_state = saved;
-	}
-      else
-        { /* Else request quit when it's safe.  */
-	  int count = NILP (Vquit_flag) ? 1 : force_quit_count + 1;
-	  force_quit_count = count;
-	  if (count == 3)
-            {
-              immediate_quit = true;
-              Vinhibit_quit = Qnil;
-            }
-          Vquit_flag = Qt;
-        }
+      /* Request quit when it's safe.  */
+      int count = NILP (Vquit_flag) ? 1 : force_quit_count + 1;
+      force_quit_count = count;
+      if (count == 3)
+	Vinhibit_quit = Qnil;
+      Vquit_flag = Qt;
     }
 
   pthread_sigmask (SIG_SETMASK, &empty_mask, 0);
@@ -10760,11 +10751,19 @@ The `posn-' functions access elements of such lists.  */)
     {
       Lisp_Object x = XCAR (tem);
       Lisp_Object y = XCAR (XCDR (tem));
+      Lisp_Object aux_info = XCDR (XCDR (tem));
+      int y_coord = XINT (y);
 
       /* Point invisible due to hscrolling?  X can be -1 when a
 	 newline in a R2L line overflows into the left fringe.  */
       if (XINT (x) < -1)
 	return Qnil;
+      if (!NILP (aux_info) && y_coord < 0)
+	{
+	  int rtop = XINT (XCAR (aux_info));
+
+	  y = make_number (y_coord + rtop);
+	}
       tem = Fposn_at_x_y (x, y, window, Qnil);
     }
 
@@ -10860,7 +10859,6 @@ init_keyboard (void)
 {
   /* This is correct before outermost invocation of the editor loop.  */
   command_loop_level = -1;
-  immediate_quit = false;
   quit_char = Ctl ('g');
   Vunread_command_events = Qnil;
   timer_idleness_start_time = invalid_timespec ();
@@ -11126,6 +11124,7 @@ syms_of_keyboard (void)
   DEFSYM (Qiconify_frame, "iconify-frame");
   DEFSYM (Qmake_frame_visible, "make-frame-visible");
   DEFSYM (Qselect_window, "select-window");
+  DEFSYM (Qselection_request, "selection-request");
   {
     int i;
 
@@ -11784,6 +11783,11 @@ signals.  */);
 
   /* Create the initial keyboard.  Qt means 'unset'.  */
   initial_kboard = allocate_kboard (Qt);
+
+  DEFVAR_LISP ("while-no-input-ignore-events",
+               Vwhile_no_input_ignore_events,
+               doc: /* Ignored events from while-no-input.  */);
+  Vwhile_no_input_ignore_events = Qnil;
 }
 
 void

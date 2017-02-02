@@ -1,6 +1,6 @@
 ;;; isearch.el --- incremental search minor mode -*- lexical-binding: t -*-
 
-;; Copyright (C) 1992-1997, 1999-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1992-1997, 1999-2017 Free Software Foundation, Inc.
 
 ;; Author: Daniel LaLiberte <liberte@cs.uiuc.edu>
 ;; Maintainer: emacs-devel@gnu.org
@@ -1145,18 +1145,18 @@ REGEXP if non-nil says use the regexp search ring."
                  (case-fold-search isearch-case-fold-search)
                  (pop-fun (if isearch-push-state-function
                               (funcall isearch-push-state-function))))))
-  (string :read-only t)
-  (message :read-only t)
-  (point :read-only t)
-  (success :read-only t)
-  (forward :read-only t)
-  (other-end :read-only t)
-  (word :read-only t)
-  (error :read-only t)
-  (wrapped :read-only t)
-  (barrier :read-only t)
-  (case-fold-search :read-only t)
-  (pop-fun :read-only t))
+  (string nil :read-only t)
+  (message nil :read-only t)
+  (point nil :read-only t)
+  (success nil :read-only t)
+  (forward nil :read-only t)
+  (other-end nil :read-only t)
+  (word nil :read-only t)
+  (error nil :read-only t)
+  (wrapped nil :read-only t)
+  (barrier nil :read-only t)
+  (case-fold-search nil :read-only t)
+  (pop-fun nil :read-only t))
 
 (defun isearch--set-state (cmd)
   (setq isearch-string (isearch--state-string cmd)
@@ -2297,6 +2297,7 @@ to the barrier."
 
 ;; Universal argument commands
 (put 'universal-argument 'isearch-scroll t)
+(put 'universal-argument-more 'isearch-scroll t)
 (put 'negative-argument 'isearch-scroll t)
 (put 'digit-argument 'isearch-scroll t)
 
@@ -2389,7 +2390,7 @@ before the command is executed globally with terminated Isearch."
       (setq this-command 'isearch-edit-string))
      ;; Handle a scrolling function or prefix argument.
      ((or (and isearch-allow-prefix
-	       (memq this-command '(universal-argument
+               (memq this-command '(universal-argument universal-argument-more
 				    digit-argument negative-argument)))
 	  (and isearch-allow-scroll
 	       (symbolp this-command)
@@ -3327,5 +3328,7 @@ CASE-FOLD non-nil means the search was case-insensitive."
 	isearch-case-fold-search case-fold)
   (isearch-search)
   (isearch-update))
+
+(provide 'isearch)
 
 ;;; isearch.el ends here

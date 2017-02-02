@@ -1,6 +1,6 @@
 /* File IO for GNU Emacs.
 
-Copyright (C) 1985-1988, 1993-2016 Free Software Foundation, Inc.
+Copyright (C) 1985-1988, 1993-2017 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -24,6 +24,10 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+
+#ifdef DARWIN_OS
+#include <sys/attr.h>
+#endif
 
 #ifdef HAVE_PWD_H
 #include <pwd.h>
@@ -203,7 +207,8 @@ report_file_errno (char const *string, Lisp_Object name, int errorno)
   if (errorno == EEXIST)
     xsignal (Qfile_already_exists, errdata);
   else
-    xsignal (Qfile_error, Fcons (build_string (string), errdata));
+    xsignal (errorno == ENOENT ? Qfile_missing : Qfile_error,
+	     Fcons (build_string (string), errdata));
 }
 
 /* Signal a file-access failure that set errno.  STRING describes the
@@ -311,7 +316,7 @@ use the standard functions without calling themselves recursively.  */)
 	    }
 	}
 
-      QUIT;
+      maybe_quit ();
     }
   return result;
 }
@@ -879,6 +884,11 @@ filesystem tree, not (expand-file-name ".."  dirname).  */)
 	/* Detect MSDOS file names with drive specifiers.  */
 	&& ! (IS_DRIVE (o[0]) && IS_DEVICE_SEP (o[1])
 	      && IS_DIRECTORY_SEP (o[2]))
+	/* Detect escaped file names without drive spec after "/:".
+	   These should not be recursively expanded, to avoid
+	   including the default directory twice in the expanded
+	   result.  */
+	&& ! (o[0] == '/' && o[1] == ':')
 #ifdef WINDOWSNT
 	/* Detect Windows file names in UNC format.  */
 	&& ! (IS_DIRECTORY_SEP (o[0]) && IS_DIRECTORY_SEP (o[1]))
@@ -1059,7 +1069,11 @@ filesystem tree, not (expand-file-name ".."  dirname).  */)
 
   newdir = newdirlim = 0;
 
-  if (nm[0] == '~')		/* prefix ~ */
+  if (nm[0] == '~'		/* prefix ~ */
+#ifdef DOS_NT
+    && !is_escaped		/* don't expand ~ in escaped file names */
+#endif
+      )
     {
       if (IS_DIRECTORY_SEP (nm[1])
 	  || nm[1] == 0)	/* ~ by itself */
@@ -1069,8 +1083,6 @@ filesystem tree, not (expand-file-name ".."  dirname).  */)
 	  if (!(newdir = egetenv ("HOME")))
 	    newdir = newdirlim = "";
 	  nm++;
-	  /* `egetenv' may return a unibyte string, which will bite us since
-	     we expect the directory to be multibyte.  */
 #ifdef WINDOWSNT
 	  if (newdir[0])
 	    {
@@ -1078,11 +1090,14 @@ filesystem tree, not (expand-file-name ".."  dirname).  */)
 
 	      filename_from_ansi (newdir, newdir_utf8);
 	      tem = make_unibyte_string (newdir_utf8, strlen (newdir_utf8));
+	      newdir = SSDATA (tem);
 	    }
 	  else
 #endif
 	    tem = build_string (newdir);
 	  newdirlim = newdir + SBYTES (tem);
+	  /* `egetenv' may return a unibyte string, which will bite us
+	     if we expect the directory to be multibyte.  */
 	  if (multibyte && !STRING_MULTIBYTE (tem))
 	    {
 	      hdir = DECODE_FILE (tem);
@@ -1111,8 +1126,7 @@ filesystem tree, not (expand-file-name ".."  dirname).  */)
 
 	      newdir = pw->pw_dir;
 	      /* `getpwnam' may return a unibyte string, which will
-		 bite us since we expect the directory to be
-		 multibyte.  */
+		 bite us when we expect the directory to be multibyte.  */
 	      tem = make_unibyte_string (newdir, strlen (newdir));
 	      newdirlim = newdir + SBYTES (tem);
 	      if (multibyte && !STRING_MULTIBYTE (tem))
@@ -1946,9 +1960,7 @@ permissions.  */)
       report_file_error ("Copying permissions to", newname);
     }
 #else /* not WINDOWSNT */
-  immediate_quit = 1;
   ifd = emacs_open (SSDATA (encoded_file), O_RDONLY, 0);
-  immediate_quit = 0;
 
   if (ifd < 0)
     report_file_error ("Opening input file", file);
@@ -2010,8 +2022,7 @@ permissions.  */)
 	oldsize = out_st.st_size;
     }
 
-  immediate_quit = 1;
-  QUIT;
+  maybe_quit ();
 
   if (clone_file (ofd, ifd))
     newsize = st.st_size;
@@ -2019,9 +2030,9 @@ permissions.  */)
     {
       char buf[MAX_ALLOCA];
       ptrdiff_t n;
-      for (newsize = 0; 0 < (n = emacs_read (ifd, buf, sizeof buf));
+      for (newsize = 0; 0 < (n = emacs_read_quit (ifd, buf, sizeof buf));
 	   newsize += n)
-	if (emacs_write_sig (ofd, buf, n) != n)
+	if (emacs_write_quit (ofd, buf, n) != n)
 	  report_file_error ("Write error", newname);
       if (n < 0)
 	report_file_error ("Read error", file);
@@ -2032,8 +2043,6 @@ permissions.  */)
      file system is out of space or the user is over disk quota.  */
   if (newsize < oldsize && ftruncate (ofd, newsize) != 0)
     report_file_error ("Truncating output file", newname);
-
-  immediate_quit = 0;
 
 #ifndef MSDOS
   /* Preserve the original file permissions, and if requested, also its
@@ -2231,6 +2240,105 @@ internal_delete_file (Lisp_Object filename)
   return NILP (tem);
 }
 
+/* Filesystems are case-sensitive on all supported systems except
+   MS-Windows, MS-DOS, Cygwin, and Mac OS X.  They are always
+   case-insensitive on the first two, but they may or may not be
+   case-insensitive on Cygwin and OS X.  The following function
+   attempts to provide a runtime test on those two systems.  If the
+   test is not conclusive, we assume case-insensitivity on Cygwin and
+   case-sensitivity on Mac OS X.
+
+   FIXME: Mounted filesystems on Posix hosts, like Samba shares or
+   NFS-mounted Windows volumes, might be case-insensitive.  Can we
+   detect this?  */
+
+static bool
+file_name_case_insensitive_p (const char *filename)
+{
+  /* Use pathconf with _PC_CASE_INSENSITIVE or _PC_CASE_SENSITIVE if
+     those flags are available.  As of this writing (2016-11-14),
+     Cygwin is the only platform known to support the former (starting
+     with Cygwin-2.6.1), and Mac OS X is the only platform known to
+     support the latter.
+
+     There have been reports that pathconf with _PC_CASE_SENSITIVE
+     does not work reliably on Mac OS X.  If you have a problem,
+     please recompile Emacs with -D DARWIN_OS_CASE_SENSITIVE_FIXME=1 or
+     -D DARWIN_OS_CASE_SENSITIVE_FIXME=2, and file a bug report saying
+     whether this fixed your problem.  */
+
+#ifdef _PC_CASE_INSENSITIVE
+  int res = pathconf (filename, _PC_CASE_INSENSITIVE);
+  if (res >= 0)
+    return res > 0;
+#elif defined _PC_CASE_SENSITIVE && !defined DARWIN_OS_CASE_SENSITIVE_FIXME
+  int res = pathconf (filename, _PC_CASE_SENSITIVE);
+  if (res >= 0)
+    return res == 0;
+#endif
+
+#ifdef DARWIN_OS
+# ifndef DARWIN_OS_CASE_SENSITIVE_FIXME
+  int DARWIN_OS_CASE_SENSITIVE_FIXME = 0;
+# endif
+
+  if (DARWIN_OS_CASE_SENSITIVE_FIXME == 1)
+    {
+      /* This is based on developer.apple.com's getattrlist man page.  */
+      struct attrlist alist = {.volattr = ATTR_VOL_CAPABILITIES};
+      vol_capabilities_attr_t vcaps;
+      if (getattrlist (filename, &alist, &vcaps, sizeof vcaps, 0) == 0)
+	{
+	  if (vcaps.valid[VOL_CAPABILITIES_FORMAT] & VOL_CAP_FMT_CASE_SENSITIVE)
+	    return ! (vcaps.capabilities[VOL_CAPABILITIES_FORMAT]
+		      & VOL_CAP_FMT_CASE_SENSITIVE);
+	}
+    }
+  else if (DARWIN_OS_CASE_SENSITIVE_FIXME == 2)
+    {
+      /* The following is based on
+	 http://lists.apple.com/archives/darwin-dev/2007/Apr/msg00010.html.  */
+      struct attrlist alist;
+      unsigned char buffer[sizeof (vol_capabilities_attr_t) + sizeof (size_t)];
+
+      memset (&alist, 0, sizeof (alist));
+      alist.volattr = ATTR_VOL_CAPABILITIES;
+      if (getattrlist (filename, &alist, buffer, sizeof (buffer), 0)
+	  || !(alist.volattr & ATTR_VOL_CAPABILITIES))
+	return 0;
+      vol_capabilities_attr_t *vcaps = buffer;
+      return !(vcaps->capabilities[0] & VOL_CAP_FMT_CASE_SENSITIVE);
+    }
+#endif	/* DARWIN_OS */
+
+#if defined CYGWIN || defined DOS_NT
+  return true;
+#else
+  return false;
+#endif
+}
+
+DEFUN ("file-name-case-insensitive-p", Ffile_name_case_insensitive_p,
+       Sfile_name_case_insensitive_p, 1, 1, 0,
+       doc: /* Return t if file FILENAME is on a case-insensitive filesystem.
+The arg must be a string.  */)
+  (Lisp_Object filename)
+{
+  Lisp_Object handler;
+
+  CHECK_STRING (filename);
+  filename = Fexpand_file_name (filename, Qnil);
+
+  /* If the file name has special constructs in it,
+     call the corresponding file handler.  */
+  handler = Ffind_file_name_handler (filename, Qfile_name_case_insensitive_p);
+  if (!NILP (handler))
+    return call2 (handler, Qfile_name_case_insensitive_p, filename);
+
+  filename = ENCODE_FILE (filename);
+  return file_name_case_insensitive_p (SSDATA (filename)) ? Qt : Qnil;
+}
+
 DEFUN ("rename-file", Frename_file, Srename_file, 2, 3,
        "fRename file: \nGRename %s to file: \np",
        doc: /* Rename FILE as NEWNAME.  Both args must be strings.
@@ -2250,12 +2358,11 @@ This is what happens in interactive use with M-x.  */)
   file = Fexpand_file_name (file, Qnil);
 
   if ((!NILP (Ffile_directory_p (newname)))
-#ifdef DOS_NT
-      /* If the file names are identical but for the case,
-	 don't attempt to move directory to itself. */
-      && (NILP (Fstring_equal (Fdowncase (file), Fdowncase (newname))))
-#endif
-      )
+      /* If the filesystem is case-insensitive and the file names are
+	 identical but for the case, don't attempt to move directory
+	 to itself.  */
+      && (NILP (Ffile_name_case_insensitive_p (file))
+	  || NILP (Fstring_equal (Fdowncase (file), Fdowncase (newname)))))
     {
       Lisp_Object fname = (NILP (Ffile_directory_p (file))
 			   ? file : Fdirectory_file_name (file));
@@ -2276,14 +2383,12 @@ This is what happens in interactive use with M-x.  */)
   encoded_file = ENCODE_FILE (file);
   encoded_newname = ENCODE_FILE (newname);
 
-#ifdef DOS_NT
-  /* If the file names are identical but for the case, don't ask for
-     confirmation: they simply want to change the letter-case of the
-     file name.  */
-  if (NILP (Fstring_equal (Fdowncase (file), Fdowncase (newname))))
-#endif
-  if (NILP (ok_if_already_exists)
-      || INTEGERP (ok_if_already_exists))
+  /* If the filesystem is case-insensitive and the file names are
+     identical but for the case, don't ask for confirmation: they
+     simply want to change the letter-case of the file name.  */
+  if ((!(file_name_case_insensitive_p (SSDATA (encoded_file)))
+       || NILP (Fstring_equal (Fdowncase (file), Fdowncase (newname))))
+      && ((NILP (ok_if_already_exists) || INTEGERP (ok_if_already_exists))))
     barf_or_query_if_file_exists (newname, false, "rename to it",
 				  INTEGERP (ok_if_already_exists), false);
   if (rename (SSDATA (encoded_file), SSDATA (encoded_newname)) < 0)
@@ -2572,7 +2677,7 @@ DEFUN ("file-writable-p", Ffile_writable_p, Sfile_writable_p, 1, 1, 0,
 
 DEFUN ("access-file", Faccess_file, Saccess_file, 2, 2, 0,
        doc: /* Access file FILENAME, and get an error if that does not work.
-The second argument STRING is used in the error message.
+The second argument STRING is prepended to the error message.
 If there is no error, returns nil.  */)
   (Lisp_Object filename, Lisp_Object string)
 {
@@ -2705,7 +2810,17 @@ really is a readable and searchable directory.  */)
   if (!NILP (handler))
     {
       Lisp_Object r = call2 (handler, Qfile_accessible_directory_p, absname);
-      errno = 0;
+
+      /* Set errno in case the handler failed.  EACCES might be a lie
+	 (e.g., the directory might not exist, or be a regular file),
+	 but at least it does TRT in the "usual" case of an existing
+	 directory that is not accessible by the current user, and
+	 avoids reporting "Success" for a failed operation.  Perhaps
+	 someday we can fix this in a better way, by improving
+	 file-accessible-directory-p's API; see Bug#25419.  */
+      if (!EQ (r, Qt))
+	errno = EACCES;
+
       return r;
     }
 
@@ -3281,15 +3396,10 @@ decide_coding_unwind (Lisp_Object unwind_data)
 static Lisp_Object
 read_non_regular (Lisp_Object state)
 {
-  int nbytes;
-
-  immediate_quit = 1;
-  QUIT;
-  nbytes = emacs_read (XSAVE_INTEGER (state, 0),
-		       ((char *) BEG_ADDR + PT_BYTE - BEG_BYTE
-			+ XSAVE_INTEGER (state, 1)),
-		       XSAVE_INTEGER (state, 2));
-  immediate_quit = 0;
+  int nbytes = emacs_read_quit (XSAVE_INTEGER (state, 0),
+				((char *) BEG_ADDR + PT_BYTE - BEG_BYTE
+				 + XSAVE_INTEGER (state, 1)),
+				XSAVE_INTEGER (state, 2));
   /* Fast recycle this object for the likely next call.  */
   free_misc (state);
   return make_number (nbytes);
@@ -3633,17 +3743,17 @@ by calling `format-decode', which see.  */)
 	      int nread;
 
 	      if (st.st_size <= (1024 * 4))
-		nread = emacs_read (fd, read_buf, 1024 * 4);
+		nread = emacs_read_quit (fd, read_buf, 1024 * 4);
 	      else
 		{
-		  nread = emacs_read (fd, read_buf, 1024);
+		  nread = emacs_read_quit (fd, read_buf, 1024);
 		  if (nread == 1024)
 		    {
 		      int ntail;
 		      if (lseek (fd, - (1024 * 3), SEEK_END) < 0)
 			report_file_error ("Setting file position",
 					   orig_filename);
-		      ntail = emacs_read (fd, read_buf + nread, 1024 * 3);
+		      ntail = emacs_read_quit (fd, read_buf + nread, 1024 * 3);
 		      nread = ntail < 0 ? ntail : nread + ntail;
 		    }
 		}
@@ -3748,15 +3858,11 @@ by calling `format-decode', which see.  */)
 	    report_file_error ("Setting file position", orig_filename);
 	}
 
-      immediate_quit = 1;
-      QUIT;
       /* Count how many chars at the start of the file
 	 match the text at the beginning of the buffer.  */
-      while (1)
+      while (true)
 	{
-	  int nread, bufpos;
-
-	  nread = emacs_read (fd, read_buf, sizeof read_buf);
+	  int nread = emacs_read_quit (fd, read_buf, sizeof read_buf);
 	  if (nread < 0)
 	    report_file_error ("Read error", orig_filename);
 	  else if (nread == 0)
@@ -3778,7 +3884,7 @@ by calling `format-decode', which see.  */)
 	      break;
 	    }
 
-	  bufpos = 0;
+	  int bufpos = 0;
 	  while (bufpos < nread && same_at_start < ZV_BYTE
 		 && FETCH_BYTE (same_at_start) == read_buf[bufpos])
 	    same_at_start++, bufpos++;
@@ -3787,7 +3893,6 @@ by calling `format-decode', which see.  */)
 	  if (bufpos != nread)
 	    break;
 	}
-      immediate_quit = false;
       /* If the file matches the buffer completely,
 	 there's no need to replace anything.  */
       if (same_at_start - BEGV_BYTE == end_offset - beg_offset)
@@ -3799,8 +3904,7 @@ by calling `format-decode', which see.  */)
 	  del_range_1 (same_at_start, same_at_end, 0, 0);
 	  goto handled;
 	}
-      immediate_quit = true;
-      QUIT;
+
       /* Count how many chars at the end of the file
 	 match the text at the end of the buffer.  But, if we have
 	 already found that decoding is necessary, don't waste time.  */
@@ -3822,7 +3926,8 @@ by calling `format-decode', which see.  */)
 	  total_read = nread = 0;
 	  while (total_read < trial)
 	    {
-	      nread = emacs_read (fd, read_buf + total_read, trial - total_read);
+	      nread = emacs_read_quit (fd, read_buf + total_read,
+				       trial - total_read);
 	      if (nread < 0)
 		report_file_error ("Read error", orig_filename);
 	      else if (nread == 0)
@@ -3857,7 +3962,6 @@ by calling `format-decode', which see.  */)
 	  if (nread == 0)
 	    break;
 	}
-      immediate_quit = 0;
 
       if (! giveup_match_end)
 	{
@@ -3949,18 +4053,13 @@ by calling `format-decode', which see.  */)
       inserted = 0;		/* Bytes put into CONVERSION_BUFFER so far.  */
       unprocessed = 0;		/* Bytes not processed in previous loop.  */
 
-      while (1)
+      while (true)
 	{
 	  /* Read at most READ_BUF_SIZE bytes at a time, to allow
 	     quitting while reading a huge file.  */
 
-	  /* Allow quitting out of the actual I/O.  */
-	  immediate_quit = 1;
-	  QUIT;
-	  this = emacs_read (fd, read_buf + unprocessed,
-			     READ_BUF_SIZE - unprocessed);
-	  immediate_quit = 0;
-
+	  this = emacs_read_quit (fd, read_buf + unprocessed,
+				  READ_BUF_SIZE - unprocessed);
 	  if (this <= 0)
 	    break;
 
@@ -4174,13 +4273,10 @@ by calling `format-decode', which see.  */)
 	    /* Allow quitting out of the actual I/O.  We don't make text
 	       part of the buffer until all the reading is done, so a C-g
 	       here doesn't do any harm.  */
-	    immediate_quit = 1;
-	    QUIT;
-	    this = emacs_read (fd,
-			       ((char *) BEG_ADDR + PT_BYTE - BEG_BYTE
-				+ inserted),
-			       trytry);
-	    immediate_quit = 0;
+	    this = emacs_read_quit (fd,
+				    ((char *) BEG_ADDR + PT_BYTE - BEG_BYTE
+				     + inserted),
+				    trytry);
 	  }
 
 	if (this <= 0)
@@ -4492,7 +4588,7 @@ by calling `format-decode', which see.  */)
 		}
 	    }
 
-	  QUIT;
+	  maybe_quit ();
 	  p = XCDR (p);
 	}
 
@@ -4648,8 +4744,7 @@ choose_write_coding_system (Lisp_Object start, Lisp_Object end, Lisp_Object file
 	}
 
       /* If the decided coding-system doesn't specify end-of-line
-	 format, we use that of
-	 `default-buffer-file-coding-system'.  */
+	 format, we use that of `buffer-file-coding-system'.  */
       if (! using_default_coding)
 	{
 	  Lisp_Object dflt = BVAR (&buffer_defaults, buffer_file_coding_system);
@@ -4883,8 +4978,6 @@ write_region (Lisp_Object start, Lisp_Object end, Lisp_Object filename,
 	}
     }
 
-  immediate_quit = 1;
-
   if (STRINGP (start))
     ok = a_write (desc, start, 0, SCHARS (start), &annotations, &coding);
   else if (XINT (start) != XINT (end))
@@ -4906,8 +4999,6 @@ write_region (Lisp_Object start, Lisp_Object end, Lisp_Object filename,
       ok = e_write (desc, Qnil, 1, 1, &coding);
       save_errno = errno;
     }
-
-  immediate_quit = 0;
 
   /* fsync is not crucial for temporary files.  Nor for auto-save
      files, since they might lose some work anyway.  */
@@ -5033,19 +5124,26 @@ write_region (Lisp_Object start, Lisp_Object end, Lisp_Object filename,
   if (! ok)
     report_file_errno ("Write error", filename, save_errno);
 
+  bool auto_saving_into_visited_file =
+    auto_saving
+    && ! NILP (Fstring_equal (BVAR (current_buffer, filename),
+			      BVAR (current_buffer, auto_save_file_name)));
   if (visiting)
     {
       SAVE_MODIFF = MODIFF;
       XSETFASTINT (BVAR (current_buffer, save_length), Z - BEG);
       bset_filename (current_buffer, visit_file);
       update_mode_lines = 14;
+      if (auto_saving_into_visited_file)
+	unlock_file (lockname);
     }
   else if (quietly)
     {
-      if (auto_saving
-	  && ! NILP (Fstring_equal (BVAR (current_buffer, filename),
-				    BVAR (current_buffer, auto_save_file_name))))
-	SAVE_MODIFF = MODIFF;
+      if (auto_saving_into_visited_file)
+	{
+	  SAVE_MODIFF = MODIFF;
+	  unlock_file (lockname);
+	}
 
       return Qnil;
     }
@@ -5291,7 +5389,7 @@ e_write (int desc, Lisp_Object string, ptrdiff_t start, ptrdiff_t end,
 		       : (STRINGP (coding->dst_object)
 			  ? SSDATA (coding->dst_object)
 			  : (char *) BYTE_POS_ADDR (coding->dst_pos_byte)));
-	  coding->produced -= emacs_write_sig (desc, buf, coding->produced);
+	  coding->produced -= emacs_write_quit (desc, buf, coding->produced);
 
 	  if (coding->raw_destination)
 	    {
@@ -5836,6 +5934,7 @@ syms_of_fileio (void)
   DEFSYM (Qmake_directory_internal, "make-directory-internal");
   DEFSYM (Qmake_directory, "make-directory");
   DEFSYM (Qdelete_file, "delete-file");
+  DEFSYM (Qfile_name_case_insensitive_p, "file-name-case-insensitive-p");
   DEFSYM (Qrename_file, "rename-file");
   DEFSYM (Qadd_name_to_file, "add-name-to-file");
   DEFSYM (Qmake_symbolic_link, "make-symbolic-link");
@@ -5874,6 +5973,7 @@ syms_of_fileio (void)
   DEFSYM (Qfile_error, "file-error");
   DEFSYM (Qfile_already_exists, "file-already-exists");
   DEFSYM (Qfile_date_error, "file-date-error");
+  DEFSYM (Qfile_missing, "file-missing");
   DEFSYM (Qfile_notify_error, "file-notify-error");
   DEFSYM (Qexcl, "excl");
 
@@ -5925,6 +6025,11 @@ behaves as if file names were encoded in `utf-8'.  */);
 	Fpurecopy (list3 (Qfile_date_error, Qfile_error, Qerror)));
   Fput (Qfile_date_error, Qerror_message,
 	build_pure_c_string ("Cannot set file date"));
+
+  Fput (Qfile_missing, Qerror_conditions,
+	Fpurecopy (list3 (Qfile_missing, Qfile_error, Qerror)));
+  Fput (Qfile_missing, Qerror_message,
+	build_pure_c_string ("File is missing"));
 
   Fput (Qfile_notify_error, Qerror_conditions,
 	Fpurecopy (list3 (Qfile_notify_error, Qfile_error, Qerror)));
@@ -6093,6 +6198,7 @@ This includes interactive calls to `delete-file' and
   defsubr (&Smake_directory_internal);
   defsubr (&Sdelete_directory_internal);
   defsubr (&Sdelete_file);
+  defsubr (&Sfile_name_case_insensitive_p);
   defsubr (&Srename_file);
   defsubr (&Sadd_name_to_file);
   defsubr (&Smake_symbolic_link);

@@ -1,6 +1,6 @@
 ;;; tramp-adb.el --- Functions for calling Android Debug Bridge from Tramp
 
-;; Copyright (C) 2011-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2011-2017 Free Software Foundation, Inc.
 
 ;; Author: Jürgen Hötzel <juergen@archlinux.org>
 ;; Keywords: comm, processes
@@ -126,6 +126,7 @@ It is used for TCP/IP devices."
     (file-modes . tramp-handle-file-modes)
     (file-name-all-completions . tramp-adb-handle-file-name-all-completions)
     (file-name-as-directory . tramp-handle-file-name-as-directory)
+    (file-name-case-insensitive-p . tramp-handle-file-name-case-insensitive-p)
     (file-name-completion . tramp-handle-file-name-completion)
     (file-name-directory . tramp-handle-file-name-directory)
     (file-name-nondirectory . tramp-handle-file-name-nondirectory)
@@ -522,6 +523,9 @@ Emacs dired can't find files."
 (defun tramp-adb-handle-delete-directory (directory &optional recursive)
   "Like `delete-directory' for Tramp files."
   (setq directory (expand-file-name directory))
+  (with-parsed-tramp-file-name (file-truename directory) nil
+    (tramp-flush-file-property v (file-name-directory localname))
+    (tramp-flush-directory-property v localname))
   (with-parsed-tramp-file-name directory nil
     (tramp-flush-file-property v (file-name-directory localname))
     (tramp-flush-directory-property v localname)
@@ -571,13 +575,14 @@ Emacs dired can't find files."
   (with-parsed-tramp-file-name filename nil
     (unless (file-exists-p (file-truename filename))
       (tramp-error
-       v 'file-error
+       v tramp-file-missing
        "Cannot make local copy of non-existing file `%s'" filename))
     (let ((tmpfile (tramp-compat-make-temp-file filename)))
       (with-tramp-progress-reporter
 	  v 3 (format "Fetching %s to tmp file %s" filename tmpfile)
 	;; "adb pull ..." does not always return an error code.
-	(when (or (tramp-adb-execute-adb-command v "pull" localname tmpfile)
+	(when (or (tramp-adb-execute-adb-command
+		   v "pull" (tramp-compat-file-name-unquote localname) tmpfile)
 		  (not (file-exists-p tmpfile)))
 	  (ignore-errors (delete-file tmpfile))
 	  (tramp-error
@@ -637,7 +642,8 @@ But handle the case, if the \"test\" command is not available."
         v 3 (format-message
              "Moving tmp file `%s' to `%s'" tmpfile filename)
 	(unwind-protect
-	    (when (tramp-adb-execute-adb-command v "push" tmpfile localname)
+	    (when (tramp-adb-execute-adb-command
+		   v "push" tmpfile (tramp-compat-file-name-unquote localname))
 	      (tramp-error v 'file-error "Cannot write: `%s'" filename))
 	  (delete-file tmpfile)))
 
@@ -680,38 +686,65 @@ PRESERVE-UID-GID and PRESERVE-EXTENDED-ATTRIBUTES are completely ignored."
 
   (if (file-directory-p filename)
       (tramp-file-name-handler 'copy-directory filename newname keep-date t)
-    (with-tramp-progress-reporter
-	(tramp-dissect-file-name
-	 (if (tramp-tramp-file-p filename) filename newname))
-	0 (format "Copying %s to %s" filename newname)
 
-      (let ((tmpfile (file-local-copy filename)))
+    (let ((t1 (tramp-tramp-file-p filename))
+	  (t2 (tramp-tramp-file-p newname)))
+      (with-parsed-tramp-file-name (if t1 filename newname) nil
+	(with-tramp-progress-reporter
+	    v 0 (format "Copying %s to %s" filename newname)
 
-	(if tmpfile
-	    ;; Remote filename.
-	    (condition-case err
-		(rename-file tmpfile newname ok-if-already-exists)
-	      ((error quit)
-	       (delete-file tmpfile)
-	       (signal (car err) (cdr err))))
+	  (if (and t1 t2 (tramp-equal-remote filename newname))
+	      (let ((l1 (file-remote-p filename 'localname))
+		    (l2 (file-remote-p newname 'localname)))
+		(when (and (not ok-if-already-exists)
+			   (file-exists-p newname))
+		  (tramp-error v 'file-already-exists newname))
+		;; We must also flush the cache of the directory,
+		;; because `file-attributes' reads the values from
+		;; there.
+		(tramp-flush-file-property v (file-name-directory l2))
+		(tramp-flush-file-property v l2)
+		;; Short track.
+		(tramp-adb-barf-unless-okay
+		 v (format
+		    "cp -f %s %s"
+		    (tramp-shell-quote-argument l1)
+		    (tramp-shell-quote-argument l2))
+		 "Error copying %s to %s" filename newname))
 
-	  ;; Remote newname.
-	  (when (file-directory-p newname)
-	    (setq newname
-		  (expand-file-name (file-name-nondirectory filename) newname)))
+	    (let ((tmpfile (file-local-copy filename)))
 
-	  (with-parsed-tramp-file-name newname nil
-	    (when (and (not ok-if-already-exists)
-		       (file-exists-p newname))
-	      (tramp-error v 'file-already-exists newname))
+	      (if tmpfile
+		  ;; Remote filename.
+		  (condition-case err
+		      (rename-file tmpfile newname ok-if-already-exists)
+		    ((error quit)
+		     (delete-file tmpfile)
+		     (signal (car err) (cdr err))))
 
-	    ;; We must also flush the cache of the directory, because
-	    ;; `file-attributes' reads the values from there.
-	    (tramp-flush-file-property v (file-name-directory localname))
-	    (tramp-flush-file-property v localname)
-	    (when (tramp-adb-execute-adb-command v "push" filename localname)
-	      (tramp-error
-	       v 'file-error "Cannot copy `%s' `%s'" filename newname))))))
+		;; Remote newname.
+		(when (file-directory-p newname)
+		  (setq newname
+			(expand-file-name
+			 (file-name-nondirectory filename) newname)))
+
+		(with-parsed-tramp-file-name newname nil
+		  (when (and (not ok-if-already-exists)
+			     (file-exists-p newname))
+		    (tramp-error v 'file-already-exists newname))
+
+		  ;; We must also flush the cache of the directory,
+		  ;; because `file-attributes' reads the values from
+		  ;; there.
+		  (tramp-flush-file-property v (file-name-directory localname))
+		  (tramp-flush-file-property v localname)
+		  (when (tramp-adb-execute-adb-command
+			 v "push"
+			 (tramp-compat-file-name-unquote filename)
+			 (tramp-compat-file-name-unquote localname))
+		    (tramp-error
+		     v 'file-error
+		     "Cannot copy `%s' `%s'" filename newname)))))))))
 
     ;; KEEP-DATE handling.
     (when keep-date
@@ -748,7 +781,10 @@ PRESERVE-UID-GID and PRESERVE-EXTENDED-ATTRIBUTES are completely ignored."
 	      (tramp-flush-file-property v l2)
 	      ;; Short track.
 	      (tramp-adb-barf-unless-okay
-	       v (format "mv %s %s" l1 l2)
+	       v (format
+		  "mv -f %s %s"
+		  (tramp-shell-quote-argument l1)
+		  (tramp-shell-quote-argument l2))
 	       "Error renaming %s to %s" filename newname))
 
 	  ;; Rename by copy.
@@ -897,7 +933,7 @@ PRESERVE-UID-GID and PRESERVE-EXTENDED-ATTRIBUTES are completely ignored."
     (when p
       (if (yes-or-no-p "A command is running.  Kill it? ")
 	  (ignore-errors (kill-process p))
-	(tramp-user-error p "Shell command in progress")))
+	(tramp-compat-user-error p "Shell command in progress")))
 
     (if current-buffer-p
 	(progn
@@ -1242,6 +1278,9 @@ connection if a previous connection has died for some reason."
 		(goto-char (point-min))
 		(read (current-buffer)))
 	      ":" 'omit))
+
+	    ;; Set connection-local variables.
+	    (tramp-set-connection-local-variables vec)
 
 	    ;; Mark it as connected.
 	    (tramp-set-connection-property p "connected" t)))))))

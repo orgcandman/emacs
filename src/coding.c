@@ -1,5 +1,5 @@
 /* Coding system handler (conversion, detection, etc).
-   Copyright (C) 2001-2016 Free Software Foundation, Inc.
+   Copyright (C) 2001-2017 Free Software Foundation, Inc.
    Copyright (C) 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
      2005, 2006, 2007, 2008, 2009, 2010, 2011
      National Institute of Advanced Industrial Science and Technology (AIST)
@@ -122,7 +122,7 @@ END-OF-LINE FORMAT
   How text end-of-line is encoded depends on operating system.  For
   instance, Unix's format is just one byte of LF (line-feed) code,
   whereas DOS's format is two-byte sequence of `carriage-return' and
-  `line-feed' codes.  MacOS's format is usually one byte of
+  `line-feed' codes.  Classic Mac OS's format is usually one byte of
   `carriage-return'.
 
   Since text character encoding and end-of-line encoding are
@@ -8028,12 +8028,12 @@ decode_coding_object (struct coding_system *coding,
 		      Lisp_Object dst_object)
 {
   ptrdiff_t count = SPECPDL_INDEX ();
-  unsigned char *destination;
-  ptrdiff_t dst_bytes;
+  unsigned char *destination UNINIT;
+  ptrdiff_t dst_bytes UNINIT;
   ptrdiff_t chars = to - from;
   ptrdiff_t bytes = to_byte - from_byte;
   Lisp_Object attrs;
-  ptrdiff_t saved_pt = -1, saved_pt_byte;
+  ptrdiff_t saved_pt = -1, saved_pt_byte UNINIT;
   bool need_marker_adjustment = 0;
   Lisp_Object old_deactivate_mark;
 

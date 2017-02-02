@@ -1,6 +1,6 @@
 ;;; url-handlers.el --- file-name-handler stuff for URL loading  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1996-1999, 2004-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1996-1999, 2004-2017 Free Software Foundation, Inc.
 
 ;; Keywords: comm, data, processes, hypermedia
 
@@ -262,11 +262,12 @@ Fifth arg PRESERVE-UID-GID is ignored.
 A prefix arg makes KEEP-TIME non-nil."
   (if (and (file-exists-p newname)
 	   (not ok-if-already-exists))
-      (error "Opening output file: File already exists, %s" newname))
+      (signal 'file-already-exists (list "File exists" newname)))
   (let ((buffer (url-retrieve-synchronously url))
 	(handle nil))
     (if (not buffer)
-	(error "Opening input file: No such file or directory, %s" url))
+        (signal 'file-missing (list "Opening URL" "No such file or directory"
+                                    url)))
     (with-current-buffer buffer
       (setq handle (mm-dissect-buffer t)))
     (let ((mm-attachment-file-modes (default-file-modes)))

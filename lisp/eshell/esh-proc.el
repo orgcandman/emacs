@@ -1,6 +1,6 @@
 ;;; esh-proc.el --- process management  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1999-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2017 Free Software Foundation, Inc.
 
 ;; Author: John Wiegley <johnw@gnu.org>
 
@@ -279,7 +279,7 @@ See `eshell-needs-pipe'."
 	    (let ((process-connection-type
 		   (unless (eshell-needs-pipe-p command)
 		     process-connection-type))
-		  (command (or (file-remote-p command 'localname) command)))
+		  (command (file-local-name command)))
 	      (apply 'start-file-process
 		     (file-name-nondirectory command) nil
 		     ;; `start-process' can't deal with relative filenames.

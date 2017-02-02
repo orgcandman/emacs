@@ -1,6 +1,6 @@
 ;;; eww.el --- Emacs Web Wowser  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2013-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2013-2017 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: html
@@ -24,7 +24,7 @@
 
 ;;; Code:
 
-(eval-when-compile (require 'cl))
+(require 'cl-lib)
 (require 'format-spec)
 (require 'shr)
 (require 'url)
@@ -59,7 +59,7 @@
   "Directory where files will downloaded."
   :version "24.4"
   :group 'eww
-  :type 'string)
+  :type 'directory)
 
 ;;;###autoload
 (defcustom eww-suggest-uris
@@ -74,14 +74,14 @@ duplicate entries (if any) removed."
   :group 'eww
   :type 'hook
   :options '(eww-links-at-point
-	     url-get-url-at-point
-	     eww-current-url))
+             url-get-url-at-point
+             eww-current-url))
 
 (defcustom eww-bookmarks-directory user-emacs-directory
   "Directory where bookmark files will be stored."
   :version "25.1"
   :group 'eww
-  :type 'string)
+  :type 'directory)
 
 (defcustom eww-desktop-remove-duplicates t
   "Whether to remove duplicates from the history when saving desktop data.
@@ -251,6 +251,29 @@ word(s) will be searched for via `eww-search-prefix'."
 			  (if uris (format " (default %s)" (car uris)) "")
 			  ": ")))
      (list (read-string prompt nil nil uris))))
+  (setq url (eww--dwim-expand-url url))
+  (pop-to-buffer-same-window
+   (if (eq major-mode 'eww-mode)
+       (current-buffer)
+     (get-buffer-create "*eww*")))
+  (eww-setup-buffer)
+  ;; Check whether the domain only uses "Highly Restricted" Unicode
+  ;; IDNA characters.  If not, transform to punycode to indicate that
+  ;; there may be funny business going on.
+  (let ((parsed (url-generic-parse-url url)))
+    (unless (puny-highly-restrictive-domain-p (url-host parsed))
+      (setf (url-host parsed) (puny-encode-domain (url-host parsed)))
+      (setq url (url-recreate-url parsed))))
+  (plist-put eww-data :url url)
+  (plist-put eww-data :title "")
+  (eww-update-header-line-format)
+  (let ((inhibit-read-only t))
+    (insert (format "Loading %s..." url))
+    (goto-char (point-min)))
+  (url-retrieve url 'eww-render
+		(list url nil (current-buffer))))
+
+(defun eww--dwim-expand-url (url)
   (setq url (string-trim url))
   (cond ((string-match-p "\\`file:/" url))
 	;; Don't mangle file: URLs at all.
@@ -275,26 +298,7 @@ word(s) will be searched for via `eww-search-prefix'."
                  (setq url (concat url "/"))))
            (setq url (concat eww-search-prefix
                              (replace-regexp-in-string " " "+" url))))))
-  (pop-to-buffer-same-window
-   (if (eq major-mode 'eww-mode)
-       (current-buffer)
-     (get-buffer-create "*eww*")))
-  (eww-setup-buffer)
-  ;; Check whether the domain only uses "Highly Restricted" Unicode
-  ;; IDNA characters.  If not, transform to punycode to indicate that
-  ;; there may be funny business going on.
-  (let ((parsed (url-generic-parse-url url)))
-    (unless (puny-highly-restrictive-domain-p (url-host parsed))
-      (setf (url-host parsed) (puny-encode-domain (url-host parsed)))
-      (setq url (url-recreate-url parsed))))
-  (plist-put eww-data :url url)
-  (plist-put eww-data :title "")
-  (eww-update-header-line-format)
-  (let ((inhibit-read-only t))
-    (insert (format "Loading %s..." url))
-    (goto-char (point-min)))
-  (url-retrieve url 'eww-render
-		(list url nil (current-buffer))))
+  url)
 
 ;;;###autoload (defalias 'browse-web 'eww)
 
@@ -313,6 +317,20 @@ word(s) will be searched for via `eww-search-prefix'."
 See the `eww-search-prefix' variable for the search engine used."
   (interactive "r")
   (eww (buffer-substring beg end)))
+
+(defun eww-open-in-new-buffer ()
+  "Fetch link at point in a new EWW buffer."
+  (interactive)
+  (let ((url (eww-suggested-uris)))
+    (if (null url) (user-error "No link at point")
+      ;; clone useful to keep history, but
+      ;; should not clone from non-eww buffer
+      (with-current-buffer
+          (if (eq major-mode 'eww-mode) (clone-buffer)
+            (generate-new-buffer "*eww*"))
+        (unless (equal url (eww-current-url))
+          (eww-mode)
+          (eww (if (consp url) (car url) url)))))))
 
 (defun eww-html-p (content-type)
   "Return non-nil if CONTENT-TYPE designates an HTML content type.
@@ -337,16 +355,25 @@ Currently this means either text/html or application/xhtml+xml."
 			"utf-8"))))
 	 (data-buffer (current-buffer))
 	 last-coding-system-used)
-    ;; Save the https peer status.
     (with-current-buffer buffer
-      (plist-put eww-data :peer (plist-get status :peer)))
+      ;; Save the https peer status.
+      (plist-put eww-data :peer (plist-get status :peer))
+      ;; Make buffer listings more informative.
+      (setq list-buffers-directory url))
     (unwind-protect
 	(progn
 	  (cond
            ((and eww-use-external-browser-for-content-type
                  (string-match-p eww-use-external-browser-for-content-type
                                  (car content-type)))
-            (eww-browse-with-external-browser url))
+            (erase-buffer)
+            (insert "<title>Unsupported content type</title>")
+            (insert (format "<h1>Content-type %s is unsupported</h1>"
+                            (car content-type)))
+            (insert (format "<a href=%S>Direct link to the document</a>"
+                            url))
+            (goto-char (point-min))
+	    (eww-display-html charset url nil point buffer encode))
 	   ((eww-html-p (car content-type))
 	    (eww-display-html charset url nil point buffer encode))
 	   ((equal (car content-type) "application/pdf")
@@ -697,6 +724,7 @@ the like."
   (let ((map (make-sparse-keymap)))
     (define-key map "g" 'eww-reload) ;FIXME: revert-buffer-function instead!
     (define-key map "G" 'eww)
+    (define-key map [?\M-\r] 'eww-open-in-new-buffer)
     (define-key map [?\t] 'shr-next-link)
     (define-key map [?\M-\t] 'shr-previous-link)
     (define-key map [backtab] 'shr-previous-link)
@@ -731,6 +759,7 @@ the like."
 	["Exit" quit-window t]
 	["Close browser" quit-window t]
 	["Reload" eww-reload t]
+	["Follow URL in new buffer" eww-open-in-new-buffer]
 	["Back to previous page" eww-back-url
 	 :active (not (zerop (length eww-history)))]
 	["Forward to next page" eww-forward-url
@@ -788,7 +817,10 @@ the like."
 ;;;###autoload
 (defun eww-browse-url (url &optional new-window)
   (when new-window
-    (pop-to-buffer-same-window (generate-new-buffer "*eww*"))
+    (pop-to-buffer-same-window
+     (generate-new-buffer
+      (format "*eww-%s*" (url-host (url-generic-parse-url
+                                    (eww--dwim-expand-url url))))))
     (eww-mode))
   (eww url))
 
@@ -819,6 +851,8 @@ the like."
       (erase-buffer)
       (insert text)
       (goto-char (plist-get elem :point))
+      ;; Make buffer listings more informative.
+      (setq list-buffers-directory (plist-get elem :url))
       (eww-update-header-line-format))))
 
 (defun eww-next-url ()
@@ -1467,6 +1501,7 @@ Differences in #targets are ignored."
 (defun eww-download ()
   "Download URL under point to `eww-download-directory'."
   (interactive)
+  (access-file eww-download-directory "Download failed")
   (let ((url (get-text-property (point) 'shr-url)))
     (if (not url)
         (message "No URL under point")
@@ -2008,7 +2043,7 @@ Otherwise, the restored buffer will contain a prompt to do so by using
 			    (list :url (plist-get misc-data :uri))))
     (unless file-name
       (when (plist-get eww-data :url)
-	(case eww-restore-desktop
+	(cl-case eww-restore-desktop
 	  ((t auto) (eww (plist-get eww-data :url)))
 	  ((zerop (buffer-size))
 	   (let ((inhibit-read-only t))

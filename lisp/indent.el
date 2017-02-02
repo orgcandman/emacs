@@ -1,6 +1,6 @@
 ;;; indent.el --- indentation commands for Emacs  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1985, 1995, 2001-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1985, 1995, 2001-2017 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 ;; Package: emacs
@@ -487,9 +487,9 @@ line, but does not move past any whitespace that was explicitly inserted
   (if (memq (current-justification) '(center right))
       (skip-chars-forward " \t")))
 
-(defvar indent-region-function nil
+(defvar indent-region-function #'indent-region-line-by-line
   "Short cut function to indent region using `indent-according-to-mode'.
-A value of nil means really run `indent-according-to-mode' on each line.")
+Default is to really run `indent-according-to-mode' on each line.")
 
 (defun indent-region (start end &optional column)
   "Indent each nonblank line in the region.
@@ -541,44 +541,52 @@ column to indent to; if it is nil, use one of the three methods above."
     (funcall indent-region-function start end))
    ;; Else, use a default implementation that calls indent-line-function on
    ;; each line.
-   (t
-    (save-excursion
-      (setq end (copy-marker end))
-      (goto-char start)
-      (let ((pr (unless (minibufferp)
-		  (make-progress-reporter "Indenting region..." (point) end))))
-	(while (< (point) end)
-	  (or (and (bolp) (eolp))
-	      (indent-according-to-mode))
-          (forward-line 1)
-          (and pr (progress-reporter-update pr (point))))
-	(and pr (progress-reporter-done pr))
-        (move-marker end nil)))))
+   (t (indent-region-line-by-line start end)))
   ;; In most cases, reindenting modifies the buffer, but it may also
   ;; leave it unmodified, in which case we have to deactivate the mark
   ;; by hand.
   (setq deactivate-mark t))
 
-(defun indent-relative-maybe ()
-  "Indent a new line like previous nonblank line.
-If the previous nonblank line has no indent points beyond the
-column point starts at, this command does nothing.
+(defun indent-region-line-by-line (start end)
+  (save-excursion
+    (setq end (copy-marker end))
+    (goto-char start)
+    (let ((pr (unless (minibufferp)
+                (make-progress-reporter "Indenting region..." (point) end))))
+      (while (< (point) end)
+        (or (and (bolp) (eolp))
+            (indent-according-to-mode))
+        (forward-line 1)
+        (and pr (progress-reporter-update pr (point))))
+      (and pr (progress-reporter-done pr))
+      (move-marker end nil))))
+
+(define-obsolete-function-alias 'indent-relative-maybe
+  'indent-relative-first-indent-point "26.1")
+
+(defun indent-relative-first-indent-point ()
+  "Indent the current line like the previous nonblank line.
+Indent to the first indentation position in the previous nonblank
+line if that position is greater than the current column.
 
 See also `indent-relative'."
   (interactive)
   (indent-relative t))
 
-(defun indent-relative (&optional unindented-ok)
+(defun indent-relative (&optional first-only unindented-ok)
   "Space out to under next indent point in previous nonblank line.
 An indent point is a non-whitespace character following whitespace.
 The following line shows the indentation points in this line.
     ^         ^    ^     ^   ^           ^      ^  ^    ^
-If the previous nonblank line has no indent points beyond the
-column point starts at, `tab-to-tab-stop' is done instead, unless
-this command is invoked with a numeric argument, in which case it
-does nothing.
+If FIRST-ONLY is non-nil, then only the first indent point is
+considered.
 
-See also `indent-relative-maybe'."
+If the previous nonblank line has no indent points beyond the
+column point starts at, then `tab-to-tab-stop' is done, if both
+FIRST-ONLY and UNINDENTED-OK are nil, otherwise nothing is done
+in this case.
+
+See also `indent-relative-first-indent-point'."
   (interactive "P")
   (if (and abbrev-mode
 	   (eq (char-syntax (preceding-char)) ?w))
@@ -594,17 +602,18 @@ See also `indent-relative-maybe'."
 	    (if (> (current-column) start-column)
 		(backward-char 1))
 	    (or (looking-at "[ \t]")
-		unindented-ok
+		first-only
 		(skip-chars-forward "^ \t" end))
 	    (skip-chars-forward " \t" end)
 	    (or (= (point) end) (setq indent (current-column))))))
-    (if indent
-	(let ((opoint (point-marker)))
-	  (indent-to indent 0)
-	  (if (> opoint (point))
-	      (goto-char opoint))
-	  (move-marker opoint nil))
-      (tab-to-tab-stop))))
+    (cond (indent
+           (let ((opoint (point-marker)))
+             (indent-to indent 0)
+             (if (> opoint (point))
+                 (goto-char opoint))
+             (move-marker opoint nil)))
+          (unindented-ok nil)
+          (t (tab-to-tab-stop)))))
 
 (defcustom tab-stop-list nil
   "List of tab stop positions used by `tab-to-tab-stop'.

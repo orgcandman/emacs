@@ -1,10 +1,10 @@
 ;;; seq.el --- Sequence manipulation functions  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2014-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2014-2017 Free Software Foundation, Inc.
 
 ;; Author: Nicolas Petton <nicolas@petton.fr>
 ;; Keywords: sequences
-;; Version: 2.18
+;; Version: 2.19
 ;; Package: seq
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -87,7 +87,7 @@ given, and the match does not fail."
 
 ARGS can also include the `&rest' marker followed by a variable
 name to be bound to the rest of SEQUENCE."
-  (declare (indent 2) (debug t))
+  (declare (indent 2) (debug (sexp form body)))
   `(pcase-let ((,(seq--make-pcase-patterns args) ,sequence))
      ,@body))
 
@@ -178,7 +178,8 @@ Return a list of the results.
 
 \(fn FUNCTION SEQUENCES...)"
   (let ((result nil)
-        (sequences (seq-map (lambda (s) (seq-into s 'list))
+        (sequences (seq-map (lambda (s)
+                              (seq-into s 'list))
                             (cons sequence sequences))))
     (while (not (memq nil sequences))
       (push (apply function (seq-map #'car sequences)) result)
@@ -272,9 +273,9 @@ of sequence."
 TYPE can be one of the following symbols: vector, string or
 list."
   (pcase type
-    (`vector (vconcat sequence))
-    (`string (concat sequence))
-    (`list (append sequence nil))
+    (`vector (seq--into-vector sequence))
+    (`string (seq--into-string sequence))
+    (`list (seq--into-list sequence))
     (_ (error "Not a sequence type name: %S" type))))
 
 (cl-defgeneric seq-filter (pred sequence)
@@ -316,7 +317,8 @@ If SEQUENCE is empty, return INITIAL-VALUE and FUNCTION is not called."
     t))
 
 (cl-defgeneric seq-some (pred sequence)
-  "Return the first value for which if (PRED element) is non-nil for in SEQUENCE."
+  "Return non-nil if PRED is satisfied for at least one element of SEQUENCE.
+If so, return the first non-nil value returned by PRED."
   (catch 'seq--break
     (seq-doseq (elt sequence)
       (let ((result (funcall pred elt)))
@@ -476,6 +478,13 @@ SEQUENCE must be a sequence of numbers or markers."
   "Return element of SEQUENCE at the index N.
 If no element is found, return nil."
   (ignore-errors (seq-elt sequence n)))
+
+(cl-defgeneric seq-random-elt (sequence)
+  "Return a random element from SEQUENCE.
+Signal an error if SEQUENCE is empty."
+  (if (seq-empty-p sequence)
+      (error "Sequence cannot be empty")
+    (seq-elt sequence (random (seq-length sequence)))))
 
 
 ;;; Optimized implementations for lists
@@ -502,6 +511,24 @@ If no element is found, return nil."
   "Optimized implementation of `seq-empty-p' for lists."
   (null list))
 
+
+(defun seq--into-list (sequence)
+  "Concatenate the elements of SEQUENCE into a list."
+  (if (listp sequence)
+      sequence
+    (append sequence nil)))
+
+(defun seq--into-vector (sequence)
+  "Concatenate the elements of SEQUENCE into a vector."
+  (if (vectorp sequence)
+      sequence
+    (vconcat sequence)))
+
+(defun seq--into-string (sequence)
+  "Concatenate the elements of SEQUENCE into a string."
+  (if (stringp sequence)
+      sequence
+    (concat sequence)))
 
 (defun seq--activate-font-lock-keywords ()
   "Activate font-lock keywords for some symbols defined in seq."

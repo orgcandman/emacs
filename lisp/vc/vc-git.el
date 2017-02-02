@@ -1,6 +1,6 @@
 ;;; vc-git.el --- VC backend for the git version control system -*- lexical-binding: t -*-
 
-;; Copyright (C) 2006-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2006-2017 Free Software Foundation, Inc.
 
 ;; Author: Alexandre Julliard <julliard@winehq.org>
 ;; Keywords: vc tools
@@ -152,7 +152,7 @@ the staging area."
     ;; revision number to be group 1.
     "^\\(?:[*/\\| ]+ \\)?\\(?2: ([^)]+)\\)?\\(?1:[0-9a-z]+\\)..: \
 \\(?3:.*?\\)[ \t]+\\(?4:[0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}\\)"
-    ((1 'log-view-message-face)
+    ((1 'log-view-message)
      (2 'change-log-list nil lax)
      (3 'change-log-name)
      (4 'change-log-date)))
@@ -704,13 +704,10 @@ It is based on `log-edit-mode', and has Git-specific extensions.")
           ;; file, to work around the limitation that command-line
           ;; arguments must be in the system codepage, and therefore
           ;; might not support the non-ASCII characters in the log
-          ;; message.
+          ;; message.  Handle also remote files.
           (if (eq system-type 'windows-nt)
-              (if (file-remote-p file1)
-                  (let ((default-directory (file-name-directory file1)))
-                    (file-remote-p
-                     (make-nearby-temp-file "git-msg") 'localname))
-                (make-temp-file "git-msg")))))
+              (let ((default-directory (file-name-directory file1)))
+                (file-local-name (make-nearby-temp-file "git-msg"))))))
     (cl-flet ((boolean-arg-fn
                (argument)
                (lambda (value) (when (equal value "yes") (list argument)))))
@@ -795,7 +792,12 @@ If PROMPT is non-nil, prompt for the Git command to run."
 	    args        (cddr args)))
     (require 'vc-dispatcher)
     (apply 'vc-do-async-command buffer root git-program command args)
-    (with-current-buffer buffer (vc-run-delayed (vc-compilation-mode 'git)))
+    (with-current-buffer buffer
+      (vc-run-delayed
+        (vc-compilation-mode 'git)
+        (setq-local compile-command
+                    (concat git-program " " command " "
+                            (if args (mapconcat 'identity args " ") "")))))
     (vc-set-async-update buffer)))
 
 (defun vc-git-pull (prompt)
@@ -886,6 +888,11 @@ This prompts for a branch to merge from."
 
 (autoload 'vc-setup-buffer "vc-dispatcher")
 
+(defcustom vc-git-print-log-follow nil
+  "If true, follow renames in Git logs for files."
+  :type 'boolean
+  :version "26.1")
+
 (defun vc-git-print-log (files buffer &optional shortlog start-revision limit)
   "Print commit log associated with FILES into specified BUFFER.
 If SHORTLOG is non-nil, use a short format based on `vc-git-root-log-format'.
@@ -906,6 +913,12 @@ If LIMIT is non-nil, show no more than this many entries."
 	       'async files
 	       (append
 		'("log" "--no-color")
+                (when (and vc-git-print-log-follow
+                           (not (cl-some #'file-directory-p files)))
+                  ;; "--follow" on directories is broken
+                  ;; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=8756
+                  ;; https://debbugs.gnu.org/cgi/bugreport.cgi?bug=16422
+                  (list "--follow"))
 		(when shortlog
 		  `("--graph" "--decorate" "--date=short"
                     ,(format "--pretty=tformat:%s"
@@ -1016,6 +1029,8 @@ or BRANCH^ (where \"^\" can be repeated)."
       (buffer-string))))
 
 (defun vc-git-region-history (file buffer lfrom lto)
+  "Insert into BUFFER the history of FILE for lines LFROM to LTO.
+This requires git 1.8.4 or later, for the \"-L\" option of \"git log\"."
   ;; The "git log" command below interprets the line numbers as applying
   ;; to the HEAD version of the file, not to the current state of the file.
   ;; So we need to look at all the local changes and adjust lfrom/lto

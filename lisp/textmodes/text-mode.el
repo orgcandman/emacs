@@ -1,6 +1,6 @@
 ;;; text-mode.el --- text mode, and its idiosyncratic commands
 
-;; Copyright (C) 1985, 1992, 1994, 2001-2016 Free Software Foundation,
+;; Copyright (C) 1985, 1992, 1994, 2001-2017 Free Software Foundation,
 ;; Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -231,5 +231,7 @@ The argument NLINES says how many lines to center."
 	  ((< nlines 0)
 	   (setq nlines (1+ nlines))
 	   (forward-line -1)))))
+
+(provide 'text-mode)
 
 ;;; text-mode.el ends here

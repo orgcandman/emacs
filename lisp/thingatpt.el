@@ -1,6 +1,6 @@
 ;;; thingatpt.el --- get the `thing' at point  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1991-1998, 2000-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1991-1998, 2000-2017 Free Software Foundation, Inc.
 
 ;; Author: Mike Williams <mikew@gopher.dosli.govt.nz>
 ;; Maintainer: emacs-devel@gnu.org
@@ -219,22 +219,17 @@ The bounds of THING are determined by `bounds-of-thing-at-point'."
 
 (defun thing-at-point-bounds-of-list-at-point ()
   "Return the bounds of the list at point.
-[Internal function used by `bounds-of-thing-at-point'.]"
+\[Internal function used by `bounds-of-thing-at-point'.]"
   (save-excursion
-    (let ((opoint (point))
-	  (beg (ignore-errors
-		 (up-list -1)
-		 (point))))
-      (ignore-errors
-	(if beg
-	    (progn (forward-sexp)
-		   (cons beg (point)))
-	  ;; Are we are at the beginning of a top-level sexp?
-	  (forward-sexp)
-	  (let ((end (point)))
-	    (backward-sexp)
-	    (if (>= opoint (point))
-		(cons opoint end))))))))
+    (let* ((st (parse-partial-sexp (point-min) (point)))
+           (beg (or (and (eq 4 (car (syntax-after (point))))
+                         (not (nth 8 st))
+                         (point))
+                    (nth 1 st))))
+      (when beg
+        (goto-char beg)
+        (forward-sexp)
+        (cons beg (point))))))
 
 ;; Defuns
 

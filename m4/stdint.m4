@@ -1,5 +1,5 @@
-# stdint.m4 serial 47
-dnl Copyright (C) 2001-2016 Free Software Foundation, Inc.
+# stdint.m4 serial 50
+dnl Copyright (C) 2001-2017 Free Software Foundation, Inc.
 dnl This file is free software; the Free Software Foundation
 dnl gives unlimited permission to copy and/or distribute it,
 dnl with or without modifications, as long as this notice is preserved.
@@ -12,6 +12,7 @@ AC_DEFUN_ONCE([gl_STDINT_H],
   AC_PREREQ([2.59])dnl
 
   AC_REQUIRE([gl_LIMITS_H])
+  AC_REQUIRE([gt_TYPE_WINT_T])
 
   dnl Check for long long int and unsigned long long int.
   AC_REQUIRE([AC_TYPE_LONG_LONG_INT])
@@ -153,6 +154,15 @@ uintptr_t h = UINTPTR_MAX;
 #endif
 intmax_t i = INTMAX_MAX;
 uintmax_t j = UINTMAX_MAX;
+
+/* Check that SIZE_MAX has the correct type, if possible.  */
+#if 201112 <= __STDC_VERSION__
+int k = _Generic (SIZE_MAX, size_t: 0);
+#elif (2 <= __GNUC__ || defined __IBM__TYPEOF__ \
+       || (0x5110 <= __SUNPRO_C && !__STDC__))
+extern size_t k;
+extern __typeof__ (SIZE_MAX) k;
+#endif
 
 #include <limits.h> /* for CHAR_BIT */
 #define TYPE_MINIMUM(t) \
@@ -345,7 +355,7 @@ int32_t i32 = INT32_C (0x7fffffff);
     gl_STDINT_TYPE_PROPERTIES
   fi
 
-  # The substitute stdint.h needs the substitute limit.h's _GL_INTEGER_WIDTH.
+  dnl The substitute stdint.h needs the substitute limit.h's _GL_INTEGER_WIDTH.
   LIMITS_H=limits.h
   AM_CONDITIONAL([GL_GENERATE_LIMITS_H], [test -n "$LIMITS_H"])
 
@@ -519,7 +529,7 @@ AC_DEFUN([gl_STDINT_TYPE_PROPERTIES],
   dnl requirement that wint_t is "unchanged by default argument promotions".
   dnl In this case gnulib's <wchar.h> and <wctype.h> override wint_t.
   dnl Set the variable BITSIZEOF_WINT_T accordingly.
-  if test $BITSIZEOF_WINT_T -lt 32; then
+  if test $GNULIB_OVERRIDES_WINT_T = 1; then
     BITSIZEOF_WINT_T=32
   fi
 ])

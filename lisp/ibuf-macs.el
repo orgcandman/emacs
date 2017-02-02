@@ -1,6 +1,6 @@
 ;;; ibuf-macs.el --- macros for ibuffer  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2000-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2000-2017 Free Software Foundation, Inc.
 
 ;; Author: Colin Walters <walters@verbum.org>
 ;; Maintainer: John Paul Wallington <jpw@gnu.org>
@@ -302,8 +302,13 @@ bound to the current value of the filter.
 			  qualifier))
 	 (ibuffer-update nil t))
        (push (list ',name ,description
-		   #'(lambda (buf qualifier)
-		       ,@body))
+		   (lambda (buf qualifier)
+                     (condition-case nil
+                         (progn ,@body)
+                       (error (ibuffer-pop-filter)
+                              (when (eq ',name 'predicate)
+                                (error "Wrong filter predicate: %S"
+                                       qualifier))))))
 	     ibuffer-filtering-alist)
        :autoload-end)))
 

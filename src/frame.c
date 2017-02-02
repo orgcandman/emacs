@@ -1,6 +1,6 @@
 /* Generic frame functions.
 
-Copyright (C) 1993-1995, 1997, 1999-2016 Free Software Foundation, Inc.
+Copyright (C) 1993-1995, 1997, 1999-2017 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -611,7 +611,7 @@ make_frame (bool mini_p)
 {
   Lisp_Object frame;
   struct frame *f;
-  struct window *rw, *mw;
+  struct window *rw, *mw UNINIT;
   Lisp_Object root_window;
   Lisp_Object mini_window;
 
@@ -1067,6 +1067,10 @@ affects all frames on the same terminal device.  */)
 		  (t->display_info.tty->name
 		   ? build_string (t->display_info.tty->name)
 		   : Qnil));
+  /* On terminal frames the `minibuffer' frame parameter is always
+     virtually t.  Avoid that a different value in parms causes
+     complaints, see Bug#24758.  */
+  store_in_alist (&parms, Qminibuffer, Qt);
   Fmodify_frame_parameters (frame, parms);
 
   /* Make the frame face alist be frame-specific, so that each
@@ -1160,7 +1164,12 @@ do_switch_frame (Lisp_Object frame, int track, int for_deletion, Lisp_Object nor
       if (FRAMEP (xfocus))
 	{
 	  focus = FRAME_FOCUS_FRAME (XFRAME (xfocus));
-	  if (FRAMEP (focus) && XFRAME (focus) == SELECTED_FRAME ())
+	  if ((FRAMEP (focus) && XFRAME (focus) == SELECTED_FRAME ())
+	      /* Redirect frame focus also when FRAME has its minibuffer
+		 window on the selected frame (see Bug#24500).  */
+	      || (NILP (focus)
+		  && EQ (FRAME_MINIBUF_WINDOW (XFRAME (frame)),
+			 sf->selected_window)))
 	    Fredirect_frame_focus (xfocus, frame);
 	}
     }
@@ -2469,28 +2478,6 @@ store_frame_param (struct frame *f, Lisp_Object prop, Lisp_Object val)
       return;
     }
 
-  /* If PROP is a symbol which is supposed to have frame-local values,
-     and it is set up based on this frame, switch to the global
-     binding.  That way, we can create or alter the frame-local binding
-     without messing up the symbol's status.  */
-  if (SYMBOLP (prop))
-    {
-      struct Lisp_Symbol *sym = XSYMBOL (prop);
-    start:
-      switch (sym->redirect)
-	{
-	case SYMBOL_VARALIAS: sym = indirect_variable (sym); goto start;
-	case SYMBOL_PLAINVAL: case SYMBOL_FORWARDED: break;
-	case SYMBOL_LOCALIZED:
-	  { struct Lisp_Buffer_Local_Value *blv = sym->val.blv;
-	    if (blv->frame_local && blv_found (blv) && XFRAME (blv->where) == f)
-	      swap_in_global_binding (sym);
-	    break;
-	  }
-	default: emacs_abort ();
-	}
-    }
-
   /* The tty color needed to be set before the frame's parameter
      alist was updated with the new value.  This is not true any more,
      but we still do this test early on.  */
@@ -2700,19 +2687,11 @@ The meaningful parameters are acted upon, i.e. the frame is changed
 according to their new values, and are also stored in the frame's
 parameter list so that `frame-parameters' will return them.
 PARMs that are not meaningful are still stored in the frame's parameter
-list, but are otherwise ignored.
-
-The value of frame parameter FOO can also be accessed
-as a frame-local binding for the variable FOO, if you have
-enabled such bindings for that variable with `make-variable-frame-local'.
-Note that this functionality is obsolete as of Emacs 22.2, and its
-use is not recommended.  Explicitly check for a frame-parameter instead.  */)
+list, but are otherwise ignored.  */)
   (Lisp_Object frame, Lisp_Object alist)
 {
   struct frame *f = decode_live_frame (frame);
-  register Lisp_Object prop, val;
-
-  CHECK_LIST (alist);
+  Lisp_Object prop, val;
 
   /* I think this should be done with a hook.  */
 #ifdef HAVE_WINDOW_SYSTEM
@@ -3119,6 +3098,7 @@ static const struct frame_parm_table frame_parms[] =
   {"alpha",			SYMBOL_INDEX (Qalpha)},
   {"sticky",			SYMBOL_INDEX (Qsticky)},
   {"tool-bar-position",		SYMBOL_INDEX (Qtool_bar_position)},
+  {"inhibit-double-buffering",  SYMBOL_INDEX (Qinhibit_double_buffering)},
 };
 
 #ifdef HAVE_WINDOW_SYSTEM
@@ -3160,6 +3140,7 @@ x_set_frame_parameters (struct frame *f, Lisp_Object alist)
 
   for (size = 0, tail = alist; CONSP (tail); tail = XCDR (tail))
     size++;
+  CHECK_LIST_END (tail, alist);
 
   USE_SAFE_ALLOCA;
   SAFE_ALLOCA_LISP (parms, 2 * size);
@@ -5035,6 +5016,7 @@ syms_of_frame (void)
   DEFSYM (Qvertical_scroll_bars, "vertical-scroll-bars");
   DEFSYM (Qvisibility, "visibility");
   DEFSYM (Qwait_for_wm, "wait-for-wm");
+  DEFSYM (Qinhibit_double_buffering, "inhibit-double-buffering");
 
   {
     int i;
@@ -5099,7 +5081,7 @@ Setting this variable does not affect existing frames, only new ones.  */);
 	       doc: /* Default position of vertical scroll bars on this window-system.  */);
 #ifdef HAVE_WINDOW_SYSTEM
 #if defined (HAVE_NTGUI) || defined (NS_IMPL_COCOA) || (defined (USE_GTK) && defined (USE_TOOLKIT_SCROLL_BARS))
-  /* MS-Windows, Mac OS X, and GTK have scroll bars on the right by
+  /* MS-Windows, macOS, and GTK have scroll bars on the right by
      default.  */
   Vdefault_frame_scroll_bars = Qright;
 #else

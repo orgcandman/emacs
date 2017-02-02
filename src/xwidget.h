@@ -1,6 +1,6 @@
 /* Support for embedding graphical components in a buffer.
 
-Copyright (C) 2011-2016 Free Software Foundation, Inc.
+Copyright (C) 2011-2017 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -55,9 +55,6 @@ struct xwidget
   /* For offscreen widgets, unused if not osr.  */
   GtkWidget *widget_osr;
   GtkWidget *widgetwindow_osr;
-
-  /* Used if the widget (webkit) is to be wrapped in a scrolled window.  */
-  GtkWidget *widgetscrolledwindow_osr;
 
   /* Kill silently if Emacs is exited.  */
   bool_bf kill_without_query : 1;

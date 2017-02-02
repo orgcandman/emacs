@@ -32,7 +32,7 @@
 @end macro
 
 @copying
-Copyright @copyright{} 1999--2016 Free Software Foundation, Inc.
+Copyright @copyright{} 1999--2017 Free Software Foundation, Inc.
 
 @quotation
 Permission is granted to copy, distribute and/or modify this document
@@ -143,11 +143,11 @@ Configuring @value{tramp} for use
 * Inline methods::              Inline methods.
 * External methods::            External methods.
 * GVFS based methods::          GVFS based external methods.
-* Gateway methods::             Gateway methods.
 * Default Method::              Selecting a default method.
 * Default User::                Selecting a default user.
 * Default Host::                Selecting a default host.
 * Multi-hops::                  Connecting to a remote host using multiple hops.
+* Firewalls::                   Passing firewalls.
 * Customizing Methods::         Using Non-Standard Methods.
 * Customizing Completion::      Selecting config files for user/host name completion.
 * Password handling::           Reusing passwords for several connections.
@@ -406,10 +406,11 @@ April 2000 was the first time when multi-hop methods were added.  In
 July 2002, @value{tramp} unified file names with Ange-FTP@.  In July
 2004, proxy hosts replaced multi-hop methods.  Running commands on
 remote hosts was introduced in December 2005.  Support for gateways
-since April 2007.  GVFS integration started in February 2009.  Remote
-commands on Windows hosts since September 2011.  Ad-hoc multi-hop
-methods (with a changed syntax) re-enabled in November 2011.  In
-November 2012, added Juergen Hoetzel's @file{tramp-adb.el}.
+since April 2007 (and removed in December 2016).  GVFS integration
+started in February 2009.  Remote commands on Windows hosts since
+September 2011.  Ad-hoc multi-hop methods (with a changed syntax)
+re-enabled in November 2011.  In November 2012, added Juergen
+Hoetzel's @file{tramp-adb.el}.
 
 XEmacs support has been stopped in January 2016.
 
@@ -453,7 +454,6 @@ installed and loaded:
 * Inline methods::              Inline methods.
 * External methods::            External methods.
 * GVFS based methods::          GVFS based external methods.
-* Gateway methods::             Gateway methods.
 * Default Method::              Selecting a default method.
                                   Here we also try to help those who
                                   don't have the foggiest which method
@@ -461,6 +461,7 @@ installed and loaded:
 * Default User::                Selecting a default user.
 * Default Host::                Selecting a default host.
 * Multi-hops::                  Connecting to a remote host using multiple hops.
+* Firewalls::                   Passing firewalls.
 * Customizing Methods::         Using Non-Standard Methods.
 * Customizing Completion::      Selecting config files for user/host name completion.
 * Password handling::           Reusing passwords for several connections.
@@ -677,7 +678,7 @@ files smaller than @var{tramp-copy-size-limit} still use inline
 methods.
 
 @table @asis
-@item @option{rcp}---@command{rsh} and @command{rcp}
+@item @option{rcp}
 @cindex method rcp
 @cindex rcp method
 @cindex rcp (with rcp method)
@@ -690,7 +691,7 @@ access method available.
 The alternative method @option{remcp} uses the @command{remsh} and
 @command{rcp} commands.
 
-@item @option{scp}---@command{ssh} and @command{scp}
+@item @option{scp}
 @cindex method scp
 @cindex scp method
 @cindex scp (with scp method)
@@ -707,7 +708,7 @@ port numbers.  For example, @file{host#42} passes @samp{-p 42} in the
 argument list to @command{ssh}, and @samp{-P 42} in the argument list
 to @command{scp}.
 
-@item @option{rsync}---@command{ssh} and @command{rsync}
+@item @option{rsync}
 @cindex method rsync
 @cindex rsync method
 @cindex rsync (with rsync method)
@@ -722,7 +723,7 @@ is lost if the file exists only on one side of the connection.
 
 This method supports the @samp{-p} argument.
 
-@item @option{scpx}---@command{ssh} and @command{scp}
+@item @option{scpx}
 @cindex method scpx
 @cindex scpx method
 @cindex scp (with scpx method)
@@ -732,14 +733,14 @@ This method supports the @samp{-p} argument.
 in performance to @option{scp}.  @option{scpx} uses @samp{ssh -t -t
 @var{host} -l @var{user} /bin/sh} to open a connection.
 
-@option{sshx} is useful for Windows users when @command{ssh} triggers
+@option{scpx} is useful for Windows users when @command{ssh} triggers
 an error about allocating a pseudo tty.  This happens due to missing
 shell prompts that confuses @value{tramp}.
 
 This method supports the @samp{-p} argument.
 
-@item @option{pscp}---@command{plink} and @command{pscp}
-@item @option{psftp}---@command{plink} and @command{psftp}
+@item @option{pscp}
+@item @option{psftp}
 @cindex method pscp
 @cindex pscp method
 @cindex pscp (with pscp method)
@@ -761,7 +762,7 @@ session.
 
 These methods support the @samp{-P} argument.
 
-@item @option{fcp}---@command{fsh} and @command{fcp}
+@item @option{fcp}
 @cindex method fcp
 @cindex fcp method
 @cindex fsh (with fcp method)
@@ -784,7 +785,7 @@ The command used for this connection is: @samp{fsh @var{host} -l
 not useful for @value{tramp}.  @command{fsh} connects to remote host
 and @value{tramp} keeps that one connection open.
 
-@item @option{nc}---@command{telnet} and @command{nc}
+@item @option{nc}
 @cindex method nc
 @cindex nc method
 @cindex nc (with nc method)
@@ -804,7 +805,7 @@ When @value{tramp} uses @option{ftp}, it forwards requests to whatever
 ftp program is specified by Ange FTP.  This external program must be
 capable of servicing requests from @value{tramp}.
 
-@item @option{smb}---@command{smbclient}
+@item @option{smb}
 @cindex method smb
 @cindex smb method
 
@@ -933,7 +934,7 @@ D-Bus, dbus}.
 @cindex afp method
 
 This method is for connecting to remote hosts with the Apple Filing
-Protocol for accessing files on Mac OS X volumes.  @value{tramp} access
+Protocol for accessing files on macOS volumes.  @value{tramp} access
 syntax requires a leading volume (share) name, for example:
 @file{@trampfn{afp,user@@host,/volume}}.
 
@@ -995,51 +996,6 @@ this list includes @option{afp}, @option{dav}, @option{davs},
 @option{gdrive}, @option{obex}, @option{sftp} and @option{synce}.
 Other methods to include are: @option{ftp} and @option{smb}.
 @end defopt
-
-
-@node Gateway methods
-@section Gateway methods
-@cindex methods, gateway
-@cindex gateway methods
-
-Gateway methods are for proxy host declarations (@pxref{Multi-hops})
-so as to pass through firewalls and proxy servers.  They are not like
-the other methods that declare direct connections to a remote host.
-
-A gateway method always comes with a port setting.  @value{tramp}
-targets the port number with the gateway method
-@file{localhost#random_port} from where the firewall or proxy server
-is accessed.
-
-Gateway methods support user name and password declarations for
-authenticating the corresponding firewall or proxy server.  Such
-authentication can be passed through only if granted access by system
-administrators.
-
-@table @asis
-@item @option{tunnel}
-@cindex method tunnel
-@cindex tunnel method
-
-This method implements an HTTP tunnel via the @command{CONNECT}
-command (conforming to RFC 2616, 2817 specifications).  Proxy servers
-using HTTP version 1.1 or later protocol support this command.
-
-For authentication, this protocol uses only @option{Basic
-Authentication} (see RFC 2617).  When no port number is specified, this
-protocol defaults to @option{8080}.
-
-@item @option{socks}
-@cindex method socks
-@cindex socks method
-
-The @option{socks} method connects to SOCKSv5 servers (see RFC 1928)
-and supports @option{Username/Password Authentication}.
-
-The default port number for the socks server is @option{1080}, if not
-specified otherwise.
-
-@end table
 
 
 @node Default Method
@@ -1244,9 +1200,8 @@ regular expression which always matches.
 @var{proxy} is a literal @value{tramp} file name whose local name part
 is ignored, and the method and user name parts are optional.
 
-The method must be an inline or gateway method (@pxref{Inline
-methods}, @pxref{Gateway methods}).
-If @var{proxy} is @code{nil}, no additional hop is required reaching
+The method must be an inline method (@pxref{Inline methods}).  If
+@var{proxy} is @code{nil}, no additional hop is required reaching
 @var{user}@@@var{host}.
 
 For example, to pass through the host @samp{bastion.your.domain} as
@@ -1313,32 +1268,6 @@ local one, first connect via @command{ssh}, and then apply
              '((regexp-quote (system-name)) nil nil))
 @end group
 @end lisp
-
-The above configuration allows @value{tramp} connection as @samp{root}
-to remote Ubuntu hosts.
-
-@option{tramp-default-proxies-alist} is also used for passing through
-firewalls or proxy servers.
-
-For example, the local host @samp{proxy.your.domain} on port 3128
-serves as HTTP proxy to the outer world.  User has access rights to
-another proxy server on @samp{host.other.domain}.@footnote{HTTP tunnels
-are intended for secure SSL/TLS communication.  Therefore, many proxy
-servers restrict the tunnels to related target ports.  You might need
-to run your ssh server on your target host @samp{host.other.domain} on
-such a port, like 443 (https).  See
-@uref{http://savannah.gnu.org/maintenance/CvsFromBehindFirewall} for
-discussion of ethical issues.}  Then the configuration is:
-
-@lisp
-@group
-(add-to-list 'tramp-default-proxies-alist
-             '("\\`host\\.other\\.domain\\'" nil
-             "@trampfn{tunnel,proxy.your.domain#3128,}"))
-@end group
-@end lisp
-
-Gateway methods in a multiple hop chain can be declared only as the first hop.
 @end defopt
 
 Passing through hops involves dealing with restricted shells, such as
@@ -1360,6 +1289,50 @@ restricted shell:
 @end group
 @end lisp
 @end defopt
+
+
+@node Firewalls
+@section Passing firewalls
+@cindex HTTP tunnel
+@cindex proxy hosts, HTTP tunnel
+
+Sometimes, it is not possible to reach a remote host directly.  A
+firewall might be in the way, which could be passed via a proxy
+server.
+
+Both ssh and PuTTY support such proxy settings, using an HTTP tunnel
+via the @command{CONNECT} command (conforming to RFC 2616, 2817
+specifications).  Proxy servers using HTTP version 1.1 or later
+protocol support this command.
+
+@subsection Tunneling with ssh
+
+With ssh, you could use the @code{ProxyCommand} entry in the
+@file{~/.ssh/config}:
+
+@example
+@group
+Host host.other.domain
+     ProxyCommand nc -X connect -x proxy.your.domain:3128 %h %p
+@end group
+@end example
+
+@code{nc} is BSD's netcat program, which establishes HTTP tunnels. Any
+other program with such a feature could be used as well.
+
+In the example, opening @file{@trampfn{ssh,host.your.domain,}} passes
+the HTTP proxy server @samp{proxy.your.domain} on port 3128.
+
+@subsection Tunneling with PuTTY
+
+PuTTY does not need an external program, HTTP tunnel support is
+built-in.  In the PuTTY config program, create a session for
+@samp{host.your.domain}.  In the @option{Connection/Data} entry,
+select the @option{HTTP} option, and add @samp{proxy.your.domain} as
+@option{Proxy hostname}, and 3128 as @option{Port}.
+
+Opening @file{@trampfn{plinkx,host.your.domain,}} passes the HTTP
+proxy server @samp{proxy.your.domain} on port 3128.
 
 
 @node Customizing Methods
@@ -2459,7 +2432,7 @@ local @file{.emacs} file:
 
 Setting the @env{ENV} environment variable instructs some shells to
 read an initialization file.  Per default, @value{tramp} has disabled
-this.  You could overwrite this behaviour by evaluating
+this.  You could overwrite this behavior by evaluating
 
 @lisp
 @group
@@ -2886,8 +2859,21 @@ end
 @end group
 @end example
 
-When using WinSSHD on remote hosts, @value{tramp} do not recognize the
-strange prompt settings.
+When using WinSSHD on remote hosts, @value{tramp} does not recognize
+the strange prompt settings.
+
+A similar problem exist with the iTerm2 shell integration, which sends
+proprietary escape codes when starting a shell.  This can be
+suppressed by changing the respective integration snippet in your
+@file{~/.profile} like this:
+
+@example
+@group
+[ $TERM = "dumb" ] || \
+test -e "$@{HOME@}/.iterm2_shell_integration.bash" && \
+source "$@{HOME@}/.iterm2_shell_integration.bash"
+@end group
+@end example
 
 @item
 Echoed characters after login
@@ -3605,14 +3591,12 @@ have to be specifically enabled as shown in this code:
 (dolist (elt (all-completions "tramp-" obarray 'functionp))
   (trace-function-background (intern elt)))
 (untrace-function 'tramp-read-passwd)
-(untrace-function 'tramp-gw-basic-authentication)
 @end group
 @end lisp
 
 The buffer @file{*trace-output*} contains the output from the function
-call traces.  Disable @code{tramp-read-passwd} and
-@code{tramp-gw-basic-authentication} to stop password strings from
-being written to @file{*trace-output*}.
+call traces.  Disable @code{tramp-read-passwd} to stop password
+strings from being written to @file{*trace-output*}.
 
 
 @node GNU Free Documentation License

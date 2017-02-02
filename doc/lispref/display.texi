@@ -1,6 +1,6 @@
 @c -*- mode: texinfo; coding: utf-8 -*-
 @c This is part of the GNU Emacs Lisp Reference Manual.
-@c Copyright (C) 1990-1995, 1998-2016 Free Software Foundation, Inc.
+@c Copyright (C) 1990-1995, 1998-2017 Free Software Foundation, Inc.
 @c See the file elisp.texi for copying conditions.
 @node Display
 @chapter Emacs Display
@@ -2548,7 +2548,7 @@ modifying the attributes of a named face.
 This function returns the value of the @var{attribute} attribute for
 @var{face} on @var{frame}.
 
-If @var{frame} is @code{nil}, that means the selected frame
+If @var{frame} is omitted or @code{nil}, that means the selected frame
 (@pxref{Input Focus}).  If @var{frame} is @code{t}, this function
 returns the value of the specified attribute for newly-created frames
 (this is normally @code{unspecified}, unless you have specified some
@@ -2644,8 +2644,8 @@ created frames.
 
   The following commands and functions mostly provide compatibility
 with old versions of Emacs.  They work by calling
-@code{set-face-attribute}.  Values of @code{t} and @code{nil} for
-their @var{frame} argument are handled just like
+@code{set-face-attribute}.  Values of @code{t} and @code{nil} (or
+omitted) for their @var{frame} argument are handled just like
 @code{set-face-attribute} and @code{face-attribute}.  The commands
 read their arguments using the minibuffer, if called interactively.
 
@@ -2714,7 +2714,8 @@ name used for @var{character}.
 @defun face-foreground face &optional frame inherit
 @defunx face-background face &optional frame inherit
 These functions return the foreground color (or background color,
-respectively) of face @var{face}, as a string.
+respectively) of face @var{face}, as a string.  If the color is
+unspecified, they return @code{nil}.
 @end defun
 
 @defun face-stipple face &optional frame inherit
@@ -4178,12 +4179,12 @@ bar.)  @var{horizontal-type} is either @code{bottom} or @code{nil}
 (which means no horizontal scroll bar).
 @end defun
 
-@defun frame-scroll-bar-width &optional Lisp_Object &optional frame
+@defun frame-scroll-bar-width &optional frame
 This function returns the width of vertical scroll bars of @var{frame}
 in pixels.
 @end defun
 
-@defun frame-scroll-bar-height &optional Lisp_Object &optional frame
+@defun frame-scroll-bar-height &optional frame
 This function returns the height of horizontal scroll bars of
 @var{frame} in pixels.
 @end defun
@@ -4778,7 +4779,6 @@ displayed (@pxref{Display Feature Testing}).
 * Image Descriptors::   How to specify an image for use in @code{:display}.
 * XBM Images::          Special features for XBM format.
 * XPM Images::          Special features for XPM format.
-* PostScript Images::   Special features for PostScript format.
 * ImageMagick Images::  Special features available through ImageMagick.
 * SVG Images::          Creating and manipulating SVG images.
 * Other Image Types::   Various other formats are supported.
@@ -4803,12 +4803,12 @@ to modify the set of known names for these dynamic libraries.
   Supported image formats (and the required support libraries) include
 PBM and XBM (which do not depend on support libraries and are always
 available), XPM (@code{libXpm}), GIF (@code{libgif} or
-@code{libungif}), PostScript (@code{gs}), JPEG (@code{libjpeg}), TIFF
+@code{libungif}), JPEG (@code{libjpeg}), TIFF
 (@code{libtiff}), PNG (@code{libpng}), and SVG (@code{librsvg}).
 
   Each of these image formats is associated with an @dfn{image type
 symbol}.  The symbols for the above formats are, respectively,
-@code{pbm}, @code{xbm}, @code{xpm}, @code{gif}, @code{postscript},
+@code{pbm}, @code{xbm}, @code{xpm}, @code{gif},
 @code{jpeg}, @code{tiff}, @code{png}, and @code{svg}.
 
   Furthermore, if you build Emacs with ImageMagick
@@ -5119,33 +5119,6 @@ The value, @var{symbols}, should be an alist whose elements have the
 form @code{(@var{name} . @var{color})}.  In each element, @var{name} is
 the name of a color as it appears in the image file, and @var{color}
 specifies the actual color to use for displaying that name.
-@end table
-
-@node PostScript Images
-@subsection PostScript Images
-@cindex postscript images
-
-  To use PostScript for an image, specify image type @code{postscript}.
-This works only if you have Ghostscript installed.  You must always use
-these three properties:
-
-@table @code
-@item :pt-width @var{width}
-The value, @var{width}, specifies the width of the image measured in
-points (1/72 inch).  @var{width} must be an integer.
-
-@item :pt-height @var{height}
-The value, @var{height}, specifies the height of the image in points
-(1/72 inch).  @var{height} must be an integer.
-
-@item :bounding-box @var{box}
-The value, @var{box}, must be a list or vector of four integers, which
-specifying the bounding box of the PostScript image, analogous to the
-@samp{BoundingBox} comment found in PostScript files.
-
-@example
-%%BoundingBox: 22 171 567 738
-@end example
 @end table
 
 @node ImageMagick Images
@@ -7155,7 +7128,7 @@ Emacs is displaying the frame using X.
 Emacs is displaying the frame using native MS-Windows GUI.
 @item ns
 Emacs is displaying the frame using the Nextstep interface (used on
-GNUstep and Mac OS X).
+GNUstep and macOS).
 @item pc
 Emacs is displaying the frame using MS-DOS direct screen writes.
 @item nil
@@ -7166,7 +7139,7 @@ Emacs is displaying the frame on a character-based terminal.
 @defvar initial-window-system
 This variable holds the value of @code{window-system} used for the
 first frame created by Emacs during startup.  (When Emacs is invoked
-with the @option{--daemon} option, it does not create any initial
+as a daemon, it does not create any initial
 frames, so @code{initial-window-system} is @code{nil}, except on
 MS-Windows, where it is still @code{w32}.  @xref{Initial Options,
 daemon,, emacs, The GNU Emacs Manual}.)

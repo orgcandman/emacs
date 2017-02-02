@@ -1,6 +1,6 @@
 ;;; widget.el --- a library of user interface components
 ;;
-;; Copyright (C) 1996-1997, 2001-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1996-1997, 2001-2017 Free Software Foundation, Inc.
 ;;
 ;; Author: Per Abrahamsen <abraham@dina.kvl.dk>
 ;; Keywords: help, extensions, faces, hypermedia
@@ -91,7 +91,7 @@ The third argument DOC is a documentation string for the widget."
   name)
 
 ;; This is used by external widget code (in W3, at least).
-(define-obsolete-function-alias 'widget-plist-member #'plist-member "25.2")
+(define-obsolete-function-alias 'widget-plist-member #'plist-member "26.1")
 
 ;;; The End.
 

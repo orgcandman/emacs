@@ -1,5 +1,5 @@
 /* Declarations for `malloc' and friends.
-   Copyright (C) 1990-1993, 1995-1996, 1999, 2002-2007, 2013-2016 Free
+   Copyright (C) 1990-1993, 1995-1996, 1999, 2002-2007, 2013-2017 Free
    Software Foundation, Inc.
 		  Written May 1989 by Mike Haertel.
 
@@ -26,6 +26,7 @@ License along with this library.  If not, see <http://www.gnu.org/licenses/>.
 #endif
 
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 #include <limits.h>
 #include <stdint.h>
@@ -33,10 +34,6 @@ License along with this library.  If not, see <http://www.gnu.org/licenses/>.
 
 #ifdef USE_PTHREAD
 #include <pthread.h>
-#endif
-
-#ifdef WINDOWSNT
-#include <w32heap.h>	/* for sbrk */
 #endif
 
 #ifdef emacs

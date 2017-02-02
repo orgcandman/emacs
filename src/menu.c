@@ -1,6 +1,6 @@
 /* Platform-independent code for terminal communications.
 
-Copyright (C) 1986, 1988, 1993-1994, 1996, 1999-2016 Free Software
+Copyright (C) 1986, 1988, 1993-1994, 1996, 1999-2017 Free Software
 Foundation, Inc.
 
 This file is part of GNU Emacs.
@@ -1540,7 +1540,7 @@ for instance using the window manager, then this produces a quit and
 
   /* Note that xw_popup_dialog can call menu code, so
      Vmenu_updating_frame should be set (Bug#17891).  */
-  eassert (f && FRAME_LIVE_P (f));
+  eassume (f && FRAME_LIVE_P (f));
   XSETFRAME (Vmenu_updating_frame, f);
 
   /* Force a redisplay before showing the dialog.  If a frame is created

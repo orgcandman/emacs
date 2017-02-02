@@ -1,6 +1,6 @@
 ;;; time-date.el --- Date and time handling functions
 
-;; Copyright (C) 1998-2016 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2017 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;;	Masanobu Umeda <umerin@mse.kyutech.ac.jp>
@@ -191,7 +191,7 @@ TIME should be either a time value or a date-time string."
   (time-subtract nil time))
 
 ;;;###autoload
-(define-obsolete-function-alias 'subtract-time 'time-subtract "25.2")
+(define-obsolete-function-alias 'subtract-time 'time-subtract "26.1")
 
 ;;;###autoload
 (defun date-to-day (date)

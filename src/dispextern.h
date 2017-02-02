@@ -1,6 +1,6 @@
 /* Interface definitions for display code.
 
-Copyright (C) 1985, 1993-1994, 1997-2016 Free Software Foundation, Inc.
+Copyright (C) 1985, 1993-1994, 1997-2017 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -1276,7 +1276,6 @@ struct glyph_string
 
   /* X display and window for convenience.  */
   Display *display;
-  Window window;
 
   /* The glyph row for which this string was built.  It determines the
      y-origin and height of the string.  */
@@ -3356,6 +3355,8 @@ void x_cr_init_fringe (struct redisplay_interface *);
 #endif
 
 extern unsigned row_hash (struct glyph_row *);
+
+extern bool buffer_flipping_blocked_p (void);
 
 /* Defined in image.c */
 

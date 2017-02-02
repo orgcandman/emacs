@@ -1,5 +1,5 @@
 /* Execution of byte code produced by bytecomp.el.
-   Copyright (C) 1985-1988, 1993, 2000-2016 Free Software Foundation,
+   Copyright (C) 1985-1988, 1993, 2000-2017 Free Software Foundation,
    Inc.
 
 This file is part of GNU Emacs.
@@ -46,7 +46,7 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
    indirect threaded, using GCC's computed goto extension.  This code,
    as currently implemented, is incompatible with BYTE_CODE_SAFE and
    BYTE_CODE_METER.  */
-#if (defined __GNUC__ && !defined __STRICT_ANSI__ \
+#if (defined __GNUC__ && !defined __STRICT_ANSI__ && !defined __CHKP__ \
      && !BYTE_CODE_SAFE && !defined BYTE_CODE_METER)
 #define BYTE_CODE_THREADED
 #endif
@@ -569,10 +569,10 @@ exec_byte_code (Lisp_Object bytestr, Lisp_Object vector, Lisp_Object maxdepth,
 	    if (SYMBOLP (sym)
 		&& !EQ (val, Qunbound)
 		&& !XSYMBOL (sym)->redirect
-		&& !SYMBOL_CONSTANT_P (sym))
+		&& !SYMBOL_TRAPPED_WRITE_P (sym))
 	      SET_SYMBOL_VAL (XSYMBOL (sym), val);
 	    else
-	      set_internal (sym, val, Qnil, false);
+              set_internal (sym, val, Qnil, SET_INTERNAL_SET);
 	  }
 	  NEXT;
 
@@ -679,7 +679,7 @@ exec_byte_code (Lisp_Object bytestr, Lisp_Object vector, Lisp_Object maxdepth,
 	    {
 	      quitcounter = 1;
 	      maybe_gc ();
-	      QUIT;
+	      maybe_quit ();
 	    }
 	  pc += op;
 	  NEXT;
@@ -809,8 +809,7 @@ exec_byte_code (Lisp_Object bytestr, Lisp_Object vector, Lisp_Object maxdepth,
 	  {
 	    Lisp_Object handler = POP;
 	    /* Support for a function here is new in 24.4.  */
-	    record_unwind_protect ((NILP (Ffunctionp (handler))
-				    ? unwind_body : bcall0),
+	    record_unwind_protect (FUNCTIONP (handler) ? bcall0 : prog_ignore,
 				   handler);
 	    NEXT;
 	  }
@@ -842,11 +841,11 @@ exec_byte_code (Lisp_Object bytestr, Lisp_Object vector, Lisp_Object maxdepth,
 	  {
 	    Lisp_Object v2 = POP, v1 = TOP;
 	    CHECK_NUMBER (v1);
-	    EMACS_INT n = XINT (v1);
-	    immediate_quit = true;
-	    while (--n >= 0 && CONSP (v2))
-	      v2 = XCDR (v2);
-	    immediate_quit = false;
+	    for (EMACS_INT n = XINT (v1); 0 < n && CONSP (v2); n--)
+	      {
+		v2 = XCDR (v2);
+		rarely_quit (n);
+	      }
 	    TOP = CAR (v2);
 	    NEXT;
 	  }
@@ -1239,9 +1238,9 @@ exec_byte_code (Lisp_Object bytestr, Lisp_Object vector, Lisp_Object maxdepth,
 
 	CASE (Bdowncase):
 	  TOP = Fdowncase (TOP);
-	NEXT;
+	  NEXT;
 
-      CASE (Bstringeqlsign):
+	CASE (Bstringeqlsign):
 	  {
 	    Lisp_Object v1 = POP;
 	    TOP = Fstring_equal (TOP, v1);
@@ -1276,11 +1275,11 @@ exec_byte_code (Lisp_Object bytestr, Lisp_Object vector, Lisp_Object maxdepth,
 		/* Exchange args and then do nth.  */
 		Lisp_Object v2 = POP, v1 = TOP;
 		CHECK_NUMBER (v2);
-		EMACS_INT n = XINT (v2);
-		immediate_quit = true;
-		while (--n >= 0 && CONSP (v1))
-		  v1 = XCDR (v1);
-		immediate_quit = false;
+		for (EMACS_INT n = XINT (v2); 0 < n && CONSP (v1); n--)
+		  {
+		    v1 = XCDR (v1);
+		    rarely_quit (n);
+		  }
 		TOP = CAR (v1);
 	      }
 	    else

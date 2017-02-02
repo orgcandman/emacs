@@ -1,6 +1,6 @@
 ;;; url-vars.el --- Variables for Uniform Resource Locator tool
 
-;; Copyright (C) 1996-1999, 2001, 2004-2016 Free Software Foundation,
+;; Copyright (C) 1996-1999, 2001, 2004-2017 Free Software Foundation,
 ;; Inc.
 
 ;; Keywords: comm, data, processes, hypermedia
@@ -373,7 +373,7 @@ Should be one of:
     (const :tag "No User-Agent at all" :value nil)
     (const :tag "An string auto-generated according to `url-privacy-level'"
            :value default))
-  :version "25.2"
+  :version "26.1"
   :group 'url)
 
 (defvar url-setup-done nil "Has setup configuration been done?")

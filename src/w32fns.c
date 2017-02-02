@@ -1,6 +1,6 @@
 /* Graphical user interface functions for the Microsoft Windows API.
 
-Copyright (C) 1989, 1992-2016 Free Software Foundation, Inc.
+Copyright (C) 1989, 1992-2017 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -778,7 +778,7 @@ w32_color_map_lookup (const char *colorname)
 	  break;
 	}
 
-      QUIT;
+      maybe_quit ();
     }
 
   unblock_input ();
@@ -3166,18 +3166,9 @@ signal_user_input (void)
   if (!NILP (Vthrow_on_input))
     {
       Vquit_flag = Vthrow_on_input;
-      /* Doing a QUIT from this thread is a bad idea, since this
+      /* Calling maybe_quit from this thread is a bad idea, since this
 	 unwinds the stack of the Lisp thread, and the Windows runtime
-	 rightfully barfs.  Disabled.  */
-#if 0
-      /* If we're inside a function that wants immediate quits,
-	 do it now.  */
-      if (immediate_quit && NILP (Vinhibit_quit))
-	{
-	  immediate_quit = 0;
-	  QUIT;
-	}
-#endif
+	 rightfully barfs.  */
     }
 }
 
@@ -7328,7 +7319,7 @@ value of DIR as in previous invocations; this is standard Windows behavior.  */)
   } new_file_details_w;
 
 #ifdef NTGUI_UNICODE
-  wchar_t filename_buf_w[32*1024 + 1]; // NT kernel maximum
+  wchar_t filename_buf_w[32*1024 + 1]; /* NT kernel maximum */
   OPENFILENAMEW * file_details_w = &new_file_details_w.details;
   const int use_unicode = 1;
 #else /* not NTGUI_UNICODE */
@@ -9757,6 +9748,7 @@ frame_parm_handler w32_frame_parm_handlers[] =
   x_set_alpha,
   0, /* x_set_sticky */
   0, /* x_set_tool_bar_position */
+  0, /* x_set_inhibit_double_buffering */
 };
 
 void
@@ -9899,7 +9891,8 @@ Set to nil to handle Caps Lock as the `capslock' key.  */);
 	       doc: /* Modifier to use for the Scroll Lock ON state.
 The value can be hyper, super, meta, alt, control or shift for the
 respective modifier, or nil to handle Scroll Lock as the `scroll' key.
-Any other value will cause the Scroll Lock key to be ignored.  */);
+Any other value will cause the Scroll Lock key to be ignored by Emacs,
+and it will have the same effect as in other applications.  */);
   Vw32_scroll_lock_modifier = Qnil;
 
   DEFVAR_LISP ("w32-lwindow-modifier",

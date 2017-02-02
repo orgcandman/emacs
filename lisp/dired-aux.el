@@ -1,6 +1,6 @@
 ;;; dired-aux.el --- less commonly used parts of dired
 
-;; Copyright (C) 1985-1986, 1992, 1994, 1998, 2000-2016 Free Software
+;; Copyright (C) 1985-1986, 1992, 1994, 1998, 2000-2017 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Sebastian Kremer <sk@thp.uni-koeln.de>.
@@ -987,6 +987,8 @@ corresponding command.
 Within CMD, %i denotes the input file(s), and %o denotes the
 output file. %i path(s) are relative, while %o is absolute.")
 
+(declare-function format-spec "format-spec.el" (format specification))
+
 ;;;###autoload
 (defun dired-do-compress-to ()
   "Compress selected files and directories to an archive.
@@ -1012,11 +1014,13 @@ and `dired-compress-files-alist'."
           (t
            (when (zerop
                   (dired-shell-command
-                   (replace-regexp-in-string
-                    "%o" out-file
-                    (replace-regexp-in-string
-                     "%i" (mapconcat #'file-name-nondirectory in-files " ")
-                     (cdr rule)))))
+                   (format-spec (cdr rule)
+                                `((?\o . ,(shell-quote-argument out-file))
+                                  (?\i . ,(mapconcat
+                                           (lambda (file-desc)
+                                             (shell-quote-argument (file-name-nondirectory
+                                                                    file-desc)))
+                                           in-files " "))))))
              (message "Compressed %d file(s) to %s"
                       (length in-files)
                       (file-name-nondirectory out-file)))))))
@@ -1799,13 +1803,14 @@ Optional arg HOW-TO determines how to treat the target.
 		     (concat (if dired-one-file op1 operation) " %s to: ")
 		     target-dir op-symbol arg rfn-list default))))
 	 (into-dir (cond ((null how-to)
-			  ;; Allow DOS/Windows users to change the letter
-			  ;; case of a directory.  If we don't test these
-			  ;; conditions up front, file-directory-p below
-			  ;; will return t because the filesystem is
-			  ;; case-insensitive, and Emacs will try to move
+			  ;; Allow users to change the letter case of
+			  ;; a directory on a case-insensitive
+			  ;; filesystem.  If we don't test these
+			  ;; conditions up front, file-directory-p
+			  ;; below will return t on a case-insensitive
+			  ;; filesystem, and Emacs will try to move
 			  ;; foo -> foo/foo, which fails.
-			  (if (and (memq system-type '(ms-dos windows-nt cygwin))
+			  (if (and (file-name-case-insensitive-p (car fn-list))
 				   (eq op-symbol 'move)
 				   dired-one-file
 				   (string= (downcase

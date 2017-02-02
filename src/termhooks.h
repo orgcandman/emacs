@@ -1,6 +1,6 @@
 /* Parameters and display hooks for terminal devices.
 
-Copyright (C) 1985-1986, 1993-1994, 2001-2016 Free Software Foundation,
+Copyright (C) 1985-1986, 1993-1994, 2001-2017 Free Software Foundation,
 Inc.
 
 This file is part of GNU Emacs.
@@ -631,6 +631,11 @@ struct terminal
   /* Called when a frame's display becomes entirely up to date.  */
   void (*frame_up_to_date_hook) (struct frame *);
 
+  /* Called when buffer flipping becomes unblocked after having
+     previously been blocked.  Redisplay always blocks buffer flips
+     while it runs.  */
+  void (*buffer_flipping_unblocked_hook) (struct frame *);
+
 
   /* Called to delete the device-specific portions of a frame that is
      on this terminal device. */
@@ -648,6 +653,19 @@ struct terminal
      recursion is prevented.  */
   void (*delete_terminal_hook) (struct terminal *);
 };
+
+INLINE bool
+TERMINALP (Lisp_Object a)
+{
+  return PSEUDOVECTORP (a, PVEC_TERMINAL);
+}
+
+INLINE struct terminal *
+XTERMINAL (Lisp_Object a)
+{
+  eassert (TERMINALP (a));
+  return XUNTAG (a, Lisp_Vectorlike);
+}
 
 /* Most code should use these functions to set Lisp fields in struct
    terminal.  */

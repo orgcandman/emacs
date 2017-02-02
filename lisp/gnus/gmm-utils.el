@@ -1,6 +1,6 @@
 ;;; gmm-utils.el --- Utility functions for Gnus, Message and MML
 
-;; Copyright (C) 2006-2016 Free Software Foundation, Inc.
+;; Copyright (C) 2006-2017 Free Software Foundation, Inc.
 
 ;; Author: Reiner Steib <reiner.steib@gmx.de>
 ;; Keywords: news
@@ -257,7 +257,7 @@ If mode is nil, use `major-mode' of the current buffer."
 		 (match-string 1 mode))))))
 
 (define-obsolete-function-alias 'gmm-format-time-string 'format-time-string
-  "25.2")
+  "26.1")
 
 (provide 'gmm-utils)
 
