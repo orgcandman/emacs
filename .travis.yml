@@ -37,12 +37,12 @@ addons:
      - librsvg2-dev
      - libotf-dev
      - libxml2-dev
-     - libatk-dev
-     - libcairo-dev
+     - libatk1.0-dev
+     - libcairo2-dev
 
 script:
    - ./autogen.sh
-   - ./configure --prefix=/tmp/emacs-prefix
+   - ./configure --prefix=/tmp/emacs-prefix --with-gnutls=ifavailable
    - make bootstrap
    - make install
    - make check
