@@ -1,6 +1,6 @@
 ;;; w32-win.el --- parse switches controlling interface with W32 window system -*- lexical-binding: t -*-
 
-;; Copyright (C) 1993-1994, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1993-1994, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Kevin Gallo
 ;; Keywords: terminals
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -66,7 +66,7 @@
 ;; ../startup.el.
 
 ;; (if (not (eq window-system 'w32))
-;;     (error "%s: Loading w32-win.el but not compiled for w32" (invocation-name)))
+;;     (error "%s: Loading w32-win.el but not compiled for w32" invocation-name))
 
 (eval-when-compile (require 'cl-lib))
 (require 'frame)
@@ -170,6 +170,15 @@ the last file dropped is selected."
 ;; new layout/language selected by the user.
 (global-set-key [language-change] 'ignore)
 
+;; Some Windows applications send the 'noname' (VK_NONAME) pseudo-key
+;; to prevent Windows from sleeping.  We want to ignore these key
+;; events, to avoid annoying users by ringing the bell and announcing
+;; that the key is not bound.
+(global-set-key [noname]   'ignore)
+(global-set-key [C-noname] 'ignore)
+(global-set-key [M-noname] 'ignore)
+
+
 (defvar x-resource-name)
 
 
@@ -270,12 +279,15 @@ See the documentation of `create-fontset-from-fontset-spec' for the format.")
        '(svg "librsvg-2-2.dll")
        '(gdk-pixbuf "libgdk_pixbuf-2.0-0.dll")
        '(glib "libglib-2.0-0.dll")
+       '(gio "libgio-2.0-0.dll")
        '(gobject "libgobject-2.0-0.dll")
        (if (>= libgnutls-version 30400)
 	   '(gnutls "libgnutls-30.dll")
 	 '(gnutls "libgnutls-28.dll" "libgnutls-26.dll"))
        '(libxml2 "libxml2-2.dll" "libxml2.dll")
-       '(zlib "zlib1.dll" "libz-1.dll")))
+       '(zlib "zlib1.dll" "libz-1.dll")
+       '(lcms2 "liblcms2-2.dll")
+       '(json "libjansson-4.dll")))
 
 ;;; multi-tty support
 (defvar w32-initialized nil
@@ -308,7 +320,7 @@ See the documentation of `create-fontset-from-fontset-spec' for the format.")
       (setq x-resource-name
             ;; Change any . or * characters in x-resource-name to hyphens,
             ;; so as not to choke when we use it in X resource queries.
-            (replace-regexp-in-string "[.*]" "-" (invocation-name))))
+            (replace-regexp-in-string "[.*]" "-" invocation-name)))
 
   (x-open-connection "w32" x-command-line-resources
                      ;; Exit with a fatal error if this fails and we
@@ -390,13 +402,17 @@ See the documentation of `create-fontset-from-fontset-spec' for the format.")
 
 (declare-function w32-set-clipboard-data "w32select.c"
 		  (string &optional ignored))
-(declare-function w32-get-clipboard-data "w32select.c")
-(declare-function w32-selection-exists-p "w32select.c")
+(declare-function w32-get-clipboard-data "w32select.c"
+                  (&optional ignored))
+(declare-function w32-selection-exists-p "w32select.c"
+                  (&optional selection terminal))
+(declare-function w32-selection-targets "w32select.c"
+                  (&optional selection terminal))
 
 ;;; Fix interface to (X-specific) mouse.el
 (defun w32--set-selection (type value)
   (if (eq type 'CLIPBOARD)
-      (w32-set-clipboard-data value)
+      (w32-set-clipboard-data (replace-regexp-in-string "\0" "\\0" value t t))
     (put 'x-selections (or type 'PRIMARY) value)))
 
 (defun w32--get-selection  (&optional type data-type)

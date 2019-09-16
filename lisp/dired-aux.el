@@ -1,6 +1,6 @@
-;;; dired-aux.el --- less commonly used parts of dired
+;;; dired-aux.el --- less commonly used parts of dired -*- lexical-binding: t -*-
 
-;; Copyright (C) 1985-1986, 1992, 1994, 1998, 2000-2017 Free Software
+;; Copyright (C) 1985-1986, 1992, 1994, 1998, 2000-2019 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Sebastian Kremer <sk@thp.uni-koeln.de>.
@@ -21,7 +21,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -51,6 +51,33 @@ into this list; they also should call `dired-log' to log the errors.")
 
 (defconst dired-star-subst-regexp "\\(^\\|[ \t]\\)\\*\\([ \t]\\|$\\)")
 (defconst dired-quark-subst-regexp "\\(^\\|[ \t]\\)\\?\\([ \t]\\|$\\)")
+(make-obsolete-variable 'dired-star-subst-regexp nil "26.1")
+(make-obsolete-variable 'dired-quark-subst-regexp nil "26.1")
+
+(defun dired-isolated-string-re (string)
+  "Return a regexp to match STRING isolated.
+Isolated means that STRING is surrounded by spaces or at the beginning/end
+of a string followed/prefixed with an space.
+The regexp capture the preceding blank, STRING and the following blank as
+the groups 1, 2 and 3 respectively."
+  (format "\\(\\`\\|[ \t]\\)\\(%s\\)\\([ \t]\\|\\'\\)" string))
+
+(defun dired--star-or-qmark-p (string match &optional keep)
+  "Return non-nil if STRING contains isolated MATCH or `\\=`?\\=`'.
+MATCH should be the strings \"?\", `\\=`?\\=`', \"*\" or nil.  The latter
+means STRING contains either \"?\" or `\\=`?\\=`' or \"*\".
+If optional arg KEEP is non-nil, then preserve the match data.  Otherwise,
+this function changes it and saves MATCH as the second match group.
+
+Isolated means that MATCH is surrounded by spaces or at the beginning/end
+of STRING followed/prefixed with an space.  A match to `\\=`?\\=`',
+isolated or not, is also valid."
+  (let ((regexps (list (dired-isolated-string-re (if match (regexp-quote match) "[*?]")))))
+    (when (or (null match) (equal match "?"))
+      (setq regexps (append (list "\\(\\)\\(`\\?`\\)\\(\\)") regexps)))
+    (cl-some (lambda (x)
+               (funcall (if keep #'string-match-p #'string-match) x string))
+             regexps)))
 
 ;;;###autoload
 (defun dired-diff (file &optional switches)
@@ -121,7 +148,7 @@ the string of command switches used as the third argument of `diff'."
 	  (read-string "Options for diff: "
 		       (if (stringp diff-switches)
 			   diff-switches
-			 (mapconcat 'identity diff-switches " ")))))))
+			 (mapconcat #'identity diff-switches " ")))))))
   (let ((current (dired-get-filename t)))
     (when (or (equal (expand-file-name file)
 		     (expand-file-name current))
@@ -146,7 +173,7 @@ With prefix arg, prompt for argument SWITCHES which is options for `diff'."
 	(list (read-string "Options for diff: "
 			   (if (stringp diff-switches)
 			       diff-switches
-			     (mapconcat 'identity diff-switches " "))))
+			     (mapconcat #'identity diff-switches " "))))
       nil))
   (diff-backup (dired-get-filename) switches))
 
@@ -173,9 +200,12 @@ Examples of PREDICATE:
 
     (> mtime1 mtime2) - mark newer files
     (not (= size1 size2)) - mark files with different sizes
-    (not (string= (nth 8 fa1) (nth 8 fa2))) - mark files with different modes
-    (not (and (= (nth 2 fa1) (nth 2 fa2))   - mark files with different UID
-              (= (nth 3 fa1) (nth 3 fa2))))   and GID."
+    (not (string= (file-attribute-modes fa1)  - mark files with different modes
+                  (file-attribute-modes fa2)))
+    (not (and (= (file-attribute-user-id fa1) - mark files with different UID
+                 (file-attribute-user-id fa2))
+              (= (file-attribute-group-id fa1) - and GID.
+                 (file-attribute-group-id fa2))))"
   (interactive
    (list
     (let* ((target-dir (dired-dwim-target-directory))
@@ -197,12 +227,12 @@ Examples of PREDICATE:
     (setq file-alist2 (delq (assoc "." file-alist2) file-alist2))
     (setq file-alist2 (delq (assoc ".." file-alist2) file-alist2))
     (setq file-list1 (mapcar
-		      'cadr
+		      #'cadr
                       (dired-file-set-difference
                        file-alist1 file-alist2
 		       predicate))
 	  file-list2 (mapcar
-		      'cadr
+		      #'cadr
                       (dired-file-set-difference
                        file-alist2 file-alist1
 		       predicate)))
@@ -216,9 +246,11 @@ Examples of PREDICATE:
      (lambda ()
        (dired-mark-if
         (member (dired-get-filename nil t) file-list2) nil)))
-    (message "Marked in dir1: %s files, in dir2: %s files"
-             (length file-list1)
-             (length file-list2))))
+    (message "Marked in dir1: %s, in dir2: %s"
+             (format-message (ngettext "%d file" "%d files" (length file-list1))
+                             (length file-list1))
+             (format-message (ngettext "%d file" "%d files" (length file-list2))
+                             (length file-list2)))))
 
 (defun dired-file-set-difference (list1 list2 predicate)
   "Combine LIST1 and LIST2 using a set-difference operation.
@@ -242,12 +274,12 @@ condition.  Two file items are considered to match if they are equal
                                  (eval predicate
                                        `((fa1 . ,fa1)
                                          (fa2 . ,fa2)
-                                         (size1 . ,(nth 7 fa1))
-                                         (size2 . ,(nth 7 fa2))
+                                         (size1 . ,(file-attribute-size fa1))
+                                         (size2 . ,(file-attribute-size fa2))
                                          (mtime1
-                                          . ,(float-time (nth 5 fa1)))
+                                          . ,(float-time (file-attribute-modification-time fa1)))
                                          (mtime2
-                                          . ,(float-time (nth 5 fa2)))
+                                          . ,(float-time (file-attribute-modification-time fa2)))
                                          )))))
 		    (setq list (cdr list)))
 		  list)
@@ -274,18 +306,21 @@ List has a form of (file-name full-file-name (attribute-list))."
   ;; PROGRAM is the program used to change the attribute.
   ;; OP-SYMBOL is the type of operation (for use in `dired-mark-pop-up').
   ;; ARG describes which files to use, as in `dired-get-marked-files'.
-  (let* ((files (dired-get-marked-files t arg))
+  (let* ((files (dired-get-marked-files t arg nil nil t))
 	 ;; The source of default file attributes is the file at point.
 	 (default-file (dired-get-filename t t))
 	 (default (when default-file
 		    (cond ((eq op-symbol 'touch)
 			   (format-time-string
 			    "%Y%m%d%H%M.%S"
-			    (nth 5 (file-attributes default-file))))
+			    (file-attribute-modification-time
+			     (file-attributes default-file))))
 			  ((eq op-symbol 'chown)
-			   (nth 2 (file-attributes default-file 'string)))
+			   (file-attribute-user-id
+			    (file-attributes default-file 'string)))
 			  ((eq op-symbol 'chgrp)
-			   (nth 3 (file-attributes default-file 'string))))))
+			   (file-attribute-group-id
+			    (file-attributes default-file 'string))))))
 	 (prompt (concat "Change " attribute-name " of %s to"
 			 (if (eq op-symbol 'touch)
 			     " (default now): "
@@ -308,7 +343,7 @@ List has a form of (file-name full-file-name (attribute-list))."
 	 failures)
     (setq failures
 	  (dired-bunch-files 10000
-			     (function dired-check-process)
+			     #'dired-check-process
 			     (append
 			      (list operation program)
 			      (unless (or (string-equal new-attribute "")
@@ -334,11 +369,11 @@ Symbolic modes like `g+w' are allowed.
 Type M-n to pull the file attributes of the file at point
 into the minibuffer."
   (interactive "P")
-  (let* ((files (dired-get-marked-files t arg))
+  (let* ((files (dired-get-marked-files t arg nil nil t))
 	 ;; The source of default file attributes is the file at point.
 	 (default-file (dired-get-filename t t))
 	 (modestr (when default-file
-		    (nth 8 (file-attributes default-file))))
+		    (file-attribute-modes (file-attributes default-file))))
 	 (default
 	   (and (stringp modestr)
 		(string-match "^.\\(...\\)\\(...\\)\\(...\\)$" modestr)
@@ -375,7 +410,8 @@ into the minibuffer."
 Type M-n to pull the file attributes of the file at point
 into the minibuffer."
   (interactive "P")
-  (if (memq system-type '(ms-dos windows-nt))
+  (if (and (memq system-type '(ms-dos windows-nt))
+           (not (file-remote-p default-directory)))
       (error "chgrp not supported on this system"))
   (dired-do-chxxx "Group" "chgrp" 'chgrp arg))
 
@@ -385,7 +421,8 @@ into the minibuffer."
 Type M-n to pull the file attributes of the file at point
 into the minibuffer."
   (interactive "P")
-  (if (memq system-type '(ms-dos windows-nt))
+  (if (and (memq system-type '(ms-dos windows-nt))
+           (not (file-remote-p default-directory)))
       (error "chown not supported on this system"))
   (dired-do-chxxx "Owner" dired-chown-program 'chown arg))
 
@@ -449,7 +486,7 @@ Uses the shell command coming from variables `lpr-command' and
 `lpr-switches' as default."
   (interactive "P")
   (require 'lpr)
-  (let* ((file-list (dired-get-marked-files t arg))
+  (let* ((file-list (dired-get-marked-files t arg nil nil t))
 	 (lpr-switches
 	  (if (and (stringp printer-name)
 		   (string< "" printer-name))
@@ -458,7 +495,7 @@ Uses the shell command coming from variables `lpr-command' and
 	    lpr-switches))
 	 (command (dired-mark-read-string
 		   "Print %s with: "
- 		   (mapconcat 'identity
+                   (mapconcat #'identity
 			      (cons lpr-command
 				    (if (stringp lpr-switches)
 					(list lpr-switches)
@@ -512,7 +549,7 @@ with a prefix argument."
     ;; If the file has numeric backup versions,
     ;; put on dired-file-version-alist an element of the form
     ;; (FILENAME . VERSION-NUMBER-LIST)
-    (dired-map-dired-file-lines (function dired-collect-file-versions))
+    (dired-map-dired-file-lines #'dired-collect-file-versions)
     ;; Sort each VERSION-NUMBER-LIST,
     ;; and remove the versions not to be deleted.
     (let ((fval dired-file-version-alist))
@@ -528,7 +565,7 @@ with a prefix argument."
 	(setq fval (cdr fval))))
     ;; Look at each file.  If it is a numeric backup file,
     ;; find it in a VERSION-NUMBER-LIST and maybe flag it for deletion.
-    (dired-map-dired-file-lines (function dired-trample-file-versions))
+    (dired-map-dired-file-lines #'dired-trample-file-versions)
     (message "Cleaning numerical backups...done")))
 
 ;;; Subroutines of dired-clean-directory.
@@ -564,7 +601,7 @@ with a prefix argument."
 	     (possibilities (file-name-all-completions
 			     base-versions
 			     (file-name-directory fn)))
-	     (versions (mapcar 'backup-extract-version possibilities)))
+	     (versions (mapcar #'backup-extract-version possibilities)))
 	(if versions
 	    (setq dired-file-version-alist
 		  (cons (cons fn versions)
@@ -587,13 +624,16 @@ with a prefix argument."
 
 (declare-function mailcap-file-default-commands "mailcap" (files))
 
+(defvar dired-aux-files)
+
 (defun minibuffer-default-add-dired-shell-commands ()
   "Return a list of all commands associated with current dired files.
 This function is used to add all related commands retrieved by `mailcap'
 to the end of the list of defaults just after the default value."
   (interactive)
-  (let ((commands (and (boundp 'files) (require 'mailcap nil t)
-		       (mailcap-file-default-commands files))))
+  (let ((commands (and (boundp 'dired-aux-files)
+		       (require 'mailcap nil t)
+		       (mailcap-file-default-commands dired-aux-files))))
     (if (listp minibuffer-default)
 	(append minibuffer-default commands)
       (cons minibuffer-default commands))))
@@ -611,8 +651,9 @@ This normally reads using `read-shell-command', but if the
 offer a smarter default choice of shell command."
   (minibuffer-with-setup-hook
       (lambda ()
-	(set (make-local-variable 'minibuffer-default-add-function)
-	     'minibuffer-default-add-dired-shell-commands))
+	(setq-local dired-aux-files files)
+	(setq-local minibuffer-default-add-function
+		    #'minibuffer-default-add-dired-shell-commands))
     (setq prompt (format prompt (dired-mark-prompt arg files)))
     (if (functionp 'dired-guess-shell-command)
 	(dired-mark-pop-up nil 'shell files
@@ -637,7 +678,7 @@ In shell syntax this means separating the individual commands with `;'.
 
 The output appears in the buffer `*Async Shell Command*'."
   (interactive
-   (let ((files (dired-get-marked-files t current-prefix-arg)))
+   (let ((files (dired-get-marked-files t current-prefix-arg nil nil t)))
      (list
       ;; Want to give feedback whether this file or marked files are used:
       (dired-read-shell-command "& on %s: " current-prefix-arg files)
@@ -658,13 +699,13 @@ If there is a `*' in COMMAND, surrounded by whitespace, this runs
 COMMAND just once with the entire file list substituted there.
 
 If there is no `*', but there is a `?' in COMMAND, surrounded by
-whitespace, this runs COMMAND on each file individually with the
-file name substituted for `?'.
+whitespace, or a `\\=`?\\=`' this runs COMMAND on each file
+individually with the file name substituted for `?' or `\\=`?\\=`'.
 
 Otherwise, this runs COMMAND on each file individually with the
 file name added at the end of COMMAND (separated by a space).
 
-`*' and `?' when not surrounded by whitespace have no special
+`*' and `?' when not surrounded by whitespace nor `\\=`' have no special
 significance for `dired-do-shell-command', and are passed through
 normally to the shell, but you must confirm first.
 
@@ -698,38 +739,45 @@ can be produced by `dired-get-marked-files', for example."
 ;;Functions dired-run-shell-command and dired-shell-stuff-it do the
 ;;actual work and can be redefined for customization.
   (interactive
-   (let ((files (dired-get-marked-files t current-prefix-arg)))
+   (let ((files (dired-get-marked-files t current-prefix-arg nil nil t)))
      (list
       ;; Want to give feedback whether this file or marked files are used:
       (dired-read-shell-command "! on %s: " current-prefix-arg files)
       current-prefix-arg
       files)))
-  (let* ((on-each (not (string-match-p dired-star-subst-regexp command)))
-	 (no-subst (not (string-match-p dired-quark-subst-regexp command)))
-	 (star (string-match-p "\\*" command))
-	 (qmark (string-match-p "\\?" command)))
-    ;; Get confirmation for wildcards that may have been meant
-    ;; to control substitution of a file name or the file name list.
-    (if (cond ((not (or on-each no-subst))
-	       (error "You can not combine `*' and `?' substitution marks"))
-	      ((and star on-each)
-	       (y-or-n-p (format-message
-			  "Confirm--do you mean to use `*' as a wildcard? ")))
-	      ((and qmark no-subst)
-	       (y-or-n-p (format-message
-			  "Confirm--do you mean to use `?' as a wildcard? ")))
-	      (t))
-	(if on-each
-	    (dired-bunch-files
-	     (- 10000 (length command))
-	     (function (lambda (&rest files)
-			 (dired-run-shell-command
-			  (dired-shell-stuff-it command files t arg))))
-	     nil
-	     file-list)
-	  ;; execute the shell command
-	  (dired-run-shell-command
-	   (dired-shell-stuff-it command file-list nil arg))))))
+  (cl-flet ((need-confirm-p
+             (cmd str)
+             (let ((res cmd)
+                   (regexp (regexp-quote str)))
+               ;; Drop all ? and * surrounded by spaces and `?`.
+               (while (and (string-match regexp res)
+                           (dired--star-or-qmark-p res str))
+                 (setq res (replace-match "" t t res 2)))
+               (string-match regexp res))))
+  (let* ((on-each (not (dired--star-or-qmark-p command "*" 'keep)))
+	 (no-subst (not (dired--star-or-qmark-p command "?" 'keep)))
+         ;; Get confirmation for wildcards that may have been meant
+         ;; to control substitution of a file name or the file name list.
+         (ok (cond ((not (or on-each no-subst))
+	            (error "You can not combine `*' and `?' substitution marks"))
+	           ((need-confirm-p command "*")
+	            (y-or-n-p (format-message
+			       "Confirm--do you mean to use `*' as a wildcard? ")))
+	           ((need-confirm-p command "?")
+	            (y-or-n-p (format-message
+			       "Confirm--do you mean to use `?' as a wildcard? ")))
+	           (t))))
+    (cond ((not ok) (message "Command canceled"))
+          (t
+           (if on-each
+	       (dired-bunch-files (- 10000 (length command))
+	                          (lambda (&rest files)
+	                            (dired-run-shell-command
+                                     (dired-shell-stuff-it command files t arg)))
+	                          nil file-list)
+	     ;; execute the shell command
+	     (dired-run-shell-command
+	      (dired-shell-stuff-it command file-list nil arg))))))))
 
 ;; Might use {,} for bash or csh:
 (defvar dired-mark-prefix ""
@@ -759,47 +807,47 @@ can be produced by `dired-get-marked-files', for example."
           (and in-background (not sequentially) (not (eq system-type 'ms-dos))))
          (w32-shell (and (fboundp 'w32-shell-dos-semantics)
                          (w32-shell-dos-semantics)))
+         (file-remote (file-remote-p default-directory))
          ;; The way to run a command in background in Windows shells
          ;; is to use the START command.  The /B switch means not to
          ;; create a new window for the command.
-         (cmd-prefix (if w32-shell "start /b " ""))
+         (cmd-prefix (if (and w32-shell (not file-remote)) "start /b " ""))
          ;; Windows shells don't support chaining with ";", they use
          ;; "&" instead.
-         (cmd-sep (if (and (not w32-shell) (not parallel-in-background))
-                      ";"
-                    "&"))
+         (cmd-sep (if (and (or (not w32-shell) file-remote)
+			   (not parallel-in-background))
+		      ";" "&"))
 	 (stuff-it
-	  (if (or (string-match-p dired-star-subst-regexp command)
-		  (string-match-p dired-quark-subst-regexp command))
+	  (if (dired--star-or-qmark-p command nil 'keep)
 	      (lambda (x)
 		(let ((retval (concat cmd-prefix command)))
-		  (while (string-match
-			  "\\(^\\|[ \t]\\)\\([*?]\\)\\([ \t]\\|$\\)" retval)
+		  (while (dired--star-or-qmark-p retval nil)
 		    (setq retval (replace-match x t t retval 2)))
 		  retval))
 	    (lambda (x) (concat cmd-prefix command dired-mark-separator x)))))
     (concat
-     (cond (on-each
-            (format "%s%s"
-                    (mapconcat stuff-it (mapcar 'shell-quote-argument file-list)
-                               cmd-sep)
-                    ;; POSIX shells running a list of commands in the background
-                    ;; (LIST = cmd_1 & [cmd_2 & ... cmd_i & ... cmd_N &])
-                    ;; return once cmd_N ends, i.e., the shell does not
-                    ;; wait for cmd_i to finish before executing cmd_i+1.
-                    ;; That means, running (shell-command LIST) may not show
-                    ;; the output of all the commands (Bug#23206).
-                    ;; Add 'wait' to force those POSIX shells to wait until
-                    ;; all commands finish.
-                    (or (and parallel-in-background (not w32-shell)
-                             "&wait")
-                        "")))
-           (t
-            (let ((files (mapconcat 'shell-quote-argument
-                                    file-list dired-mark-separator)))
-              (when (cdr file-list)
-                (setq files (concat dired-mark-prefix files dired-mark-postfix)))
-              (funcall stuff-it files))))
+     (cond
+      (on-each
+       (format "%s%s"
+               (mapconcat stuff-it (mapcar #'shell-quote-argument file-list)
+                          cmd-sep)
+               ;; POSIX shells running a list of commands in the background
+               ;; (LIST = cmd_1 & [cmd_2 & ... cmd_i & ... cmd_N &])
+               ;; return once cmd_N ends, i.e., the shell does not
+               ;; wait for cmd_i to finish before executing cmd_i+1.
+               ;; That means, running (shell-command LIST) may not show
+               ;; the output of all the commands (Bug#23206).
+               ;; Add 'wait' to force those POSIX shells to wait until
+               ;; all commands finish.
+               (or (and parallel-in-background (not w32-shell)
+                        "&wait")
+                   "")))
+      (t
+       (let ((files (mapconcat #'shell-quote-argument
+                               file-list dired-mark-separator)))
+         (when (cdr file-list)
+           (setq files (concat dired-mark-prefix files dired-mark-postfix)))
+         (funcall stuff-it files))))
      (or (and in-background "&") ""))))
 
 ;; This is an extra function so that it can be redefined by ange-ftp.
@@ -829,7 +877,7 @@ Else returns nil for success."
       (set-buffer err-buffer)
       (erase-buffer)
       (setq default-directory dir	; caller's default-directory
-	    err (not (eq 0 (apply 'process-file program nil t nil arguments))))
+	    err (not (eq 0 (apply #'process-file program nil t nil arguments))))
       (if err
 	  (progn
 	    (dired-log (concat program " " (prin1-to-string arguments) "\n"))
@@ -933,7 +981,7 @@ command with a prefix argument (the value does not matter)."
 	  (goto-char start)
 	  ;; Now replace the current line with an entry for NEW-FILE.
 	  (dired-update-file-line new-file) nil)
-      (dired-log (concat "Failed to compress" from-file))
+      (dired-log (concat "Failed to (un)compress " from-file))
       from-file)))
 
 (defvar dired-compress-file-suffixes
@@ -941,9 +989,10 @@ command with a prefix argument (the value does not matter)."
     ;; "tar -zxf" isn't used because it's not available on the
     ;; Solaris10 version of tar. Solaris10 becomes obsolete in 2021.
     ;; Same thing on AIX 7.1.
-    ("\\.tar\\.gz\\'" "" "gzip -dc %i | tar -xv")
-    ("\\.tgz\\'" "" "gzip -dc %i | tar -xv")
+    ("\\.tar\\.gz\\'" "" "gzip -dc %i | tar -xf -")
+    ("\\.tgz\\'" "" "gzip -dc %i | tar -xf -")
     ("\\.gz\\'" "" "gunzip")
+    ("\\.lz\\'" "" "lzip -d")
     ("\\.Z\\'" "" "uncompress")
     ;; For .z, try gunzip.  It might be an old gzip file,
     ;; or it might be from compact? pack? (which?) but gunzip handles both.
@@ -953,11 +1002,14 @@ command with a prefix argument (the value does not matter)."
     ("\\.bz2\\'" "" "bunzip2")
     ("\\.xz\\'" "" "unxz")
     ("\\.zip\\'" "" "unzip -o -d %o %i")
+    ("\\.tar\\.zst\\'" "" "unzstd -c %i | tar -xf -")
+    ("\\.tzst\\'" "" "unzstd -c %i | tar -xf -")
+    ("\\.zst\\'" "" "unzstd --rm")
     ("\\.7z\\'" "" "7z x -aoa -o%o %i")
     ;; This item controls naming for compression.
     ("\\.tar\\'" ".tgz" nil)
     ;; This item controls the compression of directories
-    (":" ".tar.gz" "tar -c %i | gzip -c9 > %o"))
+    (":" ".tar.gz" "tar -cf - %i | gzip -c9 > %o"))
   "Control changes in file name suffixes for compression and uncompression.
 Each element specifies one transformation rule, and has the form:
   (REGEXP NEW-SUFFIX PROGRAM)
@@ -974,14 +1026,15 @@ Otherwise, the rule is a compression rule, and compression is done with gzip.
 ARGS are command switches passed to PROGRAM.")
 
 (defvar dired-compress-files-alist
-  '(("\\.tar\\.gz\\'" . "tar -c %i | gzip -c9 > %o")
-    ("\\.tar\\.bz2\\'" . "tar -c %i | bzip2 -c9 > %o")
-    ("\\.tar\\.xz\\'" . "tar -c %i | xz -c9 > %o")
+  '(("\\.tar\\.gz\\'" . "tar -cf - %i | gzip -c9 > %o")
+    ("\\.tar\\.bz2\\'" . "tar -cf - %i | bzip2 -c9 > %o")
+    ("\\.tar\\.xz\\'" . "tar -cf - %i | xz -c9 > %o")
+    ("\\.tar\\.zst\\'" . "tar -cf - %i | zstd -19 -o %o")
     ("\\.zip\\'" . "zip %o -r --filesync %i"))
   "Control the compression shell command for `dired-do-compress-to'.
 
 Each element is (REGEXP . CMD), where REGEXP is the name of the
-archive to which you want to compress, and CMD the the
+archive to which you want to compress, and CMD is the
 corresponding command.
 
 Within CMD, %i denotes the input file(s), and %o denotes the
@@ -996,7 +1049,7 @@ Prompt for the archive file name.
 Choose the archiving command based on the archive file-name extension
 and `dired-compress-files-alist'."
   (interactive)
-  (let* ((in-files (dired-get-marked-files))
+  (let* ((in-files (dired-get-marked-files nil nil nil nil t))
          (out-file (expand-file-name (read-file-name "Compress to: ")))
          (rule (cl-find-if
                 (lambda (x)
@@ -1021,7 +1074,9 @@ and `dired-compress-files-alist'."
                                              (shell-quote-argument (file-name-nondirectory
                                                                     file-desc)))
                                            in-files " "))))))
-             (message "Compressed %d file(s) to %s"
+             (message (ngettext "Compressed %d file to %s"
+			        "Compressed %d files to %s"
+			        (length in-files))
                       (length in-files)
                       (file-name-nondirectory out-file)))))))
 
@@ -1060,12 +1115,17 @@ Return nil if no change in files."
                     nil t)
                    nil t)))
              ;; We found an uncompression rule.
-             (when (not
-                    (dired-check-process
-                     (concat "Uncompressing " file)
-                     command
-                     file))
-               newname)))
+             (let ((match (string-match " " command))
+                   (msg (concat "Uncompressing " file)))
+               (unless (if match
+                           (dired-check-process msg
+                                                (substring command 0 match)
+                                                (substring command (1+ match))
+                                                file)
+                         (dired-check-process msg
+                                              command
+                                              file))
+                 newname))))
           (t
            ;; We don't recognize the file as compressed, so compress it.
            ;; Try gzip; if we don't have that, use compress.
@@ -1119,10 +1179,10 @@ Return nil if no change in files."
       ;; Pass t for DISTINGUISH-ONE-MARKED so that a single file which
       ;; is marked pops up a window.  That will help the user see
       ;; it isn't the current line file.
-      (let ((files (dired-get-marked-files t arg nil t))
+      (let ((files (dired-get-marked-files t arg nil t t))
 	    (string (if (eq op-symbol 'compress) "Compress or uncompress"
 		      (capitalize (symbol-name op-symbol)))))
-	(dired-mark-pop-up nil op-symbol files (function y-or-n-p)
+	(dired-mark-pop-up nil op-symbol files #'y-or-n-p
 			   (concat string " "
 				   (dired-mark-prompt arg files) "? ")))))
 
@@ -1149,12 +1209,14 @@ Return nil if no change in files."
 	     (string (if (eq op-symbol 'compress) "Compress or uncompress"
 		       (capitalize (symbol-name op-symbol)))))
 	(if (not failures)
-	    (message "%s: %d file%s."
-		     string total (dired-plural-s total))
+	    (message (ngettext "%s: %d file." "%s: %d files." total)
+		     string total)
 	  ;; end this bunch of errors:
 	  (dired-log-summary
-	   (format "Failed to %s %d of %d file%s"
-		   (downcase string) count total (dired-plural-s total))
+	   (format (ngettext "Failed to %s %d of %d file"
+                             "Failed to %s %d of %d files"
+                             total)
+		   (downcase string) count total)
 	   failures)))))
 
 ;;;###autoload
@@ -1188,9 +1250,14 @@ return t; if SYM is q or ESC, return nil."
 
 ;;;###autoload
 (defun dired-do-compress (&optional arg)
-  "Compress or uncompress marked (or next ARG) files."
+  "Compress or uncompress marked (or next ARG) files.
+If invoked on a directory, compress all of the files in
+the directory and all of its subdirectories, recursively,
+into a .tar.gz archive.
+If invoked on a .tar.gz or a .tgz or a .zip or a .7z archive,
+uncompress and unpack all the files in the archive."
   (interactive "P")
-  (dired-map-over-marks-check (function dired-compress) arg 'compress t))
+  (dired-map-over-marks-check #'dired-compress arg 'compress t))
 
 ;; Commands for Emacs Lisp files - load and byte compile
 
@@ -1218,7 +1285,7 @@ return t; if SYM is q or ESC, return nil."
 (defun dired-do-byte-compile (&optional arg)
   "Byte compile marked (or next ARG) Emacs Lisp files."
   (interactive "P")
-  (dired-map-over-marks-check (function dired-byte-compile) arg 'byte-compile t))
+  (dired-map-over-marks-check #'dired-byte-compile arg 'byte-compile t))
 
 (defun dired-load ()
   ;; Return nil for success, offending file name else.
@@ -1235,7 +1302,7 @@ return t; if SYM is q or ESC, return nil."
 (defun dired-do-load (&optional arg)
   "Load the marked (or next ARG) Emacs Lisp files."
   (interactive "P")
-  (dired-map-over-marks-check (function dired-load) arg 'load t))
+  (dired-map-over-marks-check #'dired-load arg 'load t))
 
 ;;;###autoload
 (defun dired-do-redisplay (&optional arg test-for-subdir)
@@ -1266,12 +1333,14 @@ See Info node `(emacs)Subdir switches' for more details."
     ;; message much faster than making dired-map-over-marks show progress
     (dired-uncache
      (if (consp dired-directory) (car dired-directory) dired-directory))
-    (dired-map-over-marks (let ((fname (dired-get-filename))
+    (dired-map-over-marks (let ((fname (dired-get-filename nil t))
 				;; Postpone readin hook till we map
 				;; over all marked files (Bug#6810).
 				(dired-after-readin-hook nil))
-			    (message "Redisplaying... %s" fname)
-			    (dired-update-file-line fname))
+			    (if (not fname)
+				(error "No file on this line")
+			      (message "Redisplaying... %s" fname)
+			      (dired-update-file-line fname)))
 			  arg)
     (run-hooks 'dired-after-readin-hook)
     (dired-move-to-filename)
@@ -1299,14 +1368,14 @@ See Info node `(emacs)Subdir switches' for more details."
           ;; Replace space by old marker without moving point.
           ;; Faster than goto+insdel inside a save-excursion?
           (when char
-            (subst-char-in-region opoint (1+ opoint) ?\040 char)))))
+            (subst-char-in-region opoint (1+ opoint) ?\s char)))))
   (dired-move-to-filename))
 
 ;;;###autoload
 (defun dired-add-file (filename &optional marker-char)
   (dired-fun-in-all-buffers
    (file-name-directory filename) (file-name-nondirectory filename)
-   (function dired-add-entry) filename marker-char))
+   #'dired-add-entry filename marker-char))
 
 (defvar dired-omit-mode)
 (declare-function dired-omit-regexp "dired-x" ())
@@ -1353,8 +1422,8 @@ files matching `dired-omit-regexp'."
 		(catch 'not-found
 		  (if (string= directory cur-dir)
 		      (progn
-			(skip-chars-forward "^\r\n")
-			(if (eq (following-char) ?\r)
+			(end-of-line)
+			(if (dired--hidden-p)
 			    (dired-unhide-subdir))
 			;; We are already where we should be, except when
 			;; point is before the subdir line or its total line.
@@ -1364,7 +1433,7 @@ files matching `dired-omit-regexp'."
 		    ;; else try to find correct place to insert
 		    (if (dired-goto-subdir directory)
 			(progn ;; unhide if necessary
-			  (if (looking-at-p "\r")
+			  (if (dired--hidden-p)
 			      ;; Point is at end of subdir line.
 			      (dired-unhide-subdir))
 			  ;; found - skip subdir and `total' line
@@ -1443,7 +1512,7 @@ files matching `dired-omit-regexp'."
 (defun dired-remove-file (file)
   (dired-fun-in-all-buffers
    (file-name-directory file) (file-name-nondirectory file)
-   (function dired-remove-entry) file))
+   #'dired-remove-entry file))
 
 (defun dired-remove-entry (file)
   (save-excursion
@@ -1457,7 +1526,7 @@ files matching `dired-omit-regexp'."
   "Create or update the line for FILE in all Dired buffers it would belong in."
   (dired-fun-in-all-buffers (file-name-directory file)
 			    (file-name-nondirectory file)
-			    (function dired-relist-entry) file))
+			    #'dired-relist-entry file))
 
 (defun dired-relist-entry (file)
   ;; Relist the line for FILE, or just add it if it did not exist.
@@ -1473,7 +1542,7 @@ files matching `dired-omit-regexp'."
 				 (point))
 			  (line-beginning-position 2)))
       (setq file (directory-file-name file))
-      (dired-add-entry file (if (eq ?\040 marker) nil marker)))))
+      (dired-add-entry file (if (eq ?\s marker) nil marker)))))
 
 ;;; Copy, move/rename, making hard and symbolic links
 
@@ -1513,22 +1582,41 @@ Special value `always' suppresses confirmation."
 
 (declare-function make-symbolic-link "fileio.c")
 
+(defcustom dired-create-destination-dirs nil
+  "Whether Dired should create destination dirs when copying/removing files.
+If nil, don't create them.
+If `always', create them without asking.
+If `ask', ask for user confirmation."
+  :type '(choice (const :tag "Never create non-existent dirs" nil)
+		 (const :tag "Always create non-existent dirs" always)
+		 (const :tag "Ask for user confirmation" ask))
+  :group 'dired
+  :version "27.1")
+
+(defun dired-maybe-create-dirs (dir)
+  "Create DIR if doesn't exist according to `dired-create-destination-dirs'."
+  (when (and dired-create-destination-dirs (not (file-exists-p dir)))
+    (if (or (eq dired-create-destination-dirs 'always)
+            (yes-or-no-p (format "Create destination dir `%s'? " dir)))
+        (dired-create-directory dir))))
+
 (defun dired-copy-file-recursive (from to ok-flag &optional
 				       preserve-time top recursive)
-  (when (and (eq t (car (file-attributes from)))
+  (when (and (eq t (file-attribute-type (file-attributes from)))
 	     (file-in-directory-p to from))
     (error "Cannot copy `%s' into its subdirectory `%s'" from to))
   (let ((attrs (file-attributes from)))
     (if (and recursive
-	     (eq t (car attrs))
+	     (eq t (file-attribute-type attrs))
 	     (or (eq recursive 'always)
 		 (yes-or-no-p (format "Recursive copies of %s? " from))))
 	(copy-directory from to preserve-time)
       (or top (dired-handle-overwrite to))
       (condition-case err
-	  (if (stringp (car attrs))
+	  (if (stringp (file-attribute-type attrs))
 	      ;; It is a symlink
-	      (make-symbolic-link (car attrs) to ok-flag)
+	      (make-symbolic-link (file-attribute-type attrs) to ok-flag)
+            (dired-maybe-create-dirs (file-name-directory to))
 	    (copy-file from to ok-flag preserve-time))
 	(file-date-error
 	 (push (dired-make-relative from)
@@ -1538,6 +1626,7 @@ Special value `always' suppresses confirmation."
 ;;;###autoload
 (defun dired-rename-file (file newname ok-if-already-exists)
   (dired-handle-overwrite newname)
+  (dired-maybe-create-dirs (file-name-directory newname))
   (rename-file file newname ok-if-already-exists) ; error is caught in -create-files
   ;; Silently rename the visited file of any buffer visiting this file.
   (and (get-file-buffer file)
@@ -1551,14 +1640,14 @@ Special value `always' suppresses confirmation."
   (setq from-dir (file-name-as-directory from-dir)
 	to-dir (file-name-as-directory to-dir))
   (dired-fun-in-all-buffers from-dir nil
-			    (function dired-rename-subdir-1) from-dir to-dir)
+			    #'dired-rename-subdir-1 from-dir to-dir)
   ;; Update visited file name of all affected buffers
   (let ((expanded-from-dir (expand-file-name from-dir))
 	(blist (buffer-list)))
     (while blist
       (with-current-buffer (car blist)
 	(if (and buffer-file-name
-		 (dired-in-this-tree buffer-file-name expanded-from-dir))
+		 (dired-in-this-tree-p buffer-file-name expanded-from-dir))
 	    (let ((modflag (buffer-modified-p))
 		  (to-file (dired-replace-in-string
 			    (concat "^" (regexp-quote from-dir))
@@ -1577,7 +1666,7 @@ Special value `always' suppresses confirmation."
     (while alist
       (setq elt (car alist)
 	    alist (cdr alist))
-      (if (dired-in-this-tree (car elt) expanded-dir)
+      (if (dired-in-this-tree-p (car elt) expanded-dir)
 	  ;; ELT's subdir is affected by the rename
 	  (dired-rename-subdir-2 elt dir to)))
     (if (equal dir default-directory)
@@ -1588,10 +1677,14 @@ Special value `always' suppresses confirmation."
 	  (setq default-directory to
 		dired-directory (expand-file-name;; this is correct
 				 ;; with and without wildcards
-				 (file-name-nondirectory dired-directory)
+				 (file-name-nondirectory (if (stringp dired-directory)
+                                                             dired-directory
+                                                           (car dired-directory)))
 				 to))
 	  (let ((new-name (file-name-nondirectory
-			   (directory-file-name dired-directory))))
+			   (directory-file-name (if (stringp dired-directory)
+                                                    dired-directory
+                                                  (car dired-directory))))))
 	    ;; try to rename buffer, but just leave old name if new
 	    ;; name would already exist (don't try appending "<%d>")
 	    (or (get-buffer new-name)
@@ -1669,7 +1762,7 @@ or with the current marker character if MARKER-CHAR is t."
           (let* ((overwrite (file-exists-p to))
                  (dired-overwrite-confirmed ; for dired-handle-overwrite
                   (and overwrite
-                       (let ((help-form '(format-message "\
+                       (let ((help-form (format-message "\
 Type SPC or `y' to overwrite file `%s',
 DEL or `n' to skip to next,
 ESC or `q' to not overwrite any of the remaining files,
@@ -1703,7 +1796,7 @@ ESC or `q' to not overwrite any of the remaining files,
                 (setq to destname))
 	      ;; If DESTNAME is a subdirectory of FROM, not a symlink,
 	      ;; and the method in use is copying, signal an error.
-	      (and (eq t (car (file-attributes destname)))
+	      (and (eq t (file-attribute-type (file-attributes destname)))
 		   (eq file-creator 'dired-copy-file)
 		   (file-in-directory-p destname from)
 		   (error "Cannot copy `%s' into its subdirectory `%s'"
@@ -1723,32 +1816,36 @@ ESC or `q' to not overwrite any of the remaining files,
                (progn
                  (push (dired-make-relative from)
                        failures)
-                 (dired-log "%s `%s' to `%s' failed:\n%s\n"
+                 (dired-log "%s: `%s' to `%s' failed:\n%s\n"
                             operation from to err))))))))
     (cond
      (dired-create-files-failures
       (setq failures (nconc failures dired-create-files-failures))
       (dired-log-summary
-       (format "%s failed for %d file%s in %d requests"
-		operation (length failures)
-		(dired-plural-s (length failures))
-		total)
+       (format (ngettext "%s failed for %d file in %d requests"
+			 "%s failed for %d files in %d requests"
+			 (length failures))
+	       operation (length failures) total)
        failures))
      (failures
       (dired-log-summary
-       (format "%s failed for %d of %d file%s"
-		operation (length failures)
-		total (dired-plural-s total))
+       (format (ngettext "%s: %d of %d file failed"
+			 "%s: %d of %d files failed"
+			 total)
+	       operation (length failures) total)
        failures))
      (skipped
       (dired-log-summary
-       (format "%s: %d of %d file%s skipped"
-		operation (length skipped) total
-		(dired-plural-s total))
+       (format (ngettext "%s: %d of %d file skipped"
+			 "%s: %d of %d files skipped"
+			 total)
+	       operation (length skipped) total)
        skipped))
      (t
-      (message "%s: %s file%s"
-	       operation success-count (dired-plural-s success-count)))))
+      (message (ngettext "%s: %d file done"
+			 "%s: %d files done"
+			 success-count)
+	       operation success-count))))
   (dired-move-to-filename))
 
 (defun dired-do-create-files (op-symbol file-creator operation arg
@@ -1782,15 +1879,17 @@ Optional arg HOW-TO determines how to treat the target.
       rfn-list  - list of the relative names for the marked files.
       fn-list   - list of the absolute names for the marked files.
       target    - the name of the target itself.
-      The rest of into-dir are optional arguments.
+    The rest of elements of the list returned by HOW-TO are optional
+    arguments for the function that is the first element of the list.
    For any other return value, TARGET is treated as a directory."
   (or op1 (setq op1 operation))
-  (let* ((fn-list (dired-get-marked-files nil arg))
-	 (rfn-list (mapcar (function dired-make-relative) fn-list))
+  (let* ((fn-list (dired-get-marked-files nil arg nil nil t))
+	 (rfn-list (mapcar #'dired-make-relative fn-list))
 	 (dired-one-file	; fluid variable inside dired-create-files
 	  (and (consp fn-list) (null (cdr fn-list)) (car fn-list)))
 	 (target-dir (dired-dwim-target-directory))
 	 (default (and dired-one-file
+		       (not dired-dwim-target) ; Bug#25609
 		       (expand-file-name (file-name-nondirectory (car fn-list))
 					 target-dir)))
 	 (defaults (dired-dwim-target-defaults fn-list target-dir))
@@ -1800,30 +1899,40 @@ Optional arg HOW-TO determines how to treat the target.
 			(set (make-local-variable 'minibuffer-default-add-function) nil)
 			(setq minibuffer-default defaults))
 		    (dired-mark-read-file-name
-		     (concat (if dired-one-file op1 operation) " %s to: ")
+                     (format "%s %%s %s: "
+                             (if dired-one-file op1 operation)
+                             (if (memq op-symbol '(symlink hardlink))
+                                 ;; Linking operations create links
+                                 ;; from the prompted file name; the
+                                 ;; other operations copy (etc) to the
+                                 ;; prompted file name.
+                                 "from" "to"))
 		     target-dir op-symbol arg rfn-list default))))
-	 (into-dir (cond ((null how-to)
-			  ;; Allow users to change the letter case of
-			  ;; a directory on a case-insensitive
-			  ;; filesystem.  If we don't test these
-			  ;; conditions up front, file-directory-p
-			  ;; below will return t on a case-insensitive
-			  ;; filesystem, and Emacs will try to move
-			  ;; foo -> foo/foo, which fails.
-			  (if (and (file-name-case-insensitive-p (car fn-list))
-				   (eq op-symbol 'move)
-				   dired-one-file
-				   (string= (downcase
-					     (expand-file-name (car fn-list)))
-					    (downcase
-					     (expand-file-name target)))
-				   (not (string=
-					 (file-name-nondirectory (car fn-list))
-					 (file-name-nondirectory target))))
-			      nil
-			    (file-directory-p target)))
-			 ((eq how-to t) nil)
-			 (t (funcall how-to target)))))
+	 (into-dir
+          (progn
+            (unless dired-one-file (dired-maybe-create-dirs target))
+            (cond ((null how-to)
+		   ;; Allow users to change the letter case of
+		   ;; a directory on a case-insensitive
+		   ;; filesystem.  If we don't test these
+		   ;; conditions up front, file-directory-p
+		   ;; below will return t on a case-insensitive
+		   ;; filesystem, and Emacs will try to move
+		   ;; foo -> foo/foo, which fails.
+		   (if (and (file-name-case-insensitive-p (car fn-list))
+			    (eq op-symbol 'move)
+			    dired-one-file
+			    (string= (downcase
+				      (expand-file-name (car fn-list)))
+				     (downcase
+				      (expand-file-name target)))
+			    (not (string=
+				  (file-name-nondirectory (car fn-list))
+				  (file-name-nondirectory target))))
+		       nil
+		     (file-directory-p target)))
+		  ((eq how-to t) nil)
+		  (t (funcall how-to target))))))
     (if (and (consp into-dir) (functionp (car into-dir)))
 	(apply (car into-dir) operation rfn-list fn-list target (cdr into-dir))
       (if (not (or dired-one-file into-dir))
@@ -1835,10 +1944,9 @@ Optional arg HOW-TO determines how to treat the target.
        (if into-dir			; target is a directory
 	   ;; This function uses fluid variable target when called
 	   ;; inside dired-create-files:
-	   (function
-	    (lambda (from)
-	      (expand-file-name (file-name-nondirectory from) target)))
-	 (function (lambda (_from) target)))
+	   (lambda (from)
+	     (expand-file-name (file-name-nondirectory from) target))
+	 (lambda (_from) target))
        marker-char))))
 
 ;; Read arguments for a marked-files command that wants a file name,
@@ -1854,7 +1962,7 @@ Optional arg HOW-TO determines how to treat the target.
 					 &optional default)
   (dired-mark-pop-up
    nil op-symbol files
-   (function read-file-name)
+   #'read-file-name
    (format prompt (dired-mark-prompt arg files)) dir default))
 
 (defun dired-dwim-target-directory ()
@@ -1923,21 +2031,49 @@ Optional arg HOW-TO determines how to treat the target.
       dired-dirs)))
 
 
+
+;; We use this function in `dired-create-directory' and
+;; `dired-create-empty-file'; the return value is the new entry
+;; in the updated Dired buffer.
+(defun dired--find-topmost-parent-dir (filename)
+  "Return the topmost nonexistent parent dir of FILENAME.
+FILENAME is a full file name."
+  (let ((try filename) new)
+    (while (and try (not (file-exists-p try)) (not (equal new try)))
+      (setq new try
+	    try (directory-file-name (file-name-directory try))))
+    new))
+
 ;;;###autoload
 (defun dired-create-directory (directory)
   "Create a directory called DIRECTORY.
+Parent directories of DIRECTORY are created as needed.
 If DIRECTORY already exists, signal an error."
   (interactive
    (list (read-file-name "Create directory: " (dired-current-directory))))
   (let* ((expanded (directory-file-name (expand-file-name directory)))
-	 (try expanded) new)
+	 new)
     (if (file-exists-p expanded)
 	(error "Cannot create directory %s: file exists" expanded))
-    ;; Find the topmost nonexistent parent dir (variable `new')
-    (while (and try (not (file-exists-p try)) (not (equal new try)))
-      (setq new try
-	    try (directory-file-name (file-name-directory try))))
+    (setq new (dired--find-topmost-parent-dir expanded))
     (make-directory expanded t)
+    (when new
+      (dired-add-file new)
+      (dired-move-to-filename))))
+
+;;;###autoload
+(defun dired-create-empty-file (file)
+  "Create an empty file called FILE.
+ Add a new entry for the new file in the Dired buffer.
+ Parent directories of FILE are created as needed.
+ If FILE already exists, signal an error."
+  (interactive (list (read-file-name "Create empty file: ")))
+  (let* ((expanded (expand-file-name file))
+         new)
+    (if (file-exists-p expanded)
+        (error "Cannot create file %s: file exists" expanded))
+    (setq new (dired--find-topmost-parent-dir expanded))
+    (make-empty-file file 'parents)
     (when new
       (dired-add-file new)
       (dired-move-to-filename))))
@@ -1982,7 +2118,7 @@ This command copies symbolic links by creating new ones, similar
 to the \"-d\" option for the \"cp\" shell command."
   (interactive "P")
   (let ((dired-recursive-copies dired-recursive-copies))
-    (dired-do-create-files 'copy (function dired-copy-file)
+    (dired-do-create-files 'copy #'dired-copy-file
 			   "Copy"
 			   arg dired-keep-marker-copy
 			   nil dired-copy-how-to-fn)))
@@ -1999,7 +2135,7 @@ suggested for the target directory depends on the value of
 
 For relative symlinks, use \\[dired-do-relsymlink]."
   (interactive "P")
-  (dired-do-create-files 'symlink (function make-symbolic-link)
+  (dired-do-create-files 'symlink #'make-symbolic-link
 			   "Symlink" arg dired-keep-marker-symlink))
 
 ;;;###autoload
@@ -2012,7 +2148,7 @@ with the same names that the files currently have.  The default
 suggested for the target directory depends on the value of
 `dired-dwim-target', which see."
   (interactive "P")
-  (dired-do-create-files 'hardlink (function dired-hardlink)
+  (dired-do-create-files 'hardlink #'dired-hardlink
 			   "Hardlink" arg dired-keep-marker-hardlink))
 
 (defun dired-hardlink (file newname &optional ok-if-already-exists)
@@ -2031,7 +2167,7 @@ This command also renames any buffers that are visiting the files.
 The default suggested for the target directory depends on the value
 of `dired-dwim-target', which see."
   (interactive "P")
-  (dired-do-create-files 'move (function dired-rename-file)
+  (dired-do-create-files 'move #'dired-rename-file
 			 "Move" arg dired-keep-marker-rename "Rename"))
 ;;;###end dired-cp.el
 
@@ -2059,37 +2195,35 @@ Type SPC or `y' to %s one match, DEL or `n' to skip to next,
 	 (regexp-name-constructor
 	  ;; Function to construct new filename using REGEXP and NEWNAME:
 	  (if whole-name		; easy (but rare) case
-	      (function
-	       (lambda (from)
-		 (let ((to (dired-string-replace-match regexp from newname))
-		       ;; must bind help-form directly around call to
-		       ;; dired-query
-		       (help-form rename-regexp-help-form))
-		   (if to
-		       (and (dired-query 'rename-regexp-query
-					 operation-prompt
-					 from
-					 to)
-			    to)
-		     (dired-log "%s: %s did not match regexp %s\n"
-				operation from regexp)))))
-	    ;; not whole-name, replace non-directory part only
-	    (function
-	     (lambda (from)
-	       (let* ((new (dired-string-replace-match
-			    regexp (file-name-nondirectory from) newname))
-		      (to (and new	; nil means there was no match
-			       (expand-file-name new
-						 (file-name-directory from))))
+	      (lambda (from)
+		(let ((to (dired-string-replace-match regexp from newname))
+		      ;; must bind help-form directly around call to
+		      ;; dired-query
 		      (help-form rename-regexp-help-form))
-		 (if to
-		     (and (dired-query 'rename-regexp-query
-				       operation-prompt
-				       (dired-make-relative from)
-				       (dired-make-relative to))
-			  to)
-		   (dired-log "%s: %s did not match regexp %s\n"
-			      operation (file-name-nondirectory from) regexp)))))))
+		  (if to
+		      (and (dired-query 'rename-regexp-query
+					operation-prompt
+					from
+					to)
+			   to)
+		    (dired-log "%s: %s did not match regexp %s\n"
+			       operation from regexp))))
+	    ;; not whole-name, replace non-directory part only
+	    (lambda (from)
+	      (let* ((new (dired-string-replace-match
+			   regexp (file-name-nondirectory from) newname))
+		     (to (and new	; nil means there was no match
+			      (expand-file-name new
+						(file-name-directory from))))
+		     (help-form rename-regexp-help-form))
+		(if to
+		    (and (dired-query 'rename-regexp-query
+				      operation-prompt
+				      (dired-make-relative from)
+				      (dired-make-relative to))
+			 to)
+		  (dired-log "%s: %s did not match regexp %s\n"
+			     operation (file-name-nondirectory from) regexp))))))
 	 rename-regexp-query)
     (dired-create-files
      file-creator operation fn-list regexp-name-constructor marker-char)))
@@ -2127,7 +2261,7 @@ With a zero prefix arg, renaming by regexp affects the absolute file name.
 Normally, only the non-directory part of the file name is used and changed."
   (interactive (dired-mark-read-regexp "Rename"))
   (dired-do-create-files-regexp
-   (function dired-rename-file)
+   #'dired-rename-file
    "Rename" arg regexp newname whole-name dired-keep-marker-rename))
 
 ;;;###autoload
@@ -2137,7 +2271,7 @@ See function `dired-do-rename-regexp' for more info."
   (interactive (dired-mark-read-regexp "Copy"))
   (let ((dired-recursive-copies nil))	; No recursive copies.
     (dired-do-create-files-regexp
-     (function dired-copy-file)
+     #'dired-copy-file
      (if dired-copy-preserve-time "Copy [-p]" "Copy")
      arg regexp newname whole-name dired-keep-marker-copy)))
 
@@ -2147,7 +2281,7 @@ See function `dired-do-rename-regexp' for more info."
 See function `dired-do-rename-regexp' for more info."
   (interactive (dired-mark-read-regexp "HardLink"))
   (dired-do-create-files-regexp
-   (function add-name-to-file)
+   #'add-name-to-file
    "HardLink" arg regexp newname whole-name dired-keep-marker-hardlink))
 
 ;;;###autoload
@@ -2156,7 +2290,7 @@ See function `dired-do-rename-regexp' for more info."
 See function `dired-do-rename-regexp' for more info."
   (interactive (dired-mark-read-regexp "SymLink"))
   (dired-do-create-files-regexp
-   (function make-symbolic-link)
+   #'make-symbolic-link
    "SymLink" arg regexp newname whole-name dired-keep-marker-symlink))
 
 (defvar rename-non-directory-query)
@@ -2171,39 +2305,38 @@ See function `dired-do-rename-regexp' for more info."
      file-creator
      operation
      (dired-get-marked-files nil arg)
-     (function
-      (lambda (from)
-	(let ((to (concat (file-name-directory from)
-			  (funcall basename-constructor
-				   (file-name-nondirectory from)))))
-	  (and (let ((help-form (format-message "\
+     (lambda (from)
+       (let ((to (concat (file-name-directory from)
+			 (funcall basename-constructor
+				  (file-name-nondirectory from)))))
+	 (and (let ((help-form (format-message "\
 Type SPC or `y' to %s one file, DEL or `n' to skip to next,
 `!' to %s all remaining matches with no more questions."
-						(downcase operation)
-						(downcase operation))))
-		 (dired-query 'rename-non-directory-query
-			      (concat operation " `%s' to `%s'")
-			      (dired-make-relative from)
-			      (dired-make-relative to)))
-	       to))))
+					       (downcase operation)
+					       (downcase operation))))
+		(dired-query 'rename-non-directory-query
+			     (concat operation " `%s' to `%s'")
+			     (dired-make-relative from)
+			     (dired-make-relative to)))
+	      to)))
      dired-keep-marker-rename)))
 
 (defun dired-rename-non-directory (basename-constructor operation arg)
   (dired-create-files-non-directory
-   (function dired-rename-file)
+   #'dired-rename-file
    basename-constructor operation arg))
 
 ;;;###autoload
 (defun dired-upcase (&optional arg)
   "Rename all marked (or next ARG) files to upper case."
   (interactive "P")
-  (dired-rename-non-directory (function upcase) "Rename upcase" arg))
+  (dired-rename-non-directory #'upcase "Rename upcase" arg))
 
 ;;;###autoload
 (defun dired-downcase (&optional arg)
   "Rename all marked (or next ARG) files to lower case."
   (interactive "P")
-  (dired-rename-non-directory (function downcase) "Rename downcase" arg))
+  (dired-rename-non-directory #'downcase "Rename downcase" arg))
 
 ;;;###end dired-re.el
 
@@ -2295,7 +2428,7 @@ This function takes some pains to conform to `ls -lR' output."
       (setq switches (dired-replace-in-string "R" "" switches))
       (dolist (cur-ass dired-subdir-alist)
 	(let ((cur-dir (car cur-ass)))
-	  (and (dired-in-this-tree cur-dir dirname)
+	  (and (dired-in-this-tree-p cur-dir dirname)
 	       (let ((cur-cons (assoc-string cur-dir dired-switches-alist)))
 		 (if cur-cons
 		     (setcdr cur-cons switches)
@@ -2307,18 +2440,17 @@ This function takes some pains to conform to `ls -lR' output."
 (defun dired-insert-subdir-validate (dirname &optional switches)
   ;; Check that it is valid to insert DIRNAME with SWITCHES.
   ;; Signal an error if invalid (e.g. user typed `i' on `..').
-  (or (dired-in-this-tree dirname (expand-file-name default-directory))
+  (or (dired-in-this-tree-p dirname (expand-file-name default-directory))
       (error  "%s: not in this directory tree" dirname))
   (let ((real-switches (or switches dired-subdir-switches)))
     (when real-switches
       (let (case-fold-search)
 	(mapcar
-	 (function
-	  (lambda (x)
-	    (or (eq (null (string-match-p x real-switches))
-		    (null (string-match-p x dired-actual-switches)))
-		(error
-		 "Can't have dirs with and without -%s switches together" x))))
+	 (lambda (x)
+	   (or (eq (null (string-match-p x real-switches))
+		   (null (string-match-p x dired-actual-switches)))
+	       (error
+		"Can't have dirs with and without -%s switches together" x)))
 	 ;; all switches that make a difference to dired-get-filename:
 	 '("F" "b"))))))
 
@@ -2331,9 +2463,9 @@ This function takes some pains to conform to `ls -lR' output."
   ;; Keep the alist sorted on buffer position.
   (setq dired-subdir-alist
 	(sort dired-subdir-alist
-	      (function (lambda (elt1 elt2)
-			  (> (dired-get-subdir-min elt1)
-			     (dired-get-subdir-min elt2)))))))
+	      (lambda (elt1 elt2)
+		(> (dired-get-subdir-min elt1)
+		   (dired-get-subdir-min elt2))))))
 
 (defun dired-kill-tree (dirname &optional remember-marks kill-root)
   "Kill all proper subdirs of DIRNAME, excluding DIRNAME itself.
@@ -2349,7 +2481,7 @@ of marked files.  If KILL-ROOT is non-nil, kill DIRNAME as well."
       (setq dir (car (car s-alist))
 	    s-alist (cdr s-alist))
       (and (or kill-root (not (string-equal dir dirname)))
-	   (dired-in-this-tree dir dirname)
+	   (dired-in-this-tree-p dir dirname)
 	   (dired-goto-subdir dir)
 	   (setq m-alist (nconc (dired-kill-subdir remember-marks) m-alist))))
     m-alist))
@@ -2460,7 +2592,7 @@ Optional third arg LIMIT (>= 1) is a limit to the length of the
 resulting list.
 Thus, if SEP is a regexp that only matches itself,
 
-   (mapconcat 'identity (dired-split SEP STRING) SEP)
+   (mapconcat #'identity (dired-split SEP STRING) SEP)
 
 is always equal to STRING."
   (let* ((start (string-match pat str))
@@ -2508,7 +2640,7 @@ When called interactively and not on a subdir line, go to this subdir's line."
 (defun dired-goto-subdir (dir)
   "Go to end of header line of DIR in this dired buffer.
 Return value of point on success, otherwise return nil.
-The next char is either \\n, or \\r if DIR is hidden."
+The next char is \\n."
   (interactive
    (prog1				; let push-mark display its message
        (list (expand-file-name
@@ -2523,8 +2655,8 @@ The next char is either \\n, or \\r if DIR is hidden."
     (and elt
 	 (goto-char (dired-get-subdir-min elt))
 	 ;; dired-subdir-hidden-p and dired-add-entry depend on point being
-	 ;; at either \r or \n after this function succeeds.
-	 (progn (skip-chars-forward "^\r\n")
+	 ;; at \n after this function succeeds.
+	 (progn (end-of-line)
 		(point)))))
 
 ;;;###autoload
@@ -2587,7 +2719,7 @@ Lower levels are unaffected."
       (while rest
 	(setq elt (car rest)
 	      rest (cdr rest))
-	(if (dired-in-this-tree (directory-file-name (car elt)) dir)
+	(if (dired-in-this-tree-p (directory-file-name (car elt)) dir)
 	    (setq rest nil
 		  pos (dired-goto-subdir (car elt))))))
     (if pos
@@ -2597,18 +2729,13 @@ Lower levels are unaffected."
 ;;; hiding
 
 (defun dired-unhide-subdir ()
-  (let (buffer-read-only)
-    (subst-char-in-region (dired-subdir-min) (dired-subdir-max) ?\r ?\n)))
-
-(defun dired-hide-check ()
-  (or selective-display
-      (error "selective-display must be t for subdir hiding to work!")))
+  (with-silent-modifications
+    (dired--unhide (dired-subdir-min) (dired-subdir-max))))
 
 (defun dired-subdir-hidden-p (dir)
-  (and selective-display
-       (save-excursion
-	 (dired-goto-subdir dir)
-	 (looking-at-p "\r"))))
+  (save-excursion
+    (dired-goto-subdir dir)
+    (dired--hidden-p)))
 
 ;;;###autoload
 (defun dired-hide-subdir (arg)
@@ -2616,8 +2743,7 @@ Lower levels are unaffected."
 Optional prefix arg is a repeat factor.
 Use \\[dired-hide-all] to (un)hide all directories."
   (interactive "p")
-  (dired-hide-check)
-  (let ((modflag (buffer-modified-p)))
+  (with-silent-modifications
     (while (>=  (setq arg (1- arg)) 0)
       (let* ((cur-dir (dired-current-directory))
 	     (hidden-p (dired-subdir-hidden-p cur-dir))
@@ -2626,12 +2752,11 @@ Use \\[dired-hide-all] to (un)hide all directories."
 	     buffer-read-only)
 	;; keep header line visible, hide rest
 	(goto-char (dired-get-subdir-min elt))
-	(skip-chars-forward "^\n\r")
+	(end-of-line)
 	(if hidden-p
-	    (subst-char-in-region (point) end-pos ?\r ?\n)
-	  (subst-char-in-region (point) end-pos ?\n ?\r)))
-      (dired-next-subdir 1 t))
-    (restore-buffer-modified-p modflag)))
+	    (dired--unhide (point) end-pos)
+	  (dired--hide (point) end-pos)))
+      (dired-next-subdir 1 t))))
 
 ;;;###autoload
 (defun dired-hide-all (&optional ignored)
@@ -2639,28 +2764,20 @@ Use \\[dired-hide-all] to (un)hide all directories."
 If there is already something hidden, make everything visible again.
 Use \\[dired-hide-subdir] to (un)hide a particular subdirectory."
   (interactive "P")
-  (dired-hide-check)
-  (let ((modflag (buffer-modified-p))
-	buffer-read-only)
-    (if (save-excursion
-	  (goto-char (point-min))
-	  (search-forward "\r" nil t))
-	;; unhide - bombs on \r in filenames
-	(subst-char-in-region (point-min) (point-max) ?\r ?\n)
+  (with-silent-modifications
+    (if (text-property-any (point-min) (point-max) 'invisible 'dired)
+	(dired--unhide (point-min) (point-max))
       ;; hide
-      (let ((pos (point-max))		; pos of end of last directory
-	    (alist dired-subdir-alist))
-	(while alist		        ; while there are dirs before pos
-	  (subst-char-in-region (dired-get-subdir-min (car alist)) ; pos of prev dir
-				(save-excursion
-				  (goto-char pos) ; current dir
-				  ;; we're somewhere on current dir's line
-				  (forward-line -1)
-				  (point))
-				?\n ?\r)
-	  (setq pos (dired-get-subdir-min (car alist)))	; prev dir gets current dir
-	  (setq alist (cdr alist)))))
-    (restore-buffer-modified-p modflag)))
+      (let ((pos (point-max)))		; pos of end of last directory
+        (dolist (subdir dired-subdir-alist)
+	  (let ((start (dired-get-subdir-min subdir)) ; pos of prev dir
+		(end (save-excursion
+		       (goto-char pos) ; current dir
+		       ;; we're somewhere on current dir's line
+		       (forward-line -1)
+		       (point))))
+            (dired--hide start end))
+	  (setq pos (dired-get-subdir-min subdir))))))) ; prev dir gets current dir
 
 ;;;###end dired-ins.el
 
@@ -2686,8 +2803,8 @@ When off, it uses the original predicate."
   nil nil nil
   (if dired-isearch-filenames-mode
       (add-function :before-while (local 'isearch-filter-predicate)
-                  #'dired-isearch-filter-filenames
-                  '((isearch-message-prefix . "filename ")))
+                    #'dired-isearch-filter-filenames
+                    '((isearch-message-prefix . "filename ")))
     (remove-function (local 'isearch-filter-predicate)
                      #'dired-isearch-filter-filenames))
   (when isearch-mode
@@ -2703,18 +2820,20 @@ Intended to be added to `isearch-mode-hook'."
 		 (get-text-property (point) 'dired-filename)))
     (define-key isearch-mode-map "\M-sff" 'dired-isearch-filenames-mode)
     (dired-isearch-filenames-mode 1)
-    (add-hook 'isearch-mode-end-hook 'dired-isearch-filenames-end nil t)))
+    (add-hook 'isearch-mode-end-hook #'dired-isearch-filenames-end nil t)))
 
 (defun dired-isearch-filenames-end ()
   "Clean up the Dired file name search after terminating isearch."
   (define-key isearch-mode-map "\M-sff" nil)
   (dired-isearch-filenames-mode -1)
-  (remove-hook 'isearch-mode-end-hook 'dired-isearch-filenames-end t))
+  (remove-hook 'isearch-mode-end-hook #'dired-isearch-filenames-end t)
+  (unless isearch-suspended
+    (custom-reevaluate-setting 'dired-isearch-filenames)))
 
 (defun dired-isearch-filter-filenames (beg end)
-  "Test whether the current search hit is a file name.
-Return non-nil if the text from BEG to END is part of a file
-name (has the text property `dired-filename')."
+  "Test whether some part of the current search match is inside a file name.
+This function returns non-nil if some part of the text between BEG and END
+is part of a file name (i.e., has the text property `dired-filename')."
   (text-property-not-all (min beg end) (max beg end)
 			 'dired-filename nil))
 
@@ -2722,15 +2841,15 @@ name (has the text property `dired-filename')."
 (defun dired-isearch-filenames ()
   "Search for a string using Isearch only in file names in the Dired buffer."
   (interactive)
-  (let ((dired-isearch-filenames t))
-    (isearch-forward nil t)))
+  (setq dired-isearch-filenames t)
+  (isearch-forward nil t))
 
 ;;;###autoload
 (defun dired-isearch-filenames-regexp ()
   "Search for a regexp using Isearch only in file names in the Dired buffer."
   (interactive)
-  (let ((dired-isearch-filenames t))
-    (isearch-forward-regexp nil t)))
+  (setq dired-isearch-filenames t)
+  (isearch-forward-regexp nil t))
 
 
 ;; Functions for searching in tags style among marked files.
@@ -2740,22 +2859,31 @@ name (has the text property `dired-filename')."
   "Search for a string through all marked files using Isearch."
   (interactive)
   (multi-isearch-files
-   (dired-get-marked-files nil nil 'dired-nondirectory-p)))
+   (dired-get-marked-files nil nil #'dired-nondirectory-p nil t)))
 
 ;;;###autoload
 (defun dired-do-isearch-regexp ()
   "Search for a regexp through all marked files using Isearch."
   (interactive)
   (multi-isearch-files-regexp
-   (dired-get-marked-files nil nil 'dired-nondirectory-p)))
+   (dired-get-marked-files nil nil 'dired-nondirectory-p nil t)))
+
+(declare-function fileloop-continue "fileloop" ())
 
 ;;;###autoload
 (defun dired-do-search (regexp)
   "Search through all marked files for a match for REGEXP.
+If no files are marked, search through the file under point.
+
 Stops when a match is found.
-To continue searching for next match, use command \\[tags-loop-continue]."
+
+To continue searching for next match, use command \\[fileloop-continue]."
   (interactive "sSearch marked files (regexp): ")
-  (tags-search regexp '(dired-get-marked-files nil nil 'dired-nondirectory-p)))
+  (fileloop-initialize-search
+   regexp
+   (dired-get-marked-files nil nil #'dired-nondirectory-p)
+   'default)
+  (fileloop-continue))
 
 ;;;###autoload
 (defun dired-do-query-replace-regexp (from to &optional delimited)
@@ -2768,13 +2896,16 @@ with the command \\[tags-loop-continue]."
 	  (query-replace-read-args
 	   "Query replace regexp in marked files" t t)))
      (list (nth 0 common) (nth 1 common) (nth 2 common))))
-  (dolist (file (dired-get-marked-files nil nil 'dired-nondirectory-p))
+  (dolist (file (dired-get-marked-files nil nil #'dired-nondirectory-p nil t))
     (let ((buffer (get-file-buffer file)))
       (if (and buffer (with-current-buffer buffer
 			buffer-read-only))
 	  (error "File `%s' is visited read-only" file))))
-  (tags-query-replace from to delimited
-		      '(dired-get-marked-files nil nil 'dired-nondirectory-p)))
+  (fileloop-initialize-replace
+   from to (dired-get-marked-files nil nil #'dired-nondirectory-p)
+   (if (equal from (downcase from)) nil 'default)
+   delimited)
+  (fileloop-continue))
 
 (declare-function xref--show-xrefs "xref")
 (declare-function xref-query-replace-in-results "xref")
@@ -2782,6 +2913,9 @@ with the command \\[tags-loop-continue]."
 ;;;###autoload
 (defun dired-do-find-regexp (regexp)
   "Find all matches for REGEXP in all marked files.
+
+If no files are marked, use the file under point.
+
 For any marked directory, all of its files are searched recursively.
 However, files matching `grep-find-ignored-files' and subdirectories
 matching `grep-find-ignored-directories' are skipped in the marked
@@ -2790,26 +2924,33 @@ directories.
 REGEXP should use constructs supported by your local `grep' command."
   (interactive "sSearch marked files (regexp): ")
   (require 'grep)
+  (require 'xref)
   (defvar grep-find-ignored-files)
-  (defvar grep-find-ignored-directories)
-  (let* ((files (dired-get-marked-files))
+  (declare-function rgrep-find-ignored-directories "grep" (dir))
+  (let* ((files (dired-get-marked-files nil nil nil nil t))
          (ignores (nconc (mapcar
-                          (lambda (s) (concat s "/"))
-                          grep-find-ignored-directories)
+                          #'file-name-as-directory
+                          (rgrep-find-ignored-directories default-directory))
                          grep-find-ignored-files))
-         (xrefs (mapcan
-                 (lambda (file)
-                   (xref-collect-matches regexp "*" file
-                                         (and (file-directory-p file)
-                                              ignores)))
-                 files)))
-    (unless xrefs
-      (user-error "No matches for: %s" regexp))
-    (xref--show-xrefs xrefs nil t)))
+         (fetcher
+          (lambda ()
+            (let ((xrefs (mapcan
+                          (lambda (file)
+                            (xref-collect-matches regexp "*" file
+                                                  (and (file-directory-p file)
+                                                       ignores)))
+                          files)))
+              (unless xrefs
+                (user-error "No matches for: %s" regexp))
+              xrefs))))
+    (xref--show-xrefs fetcher nil)))
 
 ;;;###autoload
 (defun dired-do-find-regexp-and-replace (from to)
   "Replace matches of FROM with TO, in all marked files.
+
+If no files are marked, use the file under point.
+
 For any marked directory, matches in all of its files are replaced,
 recursively.  However, files matching `grep-find-ignored-files'
 and subdirectories matching `grep-find-ignored-directories' are skipped
@@ -2846,7 +2987,6 @@ instead."
 (provide 'dired-aux)
 
 ;; Local Variables:
-;; byte-compile-dynamic: t
 ;; generated-autoload-file: "dired-loaddefs.el"
 ;; End:
 

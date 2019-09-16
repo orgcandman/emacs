@@ -1,8 +1,8 @@
 ;;; cedet-global.el --- GNU Global support for CEDET.
 
-;; Copyright (C) 2008-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2008-2019 Free Software Foundation, Inc.
 
-;; Author: Eric M. Ludlam <eric@siege-engine.com>
+;; Author: Eric M. Ludlam <zappo@gnu.org>
 ;; Package: cedet
 
 ;; This file is part of GNU Emacs.
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -105,7 +105,7 @@ SCOPE is the scope of the search, such as 'project or 'subdirs."
 (defun cedet-gnu-global-expand-filename (filename)
   "Expand the FILENAME with GNU Global.
 Return a list of absolute filenames or nil if none found.
-Signal an error if Gnu global not available."
+Signal an error if GNU global not available."
   (interactive "sFile: ")
   (let ((ans (with-current-buffer (cedet-gnu-global-call (list "-Pa" filename))
 	       (goto-char (point-min))

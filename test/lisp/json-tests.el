@@ -1,6 +1,6 @@
 ;;; json-tests.el --- Test suite for json.el
 
-;; Copyright (C) 2015-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2015-2019 Free Software Foundation, Inc.
 
 ;; Author: Dmitry Gutov <dgutov@yandex.ru>
 
@@ -15,7 +15,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Code:
 
@@ -75,7 +75,7 @@ Point is moved to beginning of the buffer."
 
 (ert-deftest test-json-peek ()
   (json-tests--with-temp-buffer ""
-    (should (eq (json-peek) :json-eof)))
+    (should (zerop (json-peek))))
   (json-tests--with-temp-buffer "{ \"a\": 1 }"
     (should (equal (json-peek) ?{))))
 
@@ -89,7 +89,10 @@ Point is moved to beginning of the buffer."
 (ert-deftest test-json-skip-whitespace ()
   (json-tests--with-temp-buffer "\t\r\n\f\b { \"a\": 1 }"
     (json-skip-whitespace)
-    (should (equal (char-after (point)) ?{))))
+    (should (equal (char-after) ?\f)))
+  (json-tests--with-temp-buffer "\t\r\n\t { \"a\": 1 }"
+    (json-skip-whitespace)
+    (should (equal (char-after) ?{))))
 
 ;;; Paths
 
@@ -161,6 +164,8 @@ Point is moved to beginning of the buffer."
     (should (equal (json-read-escaped-char) ?\"))))
 
 (ert-deftest test-json-read-string ()
+  (json-tests--with-temp-buffer "\"formfeed\f\""
+    (should-error (json-read-string) :type 'json-string-format))
   (json-tests--with-temp-buffer "\"foo \\\"bar\\\"\""
     (should (equal (json-read-string) "foo \"bar\"")))
   (json-tests--with-temp-buffer "\"abcαβγ\""
@@ -304,7 +309,8 @@ Point is moved to beginning of the buffer."
   (json-tests--with-temp-buffer ""
     (should-error (json-read) :type 'json-end-of-file))
   (json-tests--with-temp-buffer "xxx"
-    (should-error (json-read) :type 'json-readtable-error)))
+    (let ((err (should-error (json-read) :type 'json-readtable-error)))
+      (should (equal (cdr err) '(?x))))))
 
 (ert-deftest test-json-read-from-string ()
   (let ((json-string "{ \"a\": 1 }"))
@@ -318,6 +324,73 @@ Point is moved to beginning of the buffer."
   (should (equal (json-encode "foo") "\"foo\""))
   (with-temp-buffer
     (should-error (json-encode (current-buffer)) :type 'json-error)))
+
+;;; Pretty-print
+
+(defun json-tests-equal-pretty-print (original &optional expected)
+  "Abort current test if pretty-printing ORIGINAL does not yield EXPECTED.
+
+Both ORIGINAL and EXPECTED should be strings.  If EXPECTED is
+nil, ORIGINAL should stay unchanged by pretty-printing."
+  (with-temp-buffer
+    (insert original)
+    (json-pretty-print-buffer)
+    (should (equal (buffer-string) (or expected original)))))
+
+(ert-deftest test-json-pretty-print-string ()
+  (json-tests-equal-pretty-print "\"\"")
+  (json-tests-equal-pretty-print "\"foo\""))
+
+(ert-deftest test-json-pretty-print-atom ()
+  (json-tests-equal-pretty-print "true")
+  (json-tests-equal-pretty-print "false")
+  (json-tests-equal-pretty-print "null"))
+
+(ert-deftest test-json-pretty-print-number ()
+  (json-tests-equal-pretty-print "123")
+  (json-tests-equal-pretty-print "0.123"))
+
+(ert-deftest test-json-pretty-print-object ()
+  ;; empty (regression test for bug#24252)
+  (json-tests-equal-pretty-print
+   "{}"
+   "{\n}")
+  ;; one pair
+  (json-tests-equal-pretty-print
+   "{\"key\":1}"
+   "{\n  \"key\": 1\n}")
+  ;; two pairs
+  (json-tests-equal-pretty-print
+   "{\"key1\":1,\"key2\":2}"
+   "{\n  \"key1\": 1,\n  \"key2\": 2\n}")
+  ;; embedded object
+  (json-tests-equal-pretty-print
+   "{\"foo\":{\"key\":1}}"
+   "{\n  \"foo\": {\n    \"key\": 1\n  }\n}")
+  ;; embedded array
+  (json-tests-equal-pretty-print
+   "{\"key\":[1,2]}"
+   "{\n  \"key\": [\n    1,\n    2\n  ]\n}"))
+
+(ert-deftest test-json-pretty-print-array ()
+  ;; empty
+  (json-tests-equal-pretty-print "[]")
+  ;; one item
+  (json-tests-equal-pretty-print
+   "[1]"
+   "[\n  1\n]")
+  ;; two items
+  (json-tests-equal-pretty-print
+   "[1,2]"
+   "[\n  1,\n  2\n]")
+  ;; embedded object
+  (json-tests-equal-pretty-print
+   "[{\"key\":1}]"
+   "[\n  {\n    \"key\": 1\n  }\n]")
+  ;; embedded array
+  (json-tests-equal-pretty-print
+   "[[1,2]]"
+   "[\n  [\n    1,\n    2\n  ]\n]"))
 
 (provide 'json-tests)
 ;;; json-tests.el ends here

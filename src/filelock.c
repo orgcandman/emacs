@@ -1,6 +1,6 @@
 /* Lock files for editing.
 
-Copyright (C) 1985-1987, 1993-1994, 1996, 1998-2017 Free Software
+Copyright (C) 1985-1987, 1993-1994, 1996, 1998-2019 Free Software
 Foundation, Inc.
 
 Author: Richard King
@@ -19,7 +19,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 
 #include <config.h>
@@ -152,7 +152,7 @@ get_boot_time (void)
     mib[1] = KERN_BOOTTIME;
     size = sizeof (boottime_val);
 
-    if (sysctl (mib, 2, &boottime_val, &size, NULL, 0) >= 0)
+    if (sysctl (mib, 2, &boottime_val, &size, NULL, 0) >= 0 && size != 0)
       {
 	boot_time = boottime_val.tv_sec;
 	return boot_time;
@@ -171,13 +171,10 @@ get_boot_time (void)
     }
 
 #if defined (BOOT_TIME)
-#ifndef CANNOT_DUMP
-  /* The utmp routines maintain static state.
-     Don't touch that state unless we are initialized,
-     since it might not survive dumping.  */
-  if (! initialized)
+  /* The utmp routines maintain static state.  Don't touch that state
+     if we are going to dump, since it might not survive dumping.  */
+  if (will_dump_p ())
     return boot_time;
-#endif /* not CANNOT_DUMP */
 
   /* Try to get boot time from utmp before wtmp,
      since utmp is typically much smaller than wtmp.
@@ -206,14 +203,11 @@ get_boot_time (void)
 					    WTMP_FILE, counter);
 	  if (! NILP (Ffile_exists_p (tempname)))
 	    {
-	      /* The utmp functions on mescaline.gnu.org accept only
-		 file names up to 8 characters long.  Choose a 2
-		 character long prefix, and call make_temp_file with
-		 second arg non-zero, so that it will add not more
-		 than 6 characters to the prefix.  */
-	      filename = Fexpand_file_name (build_string ("wt"),
-					    Vtemporary_file_directory);
-	      filename = make_temp_name (filename, 1);
+	      /* The utmp functions on older systems accept only file
+		 names up to 8 bytes long.  Choose a 2 byte prefix, so
+		 the 6-byte suffix does not make the name too long.  */
+	      filename = Fmake_temp_file_internal (build_string ("wt"), Qnil,
+						   empty_unibyte_string, Qnil);
 	      CALLN (Fcall_process, build_string ("gzip"), Qnil,
 		     list2 (QCfile, filename), Qnil,
 		     build_string ("-cd"), tempname);
@@ -302,7 +296,7 @@ typedef struct
 
 /* Write the name of the lock file for FNAME into LOCKNAME.  Length
    will be that of FNAME plus two more for the leading ".#", plus one
-   for the null.  */
+   for the NUL.  */
 #define MAKE_LOCK_NAME(lockname, fname) \
   (lockname = SAFE_ALLOCA (SBYTES (fname) + 2 + 1), \
    fill_in_lock_file_name (lockname, fname))
@@ -339,6 +333,9 @@ rename_lock_file (char const *old, char const *new, bool force)
     {
       struct stat st;
 
+      int r = renameat_noreplace (AT_FDCWD, old, AT_FDCWD, new);
+      if (! (r < 0 && errno == ENOSYS))
+	return r;
       if (link (old, new) == 0)
 	return unlink (old) == 0 || errno == ENOENT ? 0 : -1;
       if (errno != ENOSYS && errno != LINKS_MIGHT_NOT_WORK)
@@ -403,8 +400,6 @@ create_lock_file (char *lfname, char *lock_info_str, bool force)
       else
 	{
 	  ptrdiff_t lock_info_len;
-	  if (! O_CLOEXEC)
-	    fcntl (fd, F_SETFD, FD_CLOEXEC);
 	  lock_info_len = strlen (lock_info_str);
 	  err = 0;
 	  if (emacs_write (fd, lock_info_str, lock_info_len) != lock_info_len
@@ -434,26 +429,26 @@ static int
 lock_file_1 (char *lfname, bool force)
 {
   /* Call this first because it can GC.  */
-  printmax_t boot = get_boot_time ();
+  intmax_t boot = get_boot_time ();
 
   Lisp_Object luser_name = Fuser_login_name (Qnil);
   char const *user_name = STRINGP (luser_name) ? SSDATA (luser_name) : "";
   Lisp_Object lhost_name = Fsystem_name ();
   char const *host_name = STRINGP (lhost_name) ? SSDATA (lhost_name) : "";
   char lock_info_str[MAX_LFINFO + 1];
-  printmax_t pid = getpid ();
+  intmax_t pid = getpid ();
 
   if (boot)
     {
       if (sizeof lock_info_str
           <= snprintf (lock_info_str, sizeof lock_info_str,
-                       "%s@%s.%"pMd":%"pMd,
+		       "%s@%s.%"PRIdMAX":%"PRIdMAX,
                        user_name, host_name, pid, boot))
         return ENAMETOOLONG;
     }
   else if (sizeof lock_info_str
            <= snprintf (lock_info_str, sizeof lock_info_str,
-                        "%s@%s.%"pMd,
+			"%s@%s.%"PRIdMAX,
                         user_name, host_name, pid))
     return ENAMETOOLONG;
 
@@ -569,7 +564,7 @@ current_lock_owner (lock_info_type *owner, char *lfname)
       if (! (boot[0] == '\200' && boot[1] == '\242'))
 	return -1;
       boot += 2;
-      /* Fall through.  */
+      FALLTHROUGH;
     case ':':
       if (! c_isdigit (boot[0]))
 	return -1;
@@ -668,7 +663,7 @@ lock_file (Lisp_Object fn)
   /* Don't do locking while dumping Emacs.
      Uncompressing wtmp files uses call-process, which does not work
      in an uninitialized Emacs.  */
-  if (! NILP (Vpurify_flag))
+  if (will_dump_p ())
     return;
 
   orig_fn = fn;
@@ -827,6 +822,7 @@ t if it is locked by you, else a string saying which user has locked it.  */)
   USE_SAFE_ALLOCA;
 
   filename = Fexpand_file_name (filename, Qnil);
+  filename = ENCODE_FILE (filename);
 
   MAKE_LOCK_NAME (lfname, filename);
 
@@ -851,7 +847,10 @@ syms_of_filelock (void)
   Vtemporary_file_directory = Qnil;
 
   DEFVAR_BOOL ("create-lockfiles", create_lockfiles,
-	       doc: /* Non-nil means use lockfiles to avoid editing collisions.  */);
+	       doc: /* Non-nil means use lockfiles to avoid editing collisions.
+The name of the (per-buffer) lockfile is constructed by prepending a
+'.#' to the name of the file being locked.  See also `lock-buffer' and
+Info node `(emacs)Interlocking'.  */);
   create_lockfiles = 1;
 
   defsubr (&Sunlock_buffer);

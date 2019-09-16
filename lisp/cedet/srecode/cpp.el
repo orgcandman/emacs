@@ -1,8 +1,8 @@
 ;;; srecode/cpp.el --- C++ specific handlers for Semantic Recoder
 
-;; Copyright (C) 2007, 2009-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2007, 2009-2019 Free Software Foundation, Inc.
 
-;; Author: Eric M. Ludlam <eric@siege-engine.com>
+;; Author: Eric M. Ludlam <zappo@gnu.org>
 ;;         Jan Moringen <scymtym@users.sourceforge.net>
 
 ;; This file is part of GNU Emacs.
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -122,7 +122,7 @@ specified in a C file."
   (srecode-semantic-apply-tag-to-dict-default tag-wrapper dict)
 
   ;; Pull out the tag for the individual pieces.
-  (let* ((tag   (oref tag-wrapper :prime))
+  (let* ((tag   (oref tag-wrapper prime))
 	 (class (semantic-tag-class tag)))
 
     ;; Add additional information based on the class of the tag.

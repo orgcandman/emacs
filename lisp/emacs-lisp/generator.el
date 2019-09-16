@@ -1,6 +1,6 @@
 ;;; generator.el --- generators  -*- lexical-binding: t -*-
 
-;;; Copyright (C) 2015-2017 Free Software Foundation, Inc.
+;;; Copyright (C) 2015-2019 Free Software Foundation, Inc.
 
 ;; Author: Daniel Colascione <dancol@dancol.org>
 ;; Keywords: extensions, elisp
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -77,7 +77,6 @@
 ;;; Code:
 
 (require 'cl-lib)
-(require 'pcase)
 
 (defvar cps--bindings nil)
 (defvar cps--states nil)
@@ -87,10 +86,7 @@
 (defvar cps--cleanup-function nil)
 
 (defmacro cps--gensym (fmt &rest args)
-  ;; Change this function to use `cl-gensym' if you want the generated
-  ;; code to be easier to read and debug.
-  ;; (cl-gensym (apply #'format fmt args))
-  `(progn (ignore ,@args) (make-symbol ,fmt)))
+  `(gensym (format ,fmt ,@args)))
 
 (defvar cps--dynamic-wrappers '(identity)
   "List of transformer functions to apply to atomic forms we
@@ -146,8 +142,7 @@ the CPS state machinery.
     `(let ((,dynamic-var ,static-var))
        (unwind-protect ; Update the static shadow after evaluation is done
             ,form
-         (setf ,static-var ,dynamic-var))
-       ,form)))
+         (setf ,static-var ,dynamic-var)))))
 
 (defmacro cps--with-dynamic-binding (dynamic-var static-var &rest body)
   "Evaluate BODY such that generated atomic evaluations run with
@@ -218,8 +213,8 @@ don't yield.")
 
     ;; Process `and'.
 
-    (`(and)                             ; (and) -> t
-      (cps--transform-1 t next-state))
+    ('(and)                             ; (and) -> t
+     (cps--transform-1 t next-state))
     (`(and ,condition)                  ; (and CONDITION) -> CONDITION
       (cps--transform-1 condition next-state))
     (`(and ,condition . ,rest)
@@ -251,8 +246,8 @@ don't yield.")
     ;; Process `cond': transform into `if' or `or' depending on the
     ;; precise kind of the condition we're looking at.
 
-    (`(cond)                            ; (cond) -> nil
-      (cps--transform-1 nil next-state))
+    ('(cond)                            ; (cond) -> nil
+     (cps--transform-1 nil next-state))
     (`(cond (,condition) . ,rest)
       (cps--transform-1 `(or ,condition (cond ,@rest))
                         next-state))
@@ -286,14 +281,14 @@ don't yield.")
     ;; Process `progn' and `inline': they are identical except for the
     ;; name, which has some significance to the byte compiler.
 
-    (`(inline) (cps--transform-1 nil next-state))
+    ('(inline) (cps--transform-1 nil next-state))
     (`(inline ,form) (cps--transform-1 form next-state))
     (`(inline ,form . ,rest)
       (cps--transform-1 form
                         (cps--transform-1 `(inline ,@rest)
                                           next-state)))
 
-    (`(progn) (cps--transform-1 nil next-state))
+    ('(progn) (cps--transform-1 nil next-state))
     (`(progn ,form) (cps--transform-1 form next-state))
     (`(progn ,form . ,rest)
       (cps--transform-1 form
@@ -350,7 +345,7 @@ don't yield.")
 
     ;; Process `or'.
 
-    (`(or) (cps--transform-1 nil next-state))
+    ('(or) (cps--transform-1 nil next-state))
     (`(or ,condition) (cps--transform-1 condition next-state))
     (`(or ,condition . ,rest)
       (cps--transform-1
@@ -378,13 +373,6 @@ don't yield.")
                     (cps--add-state "prog1inner"
                       `(setf ,cps--value-symbol ,temp-var-symbol
                              ,cps--state-symbol ,next-state))))))))
-
-    ;; Process `prog2'.
-
-    (`(prog2 ,form1 ,form2 . ,body)
-      (cps--transform-1
-       `(progn ,form1 (prog1 ,form2 ,@body))
-       next-state))
 
     ;; Process `unwind-protect': If we're inside an unwind-protect, we
     ;; have a block of code UNWINDFORMS which we would like to run
@@ -572,8 +560,11 @@ modified copy."
            (unless ,normal-exit-symbol
              ,@unwind-forms))))))
 
-(put 'iter-end-of-sequence 'error-conditions '(iter-end-of-sequence))
-(put 'iter-end-of-sequence 'error-message "iteration terminated")
+(define-error 'iter-end-of-sequence "Iteration terminated"
+  ;; FIXME: This was not defined originally as an `error' condition, so
+  ;; we reproduce this by passing itself as the parent, which avoids the
+  ;; default `error' parent.  Maybe it *should* be in the `error' category?
+  'iter-end-of-sequence)
 
 (defun cps--make-close-iterator-form (terminal-state)
   (if cps--cleanup-table-symbol
@@ -648,11 +639,11 @@ modified copy."
                          ,(cps--make-close-iterator-form terminal-state)))))
                   (t (error "unknown iterator operation %S" op))))))
          ,(when finalizer-symbol
-                `(funcall iterator
-                          :stash-finalizer
-                          (make-finalizer
-                           (lambda ()
-                             (iter-close iterator)))))
+            '(funcall iterator
+                      :stash-finalizer
+                      (make-finalizer
+                       (lambda ()
+                         (iter-close iterator)))))
          iterator))))
 
 (defun iter-yield (value)
@@ -685,7 +676,9 @@ sub-iterator function returns via `iter-end-of-sequence'."
 When called as a function, NAME returns an iterator value that
 encapsulates the state of a computation that produces a sequence
 of values.  Callers can retrieve each value using `iter-next'."
-  (declare (indent defun))
+  (declare (indent defun)
+           (debug (&define name lambda-list lambda-doc def-body))
+           (doc-string 3))
   (cl-assert lexical-binding)
   (let* ((parsed-body (macroexp-parse-body body))
          (declarations (car parsed-body))
@@ -697,10 +690,19 @@ of values.  Callers can retrieve each value using `iter-next'."
 (defmacro iter-lambda (arglist &rest body)
   "Return a lambda generator.
 `iter-lambda' is to `iter-defun' as `lambda' is to `defun'."
-  (declare (indent defun))
+  (declare (indent defun)
+           (debug (&define lambda-list lambda-doc def-body)))
   (cl-assert lexical-binding)
   `(lambda ,arglist
      ,(cps-generate-evaluator body)))
+
+(defmacro iter-make (&rest body)
+  "Return a new iterator."
+  (declare (debug t))
+  (cps-generate-evaluator body))
+
+(defconst iter-empty (lambda (_op _val) (signal 'iter-end-of-sequence nil))
+  "Trivial iterator that always signals the end of sequence.")
 
 (defun iter-next (iterator &optional yield-result)
   "Extract a value from an iterator.
@@ -721,7 +723,8 @@ is blocked."
   "Loop over values from an iterator.
 Evaluate BODY with VAR bound to each value from ITERATOR.
 Return the value with which ITERATOR finished iteration."
-  (declare (indent 1))
+  (declare (indent 1)
+           (debug ((symbolp form) body)))
   (let ((done-symbol (cps--gensym "iter-do-iterator-done"))
         (condition-symbol (cps--gensym "iter-do-condition"))
         (it-symbol (cps--gensym "iter-do-iterator"))

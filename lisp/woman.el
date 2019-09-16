@@ -1,6 +1,6 @@
 ;;; woman.el --- browse UN*X manual pages `wo (without) man'
 
-;; Copyright (C) 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2000-2019 Free Software Foundation, Inc.
 
 ;; Author: Francis J. Wright <F.J.Wright@qmul.ac.uk>
 ;; Maintainer: emacs-devel@gnu.org
@@ -22,7 +22,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -1159,7 +1159,7 @@ The major browsing mode used is essentially the standard Man mode.
 Choose the filename for the man page using completion, based on the
 topic selected from the directories specified in `woman-manpath' and
 `woman-path'.  The directory expansions and topics are cached for
-speed, but a non-nil interactive argument forces the caches to be
+speed.  With a prefix argument, force the caches to be
 updated (e.g. to re-interpret the current directory).
 
 Used non-interactively, arguments are optional: if given then TOPIC
@@ -1619,7 +1619,7 @@ decompress the file if appropriate.  See the documentation for the
 	      (setq woman-buffer-alist
 		    (cons (cons file-name bufname) woman-buffer-alist)
 		    woman-buffer-number 0)))))
-  (Man-build-section-alist)
+  (Man-build-section-list)
   (Man-build-references-alist)
   (goto-char (point-min)))
 
@@ -1714,14 +1714,14 @@ Do not call directly!"
 
   ;; Interpret overprinting to indicate bold face:
   (goto-char (point-min))
-  (while (re-search-forward "\\(.\\)\\(\\(+\\1\\)+\\)" nil t)
+  (while (re-search-forward "\\(.\\)\\(\\(\^H+\\1\\)+\\)" nil t)
     (woman-delete-match 2)
     (woman-set-face (1- (point)) (point) 'woman-bold))
 
   ;; Interpret underlining to indicate italic face:
   ;; (Must be AFTER emboldening to interpret bold _ correctly!)
   (goto-char (point-min))
-  (while (search-forward "_" nil t)
+  (while (search-forward "_\^H" nil t)
     (delete-char -2)
     (woman-set-face (point) (1+ (point)) 'woman-italic))
 
@@ -1759,8 +1759,8 @@ Leave point at end of new text.  Return length of inserted text."
 	   (condition-case ()
 	       (insert-file-contents filename nil)
 	     (file-error
-	      ;; Run find-file-not-found-hooks until one returns non-nil.
-	      ;; (run-hook-with-args-until-success 'find-file-not-found-hooks)
+	      ;; Run find-file-not-found-functions until one returns non-nil.
+	      ;; (run-hook-with-args-until-success 'find-file-not-found-functions)
 	      (insert "\n***** File " filename " not found! *****\n\n")))))))
 
 
@@ -2010,10 +2010,8 @@ Optional argument REDRAW, if non-nil, forces mode line to be updated."
 ;;   (after Man-bgproc-sentinel-advice activate)
 ;;   ;; Terminates man processing
 ;;   "Report formatting time."
-;;   (let* ((time (current-time))
-;; 	 (time (+ (* (- (car time) (car WoMan-Man-start-time)) 65536)
-;; 		  (- (cadr time) (cadr WoMan-Man-start-time)))))
-;;     (message "Man formatting done in %d seconds" time)))
+;;   (message "Man formatting done in %s seconds"
+;;            (float-time (time-since WoMan-Man-start-time))))
 
 
 ;;; Buffer handling:
@@ -2071,14 +2069,14 @@ alist in `woman-buffer-alist' and return nil."
 
 ;;; Syntax and display tables:
 
-(defconst woman-escaped-escape-char ?
+(defconst woman-escaped-escape-char ?\^\\
   ;; An arbitrary unused control character
   "Internal character representation of escaped escape characters.")
 (defconst woman-escaped-escape-string
   (char-to-string woman-escaped-escape-char)
   "Internal string representation of escaped escape characters.")
 
-(defconst woman-unpadded-space-char ?
+(defconst woman-unpadded-space-char ?\^\]
   ;; An arbitrary unused control character
   "Internal character representation of unpadded space characters.")
 (defconst woman-unpadded-space-string
@@ -2626,7 +2624,7 @@ If DELETE is non-nil then delete from point."
 	(t				; Ignore -- leave in buffer
 	 ;; This does not work too well, but it's only for debugging!
 	 (skip-chars-forward "^ \t")
-	 (if (looking-at "[ \t]*\\{") (search-forward "\\}"))
+	 (if (looking-at "[ \t]*{") (search-forward "}"))
 	 (forward-line 1))))
 
 ;; request is not used dynamically by any callees.
@@ -2638,7 +2636,7 @@ If DELETE is non-nil then delete from point."
     ;; Ignore -- leave in buffer
     ;; This does not work too well, but it's only for debugging!
     (skip-chars-forward "^ \t")
-    (if (looking-at "[ \t]*\\{") (search-forward "\\}"))
+    (if (looking-at "[ \t]*{") (search-forward "}"))
     (forward-line 1)))
 
 (defun woman0-so ()
@@ -3270,7 +3268,7 @@ If optional arg CONCAT is non-nil then join arguments."
     (while
 	;; Find font requests, paragraph macros and font escapes:
 	(re-search-forward
-	 "^[.'][ \t]*\\(\\(\\ft\\)\\|\\(.P\\)\\)\\|\\(\\\\f\\)" nil 1)
+	 "^[.'][ \t]*\\(\\(ft\\)\\|\\(.P\\)\\)\\|\\(\\\\f\\)" nil 1)
       (let (font beg notfont fescape)
 	;; Match font indicator and leave point at end of sequence:
 	(cond ((match-beginning 2)
@@ -3513,7 +3511,7 @@ The expression may be an argument in quotes."
   (let ((value (if (looking-at "[+-]") 0 (woman-parse-numeric-value)))
 	op)
     (while (cond
-	    ((looking-at "[+-/*%]")	; arithmetic operators
+	    ((looking-at "[+/*%-]")	; arithmetic operators
 	     (forward-char)
 	     (setq op (intern-soft (match-string 0)))
 	     (setq value (funcall op value (woman-parse-numeric-value))))
@@ -3663,46 +3661,46 @@ expression in parentheses.  Leaves point after the value."
     (fset 'insert-and-inherit (symbol-function 'insert))
     (fset 'set-text-properties 'ignore)
     (unwind-protect
-	(while
-	    ;; Find next control line:
-            (re-search-forward woman-request-regexp nil t)
-          (cond
-           ;; Construct woman function to call:
-           ((setq fn (intern-soft
-                      (concat "woman2-"
-                              (setq woman-request (match-string 1)))))
-            ;; Delete request or macro name:
-            (woman-delete-match 0))
-           ;; Unrecognized request:
-           ((prog1 nil
-              ;; (WoMan-warn ".%s request ignored!" woman-request)
-              (WoMan-warn-ignored woman-request "ignored!")
-              ;; (setq fn 'woman2-LP)
+        (progn
+          (while
+              ;; Find next control line:
+              (re-search-forward woman-request-regexp nil t)
+            (cond
+             ;; Construct woman function to call:
+             ((setq fn (intern-soft
+                        (concat "woman2-"
+                                (setq woman-request (match-string 1)))))
+              ;; Delete request or macro name:
+              (woman-delete-match 0))
+             ;; Unrecognized request:
+             ((prog1 nil
+                ;; (WoMan-warn ".%s request ignored!" woman-request)
+                (WoMan-warn-ignored woman-request "ignored!")
+                ;; (setq fn 'woman2-LP)
+                ;; AVOID LEAVING A BLANK LINE!
+                ;; (setq fn 'woman2-format-paragraphs)
+                ))
+             ;; .LP assumes it is at eol and leaves a (blank) line,
+             ;; so leave point at end of line before paragraph:
+             ((or (looking-at "[ \t]*$") ; no argument
+                  woman-ignore)          ; ignore all
+              ;; (beginning-of-line) (kill-line)
               ;; AVOID LEAVING A BLANK LINE!
-              ;; (setq fn 'woman2-format-paragraphs)
-              ))
-           ;; .LP assumes it is at eol and leaves a (blank) line,
-           ;; so leave point at end of line before paragraph:
-           ((or (looking-at "[ \t]*$") ; no argument
-                woman-ignore)          ; ignore all
-            ;; (beginning-of-line) (kill-line)
-            ;; AVOID LEAVING A BLANK LINE!
-            (beginning-of-line) (woman-delete-line 1))
-           (t (end-of-line) (insert ?\n))
-           )
-           (if (not (or fn
-                        (and (not (memq (following-char) '(?. ?')))
-                             (setq fn 'woman2-format-paragraphs))))
-               ()
-             ;; Find next control line:
-	     (if (equal woman-request "TS")
-		 (set-marker to (woman-find-next-control-line "TE"))
-	       (set-marker to (woman-find-next-control-line)))
-             ;; Call the appropriate function:
-             (funcall fn to)))
-      (if (not (eobp))			; This should not happen, but ...
-	  (woman2-format-paragraphs (copy-marker (point-max) t)
-                                    woman-left-margin))
+              (beginning-of-line) (woman-delete-line 1))
+             (t (end-of-line) (insert ?\n)))
+            (if (not (or fn
+                         (and (not (memq (following-char) '(?. ?')))
+                              (setq fn 'woman2-format-paragraphs))))
+                ()
+              ;; Find next control line:
+              (if (equal woman-request "TS")
+                  (set-marker to (woman-find-next-control-line "TE"))
+                (set-marker to (woman-find-next-control-line)))
+              ;; Call the appropriate function:
+              (funcall fn to)))
+          (if (not (eobp))             ; This should not happen, but ...
+              (woman2-format-paragraphs (copy-marker (point-max) t)
+                                        woman-left-margin)))
       (fset 'canonically-space-region canonically-space-region)
       (fset 'set-text-properties set-text-properties)
       (fset 'insert-and-inherit insert-and-inherit)
@@ -4261,22 +4259,11 @@ Delete line from point and eol unless LEAVE-EOL is non-nil."
       (if (> i 0) (setq woman-prevailing-indent i))))
   woman-prevailing-indent)
 
-(defmacro woman-push (value stack)
-  "Push VALUE onto STACK."
-  `(setq ,stack (cons ,value ,stack)))
-
-(defmacro woman-pop (variable stack)
-  "Pop into VARIABLE the value at the top of STACK.
-Allow for mismatched requests!"
-  `(if ,stack
-       (setq ,variable (car ,stack)
-	     ,stack (cdr ,stack))))
-
 (defun woman2-RS (to)
   ".RS i -- Start relative indent, move left margin in distance i.
 Set prevailing indent to 5 for nested indents.  Format paragraphs upto TO."
-  (woman-push woman-left-margin woman-RS-left-margin)
-  (woman-push woman-prevailing-indent woman-RS-prevailing-indent)
+  (push woman-left-margin woman-RS-left-margin)
+  (push woman-prevailing-indent woman-RS-prevailing-indent)
   (setq woman-left-margin (+ woman-left-margin
 			     (woman2-get-prevailing-indent))
 	woman-prevailing-indent woman-default-indent)
@@ -4285,8 +4272,10 @@ Set prevailing indent to 5 for nested indents.  Format paragraphs upto TO."
 (defun woman2-RE (to)
   ".RE -- End of relative indent.  Format paragraphs upto TO.
 Set prevailing indent to amount of starting .RS."
-  (woman-pop woman-left-margin woman-RS-left-margin)
-  (woman-pop woman-prevailing-indent woman-RS-prevailing-indent)
+  (when woman-RS-left-margin
+    (setq woman-left-margin (pop woman-RS-left-margin)))
+  (when woman-RS-prevailing-indent
+    (setq woman-prevailing-indent (pop woman-RS-prevailing-indent)))
   (woman-delete-line 1)			; ignore any arguments
   (woman2-format-paragraphs to woman-left-margin))
 
@@ -4420,7 +4409,7 @@ Needs doing properly!"
       ;; A field is contained between a pair of field delimiter
       ;; characters and consists of sub-strings separated by padding
       ;; indicator characters:
-      (setq delim (string delim ?[ ?^ delim ?] ?* delim))
+      (setq delim (string delim ?\[ ?^ delim ?\] ?* delim))
       (save-excursion
 	(while (re-search-forward delim end t)
 	  (goto-char (match-beginning 0))

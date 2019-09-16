@@ -1,6 +1,6 @@
 ;;; dom.el --- XML/HTML (etc.) DOM manipulation and searching functions -*- lexical-binding: t -*-
 
-;; Copyright (C) 2014-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2014-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: xml, html
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -78,15 +78,19 @@ A typical attribute is `href'."
 
 (defun dom-texts (node &optional separator)
   "Return all textual data under NODE concatenated with SEPARATOR in-between."
-  (mapconcat
-   'identity
-   (mapcar
-    (lambda (elem)
-      (if (stringp elem)
-	  elem
-	(dom-texts elem separator)))
-    (dom-children node))
-   (or separator " ")))
+  (if (eq (dom-tag node) 'script)
+      ""
+    (mapconcat
+     (lambda (elem)
+       (cond
+        ((stringp elem)
+         elem)
+        ((eq (dom-tag elem) 'script)
+         "")
+        (t
+         (dom-texts elem separator))))
+     (dom-children node)
+     (or separator " "))))
 
 (defun dom-child-by-tag (dom tag)
   "Return the first child of DOM that is of type TAG."
@@ -162,7 +166,7 @@ ATTRIBUTE would typically be `class', `id' or the like."
 
 (defun dom-previous-sibling (dom node)
   "Return the previous sibling of NODE in DOM."
-  (when-let (parent (dom-parent dom node))
+  (when-let* ((parent (dom-parent dom node)))
     (let ((siblings (dom-children parent))
 	  (previous nil))
       (while siblings

@@ -1,6 +1,6 @@
 ;;; files-x-tests.el --- tests for files-x.el.
 
-;; Copyright (C) 2016-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2016-2019 Free Software Foundation, Inc.
 
 ;; Author: Michael Albinus <michael.albinus@gmx.de>
 
@@ -17,137 +17,192 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Code:
 
 (require 'ert)
 (require 'files-x)
 
-(defvar files-x-test--criteria1 "my-user@my-remote-host")
-(defvar files-x-test--criteria2
-  (lambda (identification)
-    (string-match "another-user@my-remote-host" identification)))
-(defvar files-x-test--criteria3 nil)
-
-(defvar files-x-test--variables1
+(defconst files-x-test--variables1
   '((remote-shell-file-name . "/bin/bash")
     (remote-shell-command-switch . "-c")
     (remote-shell-interactive-switch . "-i")
     (remote-shell-login-switch . "-l")))
-(defvar files-x-test--variables2
+(defconst files-x-test--variables2
   '((remote-shell-file-name . "/bin/ksh")))
-(defvar files-x-test--variables3
+(defconst files-x-test--variables3
   '((remote-null-device . "/dev/null")))
-(defvar files-x-test--variables4
+(defconst files-x-test--variables4
   '((remote-null-device . "null")))
+(put 'remote-shell-file-name 'safe-local-variable #'identity)
+(put 'remote-shell-command-switch 'safe-local-variable #'identity)
+(put 'remote-shell-interactive-switch 'safe-local-variable #'identity)
+(put 'remote-shell-login-switch 'safe-local-variable #'identity)
+(put 'remote-null-device 'safe-local-variable #'identity)
 
-(ert-deftest files-x-test-connection-local-set-class-variables ()
-  "Test setting connection-local class variables."
+(defconst files-x-test--application '(:application 'my-application))
+(defconst files-x-test--another-application
+  '(:application 'another-application))
+(defconst files-x-test--protocol '(:protocol "my-protocol"))
+(defconst files-x-test--user '(:user "my-user"))
+(defconst files-x-test--machine '(:machine "my-machine"))
 
-  ;; Declare (CLASS VARIABLES) objects.
-  (let (connection-local-class-alist connection-local-criteria-alist)
-    (connection-local-set-class-variables 'remote-bash files-x-test--variables1)
+(defvar files-x-test--criteria nil)
+(defconst files-x-test--criteria1
+  (append files-x-test--application files-x-test--protocol
+          files-x-test--user files-x-test--machine))
+(defconst files-x-test--criteria2
+  (append files-x-test--another-application files-x-test--protocol
+          files-x-test--user files-x-test--machine))
+
+(ert-deftest files-x-test-connection-local-set-profile-variables ()
+  "Test setting connection-local profile variables."
+
+  ;; Declare (PROFILE VARIABLES) objects.
+  (let (connection-local-profile-alist connection-local-criteria-alist)
+    (connection-local-set-profile-variables
+     'remote-bash files-x-test--variables1)
     (should
      (equal
-      (connection-local-get-class-variables 'remote-bash)
+      (connection-local-get-profile-variables 'remote-bash)
       files-x-test--variables1))
 
-    (connection-local-set-class-variables 'remote-ksh files-x-test--variables2)
+    (connection-local-set-profile-variables
+     'remote-ksh files-x-test--variables2)
     (should
      (equal
-      (connection-local-get-class-variables 'remote-ksh)
+      (connection-local-get-profile-variables 'remote-ksh)
       files-x-test--variables2))
 
-    (connection-local-set-class-variables
+    (connection-local-set-profile-variables
      'remote-nullfile files-x-test--variables3)
     (should
      (equal
-      (connection-local-get-class-variables 'remote-nullfile)
+      (connection-local-get-profile-variables 'remote-nullfile)
       files-x-test--variables3))
 
     ;; A redefinition overwrites existing values.
-    (connection-local-set-class-variables
+    (connection-local-set-profile-variables
      'remote-nullfile files-x-test--variables4)
     (should
      (equal
-      (connection-local-get-class-variables 'remote-nullfile)
+      (connection-local-get-profile-variables 'remote-nullfile)
       files-x-test--variables4))))
 
-(ert-deftest files-x-test-connection-local-set-classes ()
-  "Test setting connection-local classes."
+(ert-deftest files-x-test-connection-local-set-profiles ()
+  "Test setting connection-local profiles."
 
-  ;; Declare (CRITERIA CLASSES) objects.
-  (let (connection-local-class-alist connection-local-criteria-alist)
-    (connection-local-set-class-variables 'remote-bash files-x-test--variables1)
-    (connection-local-set-class-variables 'remote-ksh files-x-test--variables2)
-    (connection-local-set-class-variables
+  ;; Declare (CRITERIA PROFILES) objects.
+  (let (connection-local-profile-alist connection-local-criteria-alist)
+    (connection-local-set-profile-variables
+     'remote-bash files-x-test--variables1)
+    (connection-local-set-profile-variables
+     'remote-ksh files-x-test--variables2)
+    (connection-local-set-profile-variables
      'remote-nullfile files-x-test--variables3)
 
-    (connection-local-set-classes
-     files-x-test--criteria1 'remote-bash 'remote-ksh)
-    (should
-     (equal
-      (connection-local-get-classes files-x-test--criteria1)
-      '(remote-bash remote-ksh)))
-
-    (connection-local-set-classes files-x-test--criteria2 'remote-ksh)
-    (should
-     (equal
-      (connection-local-get-classes files-x-test--criteria2)
-      '(remote-ksh)))
-    ;; A further call adds classes.
-    (connection-local-set-classes files-x-test--criteria2 'remote-nullfile)
-    (should
-     (equal
-      (connection-local-get-classes files-x-test--criteria2)
-      '(remote-ksh remote-nullfile)))
-    ;; Adding existing classes doesn't matter.
-    (connection-local-set-classes
-     files-x-test--criteria2 'remote-bash 'remote-nullfile)
-    (should
-     (equal
-      (connection-local-get-classes files-x-test--criteria2)
-      '(remote-ksh remote-nullfile remote-bash)))
+    ;; Use a criteria with all properties.
+    (setq files-x-test--criteria
+          (append files-x-test--application files-x-test--protocol
+                  files-x-test--user files-x-test--machine))
 
     ;; An empty variable list is accepted (but makes no sense).
-    (connection-local-set-classes files-x-test--criteria3)
-    (should-not (connection-local-get-classes files-x-test--criteria3))
+    (connection-local-set-profiles files-x-test--criteria)
+    (should-not (connection-local-get-profiles files-x-test--criteria))
 
-    ;; Using a nil criteria also works.  Duplicate classes are trashed.
-    (connection-local-set-classes
-     files-x-test--criteria3 'remote-bash 'remote-ksh 'remote-ksh 'remote-bash)
+    ;; First test, all declared properties.
+    (connection-local-set-profiles
+     files-x-test--criteria 'remote-bash 'remote-ksh)
     (should
      (equal
-      (connection-local-get-classes files-x-test--criteria3)
+      (connection-local-get-profiles files-x-test--criteria)
       '(remote-bash remote-ksh)))
 
-    ;; A criteria other than nil, regexp or lambda function is wrong.
-    (should-error (connection-local-set-classes 'dummy))))
+    ;; Changing the order of properties doesn't matter.
+    (setq files-x-test--criteria
+          (append files-x-test--protocol files-x-test--application
+                  files-x-test--machine files-x-test--user))
+    (should
+     (equal
+      (connection-local-get-profiles files-x-test--criteria)
+      '(remote-bash remote-ksh)))
+
+    ;; A further call adds profiles.
+    (connection-local-set-profiles files-x-test--criteria 'remote-nullfile)
+    (should
+     (equal
+      (connection-local-get-profiles files-x-test--criteria)
+      '(remote-bash remote-ksh remote-nullfile)))
+
+    ;; Adding existing profiles doesn't matter.
+    (connection-local-set-profiles
+     files-x-test--criteria 'remote-bash 'remote-nullfile)
+    (should
+     (equal
+      (connection-local-get-profiles files-x-test--criteria)
+      '(remote-bash remote-ksh remote-nullfile)))
+
+    ;; Use different properties.
+    (dolist (criteria
+             `(;; All properties.
+               ,(append files-x-test--application files-x-test--protocol
+                        files-x-test--user files-x-test--machine)
+               ;; Without :application.
+               ,(append files-x-test--protocol
+                        files-x-test--user files-x-test--machine)
+               ;; Without :protocol.
+               ,(append files-x-test--application
+                        files-x-test--user files-x-test--machine)
+               ;; Without :user.
+               ,(append files-x-test--application files-x-test--protocol
+                        files-x-test--machine)
+               ;; Without :machine.
+               ,(append files-x-test--application files-x-test--protocol
+                        files-x-test--user)
+               ;; No property at all.
+               nil))
+      (should
+       (equal
+        (connection-local-get-profiles criteria)
+        '(remote-bash remote-ksh remote-nullfile))))
+
+    ;; Using a nil criteria also works.  Duplicate profiles are trashed.
+    (connection-local-set-profiles
+     nil 'remote-bash 'remote-ksh 'remote-ksh 'remote-bash)
+    ;; This matches also the existing profiles from other criteria.
+    (should
+     (equal
+      (connection-local-get-profiles nil)
+      '(remote-bash remote-ksh remote-nullfile)))
+
+    ;; A criteria other than plist is wrong.
+    (should-error (connection-local-set-profiles 'dummy))))
 
 (ert-deftest files-x-test-hack-connection-local-variables-apply ()
   "Test setting connection-local variables."
 
-  (let (connection-local-class-alist connection-local-criteria-alist)
+  (let (connection-local-profile-alist connection-local-criteria-alist)
 
-    (connection-local-set-class-variables 'remote-bash files-x-test--variables1)
-    (connection-local-set-class-variables 'remote-ksh files-x-test--variables2)
-    (connection-local-set-class-variables
+    (connection-local-set-profile-variables
+     'remote-bash files-x-test--variables1)
+    (connection-local-set-profile-variables
+     'remote-ksh files-x-test--variables2)
+    (connection-local-set-profile-variables
      'remote-nullfile files-x-test--variables3)
 
-    (connection-local-set-classes
+    (connection-local-set-profiles
      files-x-test--criteria1 'remote-bash 'remote-ksh)
-    (connection-local-set-classes
+    (connection-local-set-profiles
      files-x-test--criteria2 'remote-ksh 'remote-nullfile)
 
     ;; Apply the variables.
     (with-temp-buffer
-      (let ((enable-connection-local-variables t)
-            (default-directory "/sudo:my-user@my-remote-host:"))
+      (let ((enable-connection-local-variables t))
         (should-not connection-local-variables-alist)
         (should-not (local-variable-p 'remote-shell-file-name))
         (should-not (boundp 'remote-shell-file-name))
-        (hack-connection-local-variables-apply)
+        (hack-connection-local-variables-apply files-x-test--criteria1)
         ;; All connection-local variables are set.  They apply in
         ;; reverse order in `connection-local-variables-alist'.  The
         ;; settings from `remote-ksh' are not contained, because they
@@ -163,12 +218,11 @@
 
     ;; The second test case.
     (with-temp-buffer
-      (let ((enable-connection-local-variables t)
-            (default-directory "/ssh:another-user@my-remote-host:"))
+      (let ((enable-connection-local-variables t))
         (should-not connection-local-variables-alist)
         (should-not (local-variable-p 'remote-shell-file-name))
         (should-not (boundp 'remote-shell-file-name))
-        (hack-connection-local-variables-apply)
+        (hack-connection-local-variables-apply files-x-test--criteria2)
         ;; All connection-local variables are set.  They apply in
         ;; reverse order in `connection-local-variables-alist'.
         (should
@@ -182,25 +236,26 @@
         (should
          (string-equal (symbol-value 'remote-shell-file-name) "/bin/ksh"))))
 
-    ;; The third test case.  Both `files-x-test--criteria1' and
-    ;; `files-x-test--criteria3' apply, but there are no double
+    ;; The third test case.  Both criteria `files-x-test--criteria1'
+    ;; and `files-x-test--criteria2' apply, but there are no double
     ;; entries.
-    (connection-local-set-classes
-     files-x-test--criteria3 'remote-bash 'remote-ksh)
+    (connection-local-set-profiles
+     nil 'remote-bash 'remote-ksh)
     (with-temp-buffer
-      (let ((enable-connection-local-variables t)
-            (default-directory "/sudo:my-user@my-remote-host:"))
+      (let ((enable-connection-local-variables t))
         (should-not connection-local-variables-alist)
         (should-not (local-variable-p 'remote-shell-file-name))
         (should-not (boundp 'remote-shell-file-name))
-        (hack-connection-local-variables-apply)
+        (hack-connection-local-variables-apply nil)
         ;; All connection-local variables are set.  They apply in
         ;; reverse order in `connection-local-variables-alist'.  The
         ;; settings from `remote-ksh' are not contained, because they
         ;; declare same variables as in `remote-bash'.
         (should
          (equal connection-local-variables-alist
-                (nreverse (copy-tree files-x-test--variables1))))
+                (append
+                 (nreverse (copy-tree files-x-test--variables3))
+                 (nreverse (copy-tree files-x-test--variables1)))))
         ;; The variables exist also as local variables.
         (should (local-variable-p 'remote-shell-file-name))
         ;; The proper variable value is set.
@@ -209,31 +264,34 @@
 
     ;; When `enable-connection-local-variables' is nil, nothing happens.
     (with-temp-buffer
-      (let ((enable-connection-local-variables nil)
-            (default-directory "/ssh:another-user@my-remote-host:"))
+      (let ((enable-connection-local-variables nil))
         (should-not connection-local-variables-alist)
         (should-not (local-variable-p 'remote-shell-file-name))
         (should-not (boundp 'remote-shell-file-name))
-        (hack-connection-local-variables-apply)
+        (hack-connection-local-variables-apply nil)
         (should-not connection-local-variables-alist)
         (should-not (local-variable-p 'remote-shell-file-name))
         (should-not (boundp 'remote-shell-file-name))))))
 
-(ert-deftest files-x-test-with-connection-local-classes ()
+(defvar tramp-connection-local-default-profile)
+
+(ert-deftest files-x-test-with-connection-local-variables ()
   "Test setting connection-local variables."
 
-  (let (connection-local-class-alist connection-local-criteria-alist)
-    (connection-local-set-class-variables 'remote-bash files-x-test--variables1)
-    (connection-local-set-class-variables 'remote-ksh files-x-test--variables2)
-    (connection-local-set-class-variables
+  (let (connection-local-profile-alist connection-local-criteria-alist)
+    (connection-local-set-profile-variables
+     'remote-bash files-x-test--variables1)
+    (connection-local-set-profile-variables
+     'remote-ksh files-x-test--variables2)
+    (connection-local-set-profile-variables
      'remote-nullfile files-x-test--variables3)
-    (connection-local-set-classes
-     files-x-test--criteria3 'remote-ksh 'remote-nullfile)
+
+    (connection-local-set-profiles
+     nil 'remote-ksh 'remote-nullfile)
 
     (with-temp-buffer
-      (let ((enable-connection-local-variables t)
-            (default-directory "/sudo:my-user@my-remote-host:"))
-        (hack-connection-local-variables-apply)
+      (let ((enable-connection-local-variables t))
+        (hack-connection-local-variables-apply nil)
 
 	;; All connection-local variables are set.  They apply in
         ;; reverse order in `connection-local-variables-alist'.
@@ -252,46 +310,48 @@
          (string-equal (symbol-value 'remote-null-device) "/dev/null"))
 
 	;; A candidate connection-local variable is not bound yet.
-        (should-not (local-variable-p 'remote-shell-command-switch))
+        (should-not (local-variable-p 'remote-shell-command-switch))))
 
-	;; Use the macro.
-        (with-connection-local-classes '(remote-bash remote-ksh)
-          ;; All connection-local variables are set.  They apply in
-          ;; reverse order in `connection-local-variables-alist'.
-          ;; This variable keeps only the variables to be set inside
-          ;; the macro.
-          (should
-           (equal connection-local-variables-alist
-                  (nreverse (copy-tree files-x-test--variables1))))
-          ;; The variables exist also as local variables.
-          (should (local-variable-p 'remote-shell-file-name))
-          (should (local-variable-p 'remote-shell-command-switch))
-          ;; The proper variable values are set.  The settings from
-          ;; `remote-bash' overwrite the same variables as in
-          ;; `remote-ksh'.
-          (should
-           (string-equal (symbol-value 'remote-shell-file-name) "/bin/bash"))
-          (should
-           (string-equal (symbol-value 'remote-shell-command-switch) "-c")))
+    (with-temp-buffer
+      ;; Use the macro.  We need a remote `default-directory'.
+      (let ((enable-connection-local-variables t)
+	    (default-directory "/method:host:")
+	    (remote-null-device "null"))
+        (should-not connection-local-variables-alist)
+        (should-not (local-variable-p 'remote-shell-file-name))
+        (should-not (local-variable-p 'remote-null-device))
+        (should-not (boundp 'remote-shell-file-name))
+        (should (string-equal (symbol-value 'remote-null-device) "null"))
 
-        ;; Everything is rewound.  The old variable values are reset.
-        (should
-         (equal connection-local-variables-alist
-		(append
-		 (nreverse (copy-tree files-x-test--variables3))
-		 (nreverse (copy-tree files-x-test--variables2)))))
-        ;; The variables exist also as local variables.
-        (should (local-variable-p 'remote-shell-file-name))
-        (should (local-variable-p 'remote-null-device))
-        ;; The proper variable values are set.  The settings from
-	;; `remote-ksh' are back.
-        (should
-         (string-equal (symbol-value 'remote-shell-file-name) "/bin/ksh"))
-        (should
-         (string-equal (symbol-value 'remote-null-device) "/dev/null"))
+	(with-connection-local-variables
+	 ;; All connection-local variables are set.  They apply in
+	 ;; reverse order in `connection-local-variables-alist'.
+	 ;; Since we ha a remote default directory, Tramp's settings
+	 ;; are appended as well.
+         (should
+          (equal
+           connection-local-variables-alist
+	   (append
+	    (nreverse (copy-tree files-x-test--variables3))
+	    (nreverse (copy-tree files-x-test--variables2))
+            (nreverse (copy-tree tramp-connection-local-default-profile)))))
+         ;; The variables exist also as local variables.
+         (should (local-variable-p 'remote-shell-file-name))
+         (should (local-variable-p 'remote-null-device))
+         ;; The proper variable values are set.
+         (should
+          (string-equal (symbol-value 'remote-shell-file-name) "/bin/ksh"))
+         (should
+          (string-equal (symbol-value 'remote-null-device) "/dev/null")))
 
-	;; The variable set temporarily is not unbound, again.
-        (should-not (local-variable-p 'remote-shell-command-switch))))))
+	;; Everything is rewound.  The old variable values are reset.
+	(should-not connection-local-variables-alist)
+	;; The variables don't exist as local variables.
+	(should-not (local-variable-p 'remote-shell-file-name))
+	(should-not (local-variable-p 'remote-null-device))
+	;; The variable values are reset.
+	(should-not (boundp 'remote-shell-file-name))
+	(should (string-equal (symbol-value 'remote-null-device) "null"))))))
 
 (provide 'files-x-tests)
 ;;; files-x-tests.el ends here

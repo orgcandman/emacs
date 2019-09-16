@@ -1,6 +1,6 @@
 ;;; deuglify.el --- deuglify broken Outlook (Express) articles
 
-;; Copyright (C) 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Raymond Scholz <rscholz@zonix.de>
 ;;         Thomas Steffen
@@ -20,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -284,7 +284,7 @@
   :group 'gnus-outlook-deuglify)
 
 (defcustom gnus-outlook-display-hook nil
-  "A hook called after an deuglified article has been prepared.
+  "A hook called after a deuglified article has been prepared.
 It is run after `gnus-article-prepare-hook'."
   :version "22.1"
   :type 'hook
@@ -299,8 +299,12 @@ It is run after `gnus-article-prepare-hook'."
     ;; it. Calling `gnus-article-prepare-display' on an already
     ;; prepared article removes all MIME parts.  I'm unsure whether
     ;; this is a bug or not.
-    (gnus-article-highlight t)
-    (gnus-treat-article nil)
+    (save-excursion
+      (save-restriction
+	(widen)
+	(article-goto-body)
+	(narrow-to-region (point) (point-max))
+	(gnus-treat-article nil)))
     (gnus-run-hooks 'gnus-article-prepare-hook
 		    'gnus-outlook-display-hook)))
 

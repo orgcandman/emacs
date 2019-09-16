@@ -1,9 +1,8 @@
 ;;; tree-widget.el --- Tree widget
 
-;; Copyright (C) 2004-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2019 Free Software Foundation, Inc.
 
 ;; Author: David Ponce <david@dponce.com>
-;; Maintainer: David Ponce <david@dponce.com>
 ;; Created: 16 Feb 2001
 ;; Keywords: extensions
 
@@ -20,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -124,11 +123,11 @@
   :version "22.1"
   :group 'widgets)
 
-(defcustom tree-widget-image-enable (if (fboundp 'display-images-p)
-                                        (display-images-p))
+(defcustom tree-widget-image-enable t
   "Non-nil means that tree-widget will try to use images."
   :type  'boolean
-  :group 'tree-widget)
+  :group 'tree-widget
+  :version "27.1")
 
 (defvar tree-widget-themes-load-path
   '(load-path
@@ -504,7 +503,7 @@ Handle mouse button 1 click on buttons.")
 
 (define-widget 'tree-widget-end-guide 'item
   "End of a vertical guide line."
-  :tag       " `"
+  :tag       " \\=`"
   ;;:tag-glyph (tree-widget-find-image "end-guide")
   :format    "%t"
   )

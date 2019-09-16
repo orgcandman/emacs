@@ -1,6 +1,6 @@
 ;;; eieio-testsinvoke.el -- eieio tests for method invocation
 
-;; Copyright (C) 2005, 2008, 2010, 2013-2017 Free Software Foundation,
+;; Copyright (C) 2005, 2008, 2010, 2013-2019 Free Software Foundation,
 ;; Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -190,6 +190,9 @@
   )
 
 (ert-deftest eieio-test-method-order-list-6 ()
+  ;; FIXME repeated intermittent failures on hydra (bug#24503)
+  ;; ((:STATIC C) (:STATIC C-base1) (:STATIC C-base2)) != ((:STATIC C))")
+  :tags '(:unstable)
   (let ((eieio-test-method-order-list nil)
 	(ans '(
 	       (:STATIC C)
@@ -323,7 +326,7 @@
   )
 
 (ert-deftest eieio-test-method-order-list-9 ()
-  (should (eitest-Jd "test")))
+  (should (eitest-Jd)))
 
 ;;; call-next-method with replacement arguments across a simple class hierarchy.
 ;;
@@ -369,7 +372,7 @@
 
 (ert-deftest eieio-test-method-order-list-10 ()
   (let ((eieio-test-call-next-method-arguments nil))
-    (CNM-M (CNM-2 "") '(INIT))
+    (CNM-M (CNM-2) '(INIT))
     (should (equal (eieio-test-arguments-for 'CNM-0)
 		   '(CNM-1-1 CNM-2 INIT)))
     (should (equal (eieio-test-arguments-for 'CNM-1-1)

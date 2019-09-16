@@ -1,6 +1,6 @@
 ;;; cc-mode-tests.el --- Test suite for cc-mode.  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2016-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2016-2019 Free Software Foundation, Inc.
 
 ;; Author: Michal Nazarewicz <mina86@mina86.com>
 ;; Keywords:       internal
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 
 ;;; Commentary:
@@ -68,5 +68,14 @@
             '("struct \t Blah_42 \t {"
               "struct template {"
               "#include <string.h>")))))
+
+(ert-deftest c-mode-macro-comment ()
+  "Test for bug#36484."
+  (dolist (macro-string '("#define /***/f"
+                          "#define x /***/5"
+                          "#define a(x)get/***/x/***/id())"))
+    (with-temp-buffer
+      (insert macro-string)
+      (c-mode))))
 
 ;;; cc-mode-tests.el ends here

@@ -1,6 +1,6 @@
 /* Standard I/O for Emacs.
 
-Copyright 2013-2017 Free Software Foundation, Inc.
+Copyright 2013-2019 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -15,15 +15,21 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #ifndef EMACS_SYSSTDIO_H
 #define EMACS_SYSSTDIO_H
 
+#include <stdarg.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <stdio.h>
+#include "unlocked-io.h"
 
 extern FILE *emacs_fopen (char const *, char const *);
+extern void errputc (int);
+extern void errwrite (void const *, ptrdiff_t);
+extern void close_output_streams (void);
 
 #if O_BINARY
 # define FOPEN_BINARY "b"
@@ -31,6 +37,10 @@ extern FILE *emacs_fopen (char const *, char const *);
 #else
 # define FOPEN_BINARY ""
 # define FOPEN_TEXT ""
+#endif
+
+#ifndef PIPE_BUF
+ #define PIPE_BUF MAX_ALLOCA
 #endif
 
 #endif /* EMACS_SYSSTDIO_H */

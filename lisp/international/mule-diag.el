@@ -1,6 +1,6 @@
 ;;; mule-diag.el --- show diagnosis of multilingual environment (Mule)
 
-;; Copyright (C) 1997-1998, 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1997-1998, 2000-2019 Free Software Foundation, Inc.
 ;; Copyright (C) 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
 ;;   2005, 2006, 2007, 2008, 2009, 2010, 2011
 ;;   National Institute of Advanced Industrial Science and Technology (AIST)
@@ -24,7 +24,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -355,7 +355,8 @@ meanings of these arguments."
 		     (:iso-revision-number "ISO revision number: "
 					   number-to-string)
 		     (:supplementary-p
-		      "Used only as a parent of some other charset." nil)))
+		      "Used only as a parent or a subset of some other charset,
+or provided just for backward compatibility." nil)))
 	(let ((val (get-charset-property charset (car elt))))
 	  (when val
 	    (if (cadr elt) (insert (cadr elt)))
@@ -676,7 +677,8 @@ Priority order for recognizing coding systems when reading files:\n")
 			(princ (cdr (car alist)))
 			(princ "\n")
 			(setq alist (cdr alist)))))))
-	(funcall func "File I/O" file-coding-system-alist)
+	(funcall func "File I/O" (append auto-coding-alist
+                                         file-coding-system-alist))
 	(funcall func "Process I/O" process-coding-system-alist)
 	(funcall func "Network I/O" network-coding-system-alist))
       (help-mode))))
@@ -838,7 +840,8 @@ The font must be already used by Emacs."
   (interactive "sFont name (default current choice for ASCII chars): ")
   (or (and window-system (fboundp 'fontset-list))
       (error "No fonts being used"))
-  (let (font-info)
+  (let ((xref-item (list #'describe-font fontname))
+        font-info)
     (if (or (not fontname) (= (length fontname) 0))
 	(setq fontname (face-attribute 'default :font)))
     (setq font-info (font-info fontname))
@@ -850,6 +853,7 @@ The font must be already used by Emacs."
 	    ;; this problem.
 	    (message "No information about \"%s\"" (font-xlfd-name fontname))
 	  (message "No matching font found"))
+      (help-setup-xref xref-item (called-interactively-p 'interactive))
       (with-output-to-temp-buffer "*Help*"
 	(describe-font-internal font-info)))))
 
@@ -1101,8 +1105,6 @@ system which uses fontsets)."
       (insert "Version of this emacs:\n  " (emacs-version) "\n\n")
       (insert "Configuration options:\n  " system-configuration-options "\n\n")
       (insert "Multibyte characters awareness:\n"
-	      (format "  default: %S\n" (default-value
-					  'enable-multibyte-characters))
 	      (format "  current-buffer: %S\n\n" enable-multibyte-characters))
       (insert "Current language environment: " current-language-environment
 	      "\n\n")

@@ -1,6 +1,6 @@
 ;;; ja-dic-cnv.el --- convert a Japanese dictionary (SKK-JISYO.L) to Emacs Lisp
 
-;; Copyright (C) 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2001-2019 Free Software Foundation, Inc.
 
 ;; Copyright (C) 1995, 1996, 1997, 1998, 1999, 2000, 2001, 2002, 2003, 2004,
 ;;   2005, 2006, 2007, 2008, 2009, 2010, 2011
@@ -22,7 +22,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -32,15 +32,15 @@
 ;; input method (e.g. quail-japanese) can utilize the dictionary.
 
 ;; The format of SKK dictionary is quite simple.  Each line has the
-;; form "KANASTRING /CONV1/CONV2/.../" which means KANASTRING ($B2>L>J8(B
-;; $B;zNs(B) can be converted to one of CONVi.  CONVi is a Kanji ($B4A;z(B)
-;; and Kana ($B2>L>(B) mixed string.
+;; form "KANASTRING /CONV1/CONV2/.../" which means KANASTRING (仮名文
+;; 字列) can be converted to one of CONVi.  CONVi is a Kanji (漢字)
+;; and Kana (仮名) mixed string.
 ;;
-;; KANASTRING may have a trailing ASCII letter for Okurigana ($BAw$j2>L>(B)
+;; KANASTRING may have a trailing ASCII letter for Okurigana (送り仮名)
 ;; information.  For instance, the trailing letter `k' means that one
-;; of the following Okurigana is allowed: $B$+$-$/$1$3(B.  So, in that
-;; case, the string "KANASTRING$B$/(B" can be converted to one of "CONV1$B$/(B",
-;; CONV2$B$/(B, ...
+;; of the following Okurigana is allowed: かきくけこ.  So, in that
+;; case, the string "KANASTRINGく" can be converted to one of "CONV1く",
+;; CONV2く, ...
 
 ;;; Code:
 
@@ -48,7 +48,7 @@
 (defvar ja-dic-filename "ja-dic.el")
 
 (defun skkdic-convert-okuri-ari (skkbuf buf)
-  (message "Processing OKURI-ARI entries ...")
+  (byte-compile-info-message "Processing OKURI-ARI entries")
   (goto-char (point-min))
   (with-current-buffer buf
     (insert ";; Setting okuri-ari entries.\n"
@@ -76,28 +76,28 @@
 (defconst skkdic-postfix-list '(skkdic-postfix-list))
 
 (defconst skkdic-postfix-data
-  '(("$B$$$-(B" "$B9T(B")
-    ("$B$,$+$j(B" "$B78(B")
-    ("$B$,$/(B" "$B3X(B")
-    ("$B$,$o(B" "$B@n(B")
-    ("$B$7$c(B" "$B<R(B")
-    ("$B$7$e$&(B" "$B=8(B")
-    ("$B$7$g$&(B" "$B>^(B" "$B>k(B")
-    ("$B$8$g$&(B" "$B>k(B")
-    ("$B$;$s(B" "$B@~(B")
-    ("$B$@$1(B" "$B3Y(B")
-    ("$B$A$c$/(B" "$BCe(B")
-    ("$B$F$s(B" "$BE9(B")
-    ("$B$H$&$2(B" "$BF=(B")
-    ("$B$I$*$j(B" "$BDL$j(B")
-    ("$B$d$^(B" "$B;3(B")
-    ("$B$P$7(B" "$B66(B")
-    ("$B$O$D(B" "$BH/(B")
-    ("$B$b$/(B" "$BL\(B")
-    ("$B$f$-(B" "$B9T(B")))
+  '(("いき" "行")
+    ("がかり" "係")
+    ("がく" "学")
+    ("がわ" "川")
+    ("しゃ" "社")
+    ("しゅう" "集")
+    ("しょう" "賞" "城")
+    ("じょう" "城")
+    ("せん" "線")
+    ("だけ" "岳")
+    ("ちゃく" "着")
+    ("てん" "店")
+    ("とうげ" "峠")
+    ("どおり" "通り")
+    ("やま" "山")
+    ("ばし" "橋")
+    ("はつ" "発")
+    ("もく" "目")
+    ("ゆき" "行")))
 
 (defun skkdic-convert-postfix (skkbuf buf)
-  (message "Processing POSTFIX entries ...")
+  (byte-compile-info-message "Processing POSTFIX entries")
   (goto-char (point-min))
   (with-current-buffer buf
     (insert ";; Setting postfix entries.\n"
@@ -124,11 +124,11 @@
 	(setq l (cdr l)))))
 
   ;; Search postfix entries.
-  (while (re-search-forward "^[#<>?]\\(\\(\\cH\\|$B!<(B\\)+\\) " nil t)
-    (let ((kana (match-string 1))
+  (while (re-search-forward "^[#<>?]\\(\\cH+\\) " nil t)
+    (let ((kana (match-string-no-properties 1))
 	  str candidates)
       (while (looking-at "/[#0-9 ]*\\([^/\n]*\\)/")
-	(setq str (match-string 1))
+        (setq str (match-string-no-properties 1))
 	(if (not (member str candidates))
 	    (setq candidates (cons str candidates)))
 	(goto-char (match-end 1)))
@@ -151,17 +151,17 @@
 (defconst skkdic-prefix-list '(skkdic-prefix-list))
 
 (defun skkdic-convert-prefix (skkbuf buf)
-  (message "Processing PREFIX entries ...")
+  (byte-compile-info-message "Processing PREFIX entries")
   (goto-char (point-min))
   (with-current-buffer buf
     (insert ";; Setting prefix entries.\n"
 	    "(skkdic-set-prefix\n"))
   (save-excursion
-    (while (re-search-forward "^\\(\\(\\cH\\|$B!<(B\\)+\\)[<>?] " nil t)
-      (let ((kana (match-string 1))
+    (while (re-search-forward "^\\(\\cH+\\)[<>?] " nil t)
+      (let ((kana (match-string-no-properties 1))
 	    str candidates)
 	(while (looking-at "/\\([^/\n]+\\)/")
-	  (setq str (match-string 1))
+          (setq str (match-string-no-properties 1))
 	  (if (not (member str candidates))
 	      (setq candidates (cons str candidates)))
 	  (goto-char (match-end 1)))
@@ -180,8 +180,8 @@
   (let (candidates)
     (goto-char from)
     (while (re-search-forward "/[^/ \n]+" to t)
-      (setq candidates (cons (buffer-substring (1+ (match-beginning 0))
-					       (match-end 0))
+      (setq candidates (cons (buffer-substring-no-properties
+                              (1+ (match-beginning 0)) (match-end 0))
 			     candidates)))
     candidates))
 
@@ -251,12 +251,16 @@
 ;; Return list of candidates which excludes some from CANDIDATES.
 ;; Excluded candidates can be derived from another entry.
 
+(defconst skkdic--japanese-category-set (make-category-set "j"))
+
 (defun skkdic-reduced-candidates (skkbuf kana candidates)
   (let (elt l)
     (while candidates
       (setq elt (car candidates))
       (if (or (= (length elt) 1)
-	      (and (string-match "^\\cj" elt)
+	      (and (bool-vector-subsetp
+                    skkdic--japanese-category-set
+                    (char-category-set (aref elt 0)))
 		   (not (skkdic-breakup-string skkbuf kana elt 0 (length elt)
 					       'first))))
 	  (setq l (cons elt l)))
@@ -267,24 +271,19 @@
 (defvar skkdic-okuri-nasi-entries-count 0)
 
 (defun skkdic-collect-okuri-nasi ()
-  (message "Collecting OKURI-NASI entries ...")
   (save-excursion
-    (let ((prev-ratio 0)
-	  ratio)
-      (while (re-search-forward "^\\(\\(\\cH\\|$B!<(B\\)+\\) \\(/\\cj.*\\)/$"
+    (let ((progress (make-progress-reporter
+                     (byte-compile-info-message "Collecting OKURI-NASI entries")
+                     (point) (point-max)
+                     nil 10)))
+      (while (re-search-forward "^\\(\\cH+\\) \\(/\\cj.*\\)/$"
 				nil t)
-	(let ((kana (match-string 1))
-	      (candidates (skkdic-get-candidate-list (match-beginning 3)
-						     (match-end 3))))
+        (let ((kana (match-string-no-properties 1))
+	      (candidates (skkdic-get-candidate-list (match-beginning 2)
+						     (match-end 2))))
 	  (setq skkdic-okuri-nasi-entries
-		(cons (cons kana candidates) skkdic-okuri-nasi-entries)
-		skkdic-okuri-nasi-entries-count
-		(1+ skkdic-okuri-nasi-entries-count))
-	  (setq ratio (floor (* (point) 100.0) (point-max)))
-	  (if (/= (/ prev-ratio 10) (/ ratio 10))
-	      (progn
-		(message "collected %2d%% ..." ratio)
-		(setq prev-ratio ratio)))
+		(cons (cons kana candidates) skkdic-okuri-nasi-entries))
+          (progress-reporter-update progress (point))
 	  (while candidates
 	    (let ((entry (lookup-nested-alist (car candidates)
 					      skkdic-word-list nil nil t)))
@@ -292,26 +291,25 @@
 		  (setcar entry (cons kana (car entry)))
 		(set-nested-alist (car candidates) (list kana)
 				  skkdic-word-list)))
-	    (setq candidates (cdr candidates))))))))
+            (setq candidates (cdr candidates)))))
+      (setq skkdic-okuri-nasi-entries-count (length skkdic-okuri-nasi-entries))
+      (progress-reporter-done progress))))
 
 (defun skkdic-convert-okuri-nasi (skkbuf buf)
-  (message "Processing OKURI-NASI entries ...")
   (with-current-buffer buf
     (insert ";; Setting okuri-nasi entries.\n"
 	    "(skkdic-set-okuri-nasi\n")
     (let ((l (nreverse skkdic-okuri-nasi-entries))
-	  (count 0)
-	  (prev-ratio 0)
-	  ratio)
+          (progress (make-progress-reporter
+                     (byte-compile-info-message "Processing OKURI-NASI entries")
+                     0 skkdic-okuri-nasi-entries-count
+                     nil 10))
+          (count 0))
       (while l
 	(let ((kana (car (car l)))
 	      (candidates (cdr (car l))))
-	  (setq ratio (floor (* count 100.0) skkdic-okuri-nasi-entries-count)
-		count (1+ count))
-	  (if (/= (/ prev-ratio 10) (/ ratio 10))
-	      (progn
-		(message "processed %2d%% ..." ratio)
-		(setq prev-ratio ratio)))
+          (setq count (1+ count))
+          (progress-reporter-update progress count)
 	  (if (setq candidates
 		    (skkdic-reduced-candidates skkbuf kana candidates))
 	      (progn
@@ -320,7 +318,8 @@
 		  (insert " " (car candidates))
 		  (setq candidates (cdr candidates)))
 		(insert "\"\n"))))
-	(setq l (cdr l))))
+	(setq l (cdr l)))
+      (progress-reporter-done progress))
     (insert ")\n\n")))
 
 (defun skkdic-convert (filename &optional dirname)
@@ -330,7 +329,6 @@ Optional argument DIRNAME if specified is the directory name under which
 the generated Emacs Lisp is saved.
 The name of generated file is specified by the variable `ja-dic-filename'."
   (interactive "FSKK dictionary file: ")
-  (message "Reading file \"%s\" ..." filename)
   (let* ((coding-system-for-read 'euc-japan)
 	 (skkbuf (get-buffer-create " *skkdic-unannotated*"))
 	 (buf (get-buffer-create "*skkdic-work*")))
@@ -455,7 +453,7 @@ To get complete usage, invoke:
       (aset vec i
 	    (if (< ch 128)		; CH is an ASCII letter for OKURIGANA,
 		(- ch)			;  represented by a negative code.
-	      (if (= ch ?$B!<(B)		; `$B!<(B' is represented by 0.
+	      (if (= ch ?ー)		; `ー' is represented by 0.
 		  0
 		(- (logand (encode-char ch 'japanese-jisx0208) #xFF) 32))))
       (setq i (1+ i)))
@@ -467,7 +465,7 @@ To get complete usage, invoke:
 	(i (match-end 0))
 	candidates)
     (while (string-match "[^ ]+" entry i)
-      (setq candidates (cons (match-string 0 entry) candidates))
+      (setq candidates (cons (match-string-no-properties 0 entry) candidates))
       (setq i (match-end 0)))
     (cons (skkdic-get-kana-compact-codes kana) candidates)))
 
@@ -532,21 +530,19 @@ To get complete usage, invoke:
   `(defconst skkdic-okuri-nasi
      ',(let ((l entries)
 	     (map '(skdic-okuri-nasi))
+             (progress (make-progress-reporter
+                        (byte-compile-info-message
+                         "Extracting OKURI-NASI entries")
+                        0 (length entries)))
 	     (count 0)
 	     entry)
 	 (while l
-	   (setq count (1+ count))
-	   (if (= (% count 10000) 0)
-	       (message "%d entries" count))
+           (progress-reporter-update progress (setq count (1+ count)))
 	   (setq entry (skkdic-extract-conversion-data (car l)))
 	   (set-nested-alist (car entry) (cdr entry) map)
 	   (setq l (cdr l)))
+         (progress-reporter-done progress)
 	 map)))
 
 (provide 'ja-dic-cnv)
-
-;; Local Variables:
-;; coding: iso-2022-7bit
-;; End:
-
 ;;; ja-dic-cnv.el ends here

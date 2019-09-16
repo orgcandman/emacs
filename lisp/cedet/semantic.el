@@ -1,6 +1,6 @@
 ;;; semantic.el --- Semantic buffer evaluator.
 
-;; Copyright (C) 1999-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 ;; Keywords: syntax tools
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -37,6 +37,7 @@
 (require 'cedet)
 (require 'semantic/tag)
 (require 'semantic/lex)
+(require 'cl-lib)
 
 (defvar semantic-version "2.2"
   "Current version of Semantic.")
@@ -224,37 +225,37 @@ during a flush when the cache is given a new value of nil.")
   "Indicate that the current buffer is unparseable.
 It is also true that the parse tree will need either updating or
 a rebuild.  This state will be changed when the user edits the buffer."
-  `(setq semantic-parse-tree-state 'unparseable))
+  '(setq semantic-parse-tree-state 'unparseable))
 
 (defmacro semantic-parse-tree-unparseable-p ()
   "Return non-nil if the current buffer has been marked unparseable."
-  `(eq semantic-parse-tree-state 'unparseable))
+  '(eq semantic-parse-tree-state 'unparseable))
 
 (defmacro semantic-parse-tree-set-needs-update ()
   "Indicate that the current parse tree needs to be updated.
 The parse tree can be updated by `semantic-parse-changes'."
-  `(setq semantic-parse-tree-state 'needs-update))
+  '(setq semantic-parse-tree-state 'needs-update))
 
 (defmacro semantic-parse-tree-needs-update-p ()
   "Return non-nil if the current parse tree needs to be updated."
-  `(eq semantic-parse-tree-state 'needs-update))
+  '(eq semantic-parse-tree-state 'needs-update))
 
 (defmacro semantic-parse-tree-set-needs-rebuild ()
   "Indicate that the current parse tree needs to be rebuilt.
 The parse tree must be rebuilt by `semantic-parse-region'."
-  `(setq semantic-parse-tree-state 'needs-rebuild))
+  '(setq semantic-parse-tree-state 'needs-rebuild))
 
 (defmacro semantic-parse-tree-needs-rebuild-p ()
   "Return non-nil if the current parse tree needs to be rebuilt."
-  `(eq semantic-parse-tree-state 'needs-rebuild))
+  '(eq semantic-parse-tree-state 'needs-rebuild))
 
 (defmacro semantic-parse-tree-set-up-to-date ()
   "Indicate that the current parse tree is up to date."
-  `(setq semantic-parse-tree-state nil))
+  '(setq semantic-parse-tree-state nil))
 
 (defmacro semantic-parse-tree-up-to-date-p ()
   "Return non-nil if the current parse tree is up to date."
-  `(null semantic-parse-tree-state))
+  '(null semantic-parse-tree-state))
 
 ;;; Interfacing with the system
 ;;
@@ -329,7 +330,7 @@ If the major mode is ready for Semantic, and no
 to use Semantic, and `semantic-init-hook' is run."
   ;; In upstream Semantic, the parser setup functions are called from
   ;; mode hooks.  In the version bundled with Emacs, we do it here.
-  (let ((entry (assq major-mode semantic-new-buffer-setup-functions)))
+  (let ((entry (cl-assoc-if #'derived-mode-p semantic-new-buffer-setup-functions)))
     (when entry
       (funcall (cdr entry))))
   ;; Do stuff if semantic was activated by a mode hook in this buffer,
@@ -388,10 +389,9 @@ the output buffer."
   (if clear (semantic-clear-toplevel-cache))
   (if (eq clear '-) (setq clear -1))
   (let* ((start (current-time))
-	 (out (semantic-fetch-tags))
-	 (end (current-time)))
+	 (out (semantic-fetch-tags)))
     (message "Retrieving tags took %.2f seconds."
-	     (semantic-elapsed-time start end))
+	     (semantic-elapsed-time start nil))
     (when (or (null clear) (not (listp clear))
 	      (and (numberp clear) (< 0 clear)))
       (pop-to-buffer "*Parser Output*")
@@ -510,7 +510,7 @@ is requested."
   (semantic-clear-parser-warnings)
   ;; Nuke all semantic overlays.  This is faster than deleting based
   ;; on our data structure.
-  (let ((l (semantic-overlay-lists)))
+  (let ((l (overlay-lists)))
     (mapc 'semantic-delete-overlay-maybe (car l))
     (mapc 'semantic-delete-overlay-maybe (cdr l))
     )
@@ -1096,9 +1096,6 @@ The following modes are more targeted at people who want to see
 ;;;###autoload
 (define-minor-mode semantic-mode
   "Toggle parser features (Semantic mode).
-With a prefix argument ARG, enable Semantic mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-Semantic mode if ARG is omitted or nil.
 
 In Semantic mode, Emacs parses the buffers you visit for their
 semantic content.  This information is used by a variety of
@@ -1115,8 +1112,9 @@ Semantic mode.
 	;; Enable all the global auxiliary minor modes in
 	;; `semantic-submode-list'.
 	(dolist (mode semantic-submode-list)
-	  (if (memq mode semantic-default-submodes)
-	      (funcall mode 1)))
+	  (and (memq mode semantic-default-submodes)
+	       (fboundp mode)
+	       (funcall mode 1)))
 	(unless semantic-load-system-cache-loaded
 	  (setq semantic-load-system-cache-loaded t)
 	  (when (and (boundp 'semanticdb-default-system-save-directory)
@@ -1138,7 +1136,7 @@ Semantic mode.
 	(add-hook 'completion-at-point-functions
 		  'semantic-analyze-completion-at-point-function)
 
-	(if global-ede-mode
+	(if (bound-and-true-p global-ede-mode)
 	    (define-key cedet-menu-map [cedet-menu-separator] '("--")))
 	(dolist (b (buffer-list))
 	  (with-current-buffer b
@@ -1169,57 +1167,6 @@ Semantic mode.
     ;; Make sure we run the setup function if Semantic gets
     ;; re-activated.
     (setq semantic-new-buffer-fcn-was-run nil)))
-
-;;; Completion At Point functions
-(defun semantic-analyze-completion-at-point-function ()
-  "Return possible analysis completions at point.
-The completions provided are via `semantic-analyze-possible-completions'.
-This function can be used by `completion-at-point-functions'."
-  (when (semantic-active-p)
-    (let* ((ctxt (semantic-analyze-current-context))
-           (possible (semantic-analyze-possible-completions ctxt)))
-
-      ;; The return from this is either:
-      ;; nil - not applicable here.
-      ;; A list: (START END COLLECTION . PROPS)
-      (when possible
-        (list (car (oref ctxt bounds))
-              (cdr (oref ctxt bounds))
-              possible))
-      )))
-
-(defun semantic-analyze-notc-completion-at-point-function ()
-  "Return possible analysis completions at point.
-The completions provided are via `semantic-analyze-possible-completions',
-but with the `no-tc' option passed in, which means constraints based
-on what is being assigned to are ignored.
-This function can be used by `completion-at-point-functions'."
-  (when (semantic-active-p)
-    (let* ((ctxt (semantic-analyze-current-context))
-           (possible (semantic-analyze-possible-completions ctxt 'no-tc)))
-
-      (when possible
-        (list (car (oref ctxt bounds))
-              (cdr (oref ctxt bounds))
-              possible))
-      )))
-
-(defun semantic-analyze-nolongprefix-completion-at-point-function ()
-  "Return possible analysis completions at point.
-The completions provided are via `semantic-analyze-possible-completions',
-but with the `no-tc' and `no-longprefix' option passed in, which means
-constraints resulting in a long multi-symbol dereference are ignored.
-This function can be used by `completion-at-point-functions'."
-  (when (semantic-active-p)
-    (let* ((ctxt (semantic-analyze-current-context))
-           (possible (semantic-analyze-possible-completions
-                      ctxt 'no-tc 'no-longprefix)))
-
-      (when possible
-        (list (car (oref ctxt bounds))
-              (cdr (oref ctxt bounds))
-              possible))
-      )))
 
 ;;; Autoload some functions that are not in semantic/loaddefs
 
@@ -1260,6 +1207,16 @@ Call `semantic-symref-hits-in-region' to identify local references." t nil)
 
 (autoload 'srecode-template-setup-parser "srecode/srecode-template"
   "Set up buffer for parsing SRecode template files." t nil)
+
+(autoload 'semantic-analyze-completion-at-point-function "semantic/analyze"
+  "Return possible analysis completions at point.")
+
+(autoload 'semantic-analyze-notc-completion-at-point-function "semantic/analyze"
+  "Return possible analysis completions at point.")
+
+(autoload 'semantic-analyze-nolongprefix-completion-at-point-function
+  "semantic/analyze"
+  "Return possible analysis completions at point.")
 
 (provide 'semantic)
 

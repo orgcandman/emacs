@@ -1,5 +1,5 @@
 /* System thread definitions
-Copyright (C) 2012-2017 Free Software Foundation, Inc.
+Copyright (C) 2012-2019 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -14,11 +14,17 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 #include <setjmp.h>
+#include <stdio.h>
+#include <string.h>
 #include "lisp.h"
+
+#ifdef HAVE_NS
+#include "nsterm.h"
+#endif
 
 #ifndef THREADS_ENABLED
 
@@ -35,11 +41,6 @@ sys_mutex_lock (sys_mutex_t *m)
 
 void
 sys_mutex_unlock (sys_mutex_t *m)
-{
-}
-
-void
-sys_mutex_destroy (sys_mutex_t *m)
 {
 }
 
@@ -75,17 +76,17 @@ sys_thread_self (void)
   return 0;
 }
 
-int
-sys_thread_equal (sys_thread_t x, sys_thread_t y)
+bool
+sys_thread_equal (sys_thread_t t, sys_thread_t u)
 {
-  return x == y;
+  return t == u;
 }
 
-int
+bool
 sys_thread_create (sys_thread_t *t, const char *name,
 		   thread_creation_function *func, void *datum)
 {
-  return 0;
+  return false;
 }
 
 void
@@ -104,55 +105,91 @@ sys_thread_yield (void)
 void
 sys_mutex_init (sys_mutex_t *mutex)
 {
-  pthread_mutex_init (mutex, NULL);
+  pthread_mutexattr_t *attr_ptr;
+#ifdef ENABLE_CHECKING
+  pthread_mutexattr_t attr;
+  {
+    int error = pthread_mutexattr_init (&attr);
+    eassert (error == 0);
+    error = pthread_mutexattr_settype (&attr, PTHREAD_MUTEX_ERRORCHECK);
+    eassert (error == 0);
+  }
+  attr_ptr = &attr;
+#else
+  attr_ptr = NULL;
+#endif
+  int error = pthread_mutex_init (mutex, attr_ptr);
+  /* We could get ENOMEM.  Can't do anything except aborting.  */
+  if (error != 0)
+    {
+      fprintf (stderr, "\npthread_mutex_init failed: %s\n", strerror (error));
+      emacs_abort ();
+    }
+#ifdef ENABLE_CHECKING
+  error = pthread_mutexattr_destroy (&attr);
+  eassert (error == 0);
+#endif
 }
 
 void
 sys_mutex_lock (sys_mutex_t *mutex)
 {
-  pthread_mutex_lock (mutex);
+  int error = pthread_mutex_lock (mutex);
+  eassert (error == 0);
 }
 
 void
 sys_mutex_unlock (sys_mutex_t *mutex)
 {
-  pthread_mutex_unlock (mutex);
-}
-
-void
-sys_mutex_destroy (sys_mutex_t *mutex)
-{
-  pthread_mutex_destroy (mutex);
+  int error = pthread_mutex_unlock (mutex);
+  eassert (error == 0);
 }
 
 void
 sys_cond_init (sys_cond_t *cond)
 {
-  pthread_cond_init (cond, NULL);
+  int error = pthread_cond_init (cond, NULL);
+  /* We could get ENOMEM.  Can't do anything except aborting.  */
+  if (error != 0)
+    {
+      fprintf (stderr, "\npthread_cond_init failed: %s\n", strerror (error));
+      emacs_abort ();
+    }
 }
 
 void
 sys_cond_wait (sys_cond_t *cond, sys_mutex_t *mutex)
 {
-  pthread_cond_wait (cond, mutex);
+  int error = pthread_cond_wait (cond, mutex);
+  eassert (error == 0);
 }
 
 void
 sys_cond_signal (sys_cond_t *cond)
 {
-  pthread_cond_signal (cond);
+  int error = pthread_cond_signal (cond);
+  eassert (error == 0);
 }
 
 void
 sys_cond_broadcast (sys_cond_t *cond)
 {
-  pthread_cond_broadcast (cond);
+  int error = pthread_cond_broadcast (cond);
+  eassert (error == 0);
+#ifdef HAVE_NS
+  /* Send an app defined event to break out of the NS run loop.
+     It seems that if ns_select is running the NS run loop, this
+     broadcast has no effect until the loop is done, breaking a couple
+     of tests in thread-tests.el. */
+  ns_run_loop_break ();
+#endif
 }
 
 void
 sys_cond_destroy (sys_cond_t *cond)
 {
-  pthread_cond_destroy (cond);
+  int error = pthread_cond_destroy (cond);
+  eassert (error == 0);
 }
 
 sys_thread_t
@@ -161,21 +198,31 @@ sys_thread_self (void)
   return pthread_self ();
 }
 
-int
-sys_thread_equal (sys_thread_t one, sys_thread_t two)
+bool
+sys_thread_equal (sys_thread_t t, sys_thread_t u)
 {
-  return pthread_equal (one, two);
+  return pthread_equal (t, u);
 }
 
-int
+bool
 sys_thread_create (sys_thread_t *thread_ptr, const char *name,
 		   thread_creation_function *func, void *arg)
 {
   pthread_attr_t attr;
-  int result = 0;
+  bool result = false;
 
   if (pthread_attr_init (&attr))
-    return 0;
+    return false;
+
+  /* Avoid crash on macOS with deeply nested GC (Bug#30364).  */
+  size_t stack_size;
+  size_t required_stack_size = sizeof (void *) * 1024 * 1024;
+  if (pthread_attr_getstacksize (&attr, &stack_size) == 0
+      && stack_size < required_stack_size)
+    {
+      if (pthread_attr_setstacksize (&attr, required_stack_size) != 0)
+        goto out;
+    }
 
   if (!pthread_attr_setdetachstate (&attr, PTHREAD_CREATE_DETACHED))
     {
@@ -186,7 +233,9 @@ sys_thread_create (sys_thread_t *thread_ptr, const char *name,
 #endif
     }
 
-  pthread_attr_destroy (&attr);
+ out: ;
+  int error = pthread_attr_destroy (&attr);
+  eassert (error == 0);
 
   return result;
 }
@@ -199,7 +248,7 @@ sys_thread_yield (void)
 
 #elif defined (WINDOWSNT)
 
-#include <windows.h>
+#include <w32term.h>
 
 /* Cannot include <process.h> because of the local header by the same
    name, sigh.  */
@@ -227,17 +276,6 @@ void
 sys_mutex_unlock (sys_mutex_t *mutex)
 {
   LeaveCriticalSection ((LPCRITICAL_SECTION)mutex);
-}
-
-void
-sys_mutex_destroy (sys_mutex_t *mutex)
-{
-  /* FIXME: According to MSDN, deleting a critical session that is
-     owned by a thread leaves the other threads waiting for the
-     critical session in an undefined state.  Posix docs seem to say
-     the same about pthread_mutex_destroy.  Do we need to protect
-     against such calamities?  */
-  DeleteCriticalSection ((LPCRITICAL_SECTION)mutex);
 }
 
 void
@@ -346,23 +384,24 @@ sys_thread_self (void)
   return (sys_thread_t) GetCurrentThreadId ();
 }
 
-int
-sys_thread_equal (sys_thread_t one, sys_thread_t two)
+bool
+sys_thread_equal (sys_thread_t t, sys_thread_t u)
 {
-  return one == two;
+  return t == u;
 }
 
 static thread_creation_function *thread_start_address;
 
 /* _beginthread wants a void function, while we are passed a function
-   that returns a pointer.  So we use a wrapper.  */
-static void
+   that returns a pointer.  So we use a wrapper.  See the command in
+   w32term.h about the need for ALIGN_STACK attribute.  */
+static void ALIGN_STACK
 w32_beginthread_wrapper (void *arg)
 {
   (void)thread_start_address (arg);
 }
 
-int
+bool
 sys_thread_create (sys_thread_t *thread_ptr, const char *name,
 		   thread_creation_function *func, void *arg)
 {
@@ -386,7 +425,7 @@ sys_thread_create (sys_thread_t *thread_ptr, const char *name,
      rule in many places...  */
   thandle = _beginthread (w32_beginthread_wrapper, stack_size, arg);
   if (thandle == (uintptr_t)-1L)
-    return 0;
+    return false;
 
   /* Kludge alert!  We use the Windows thread ID, an unsigned 32-bit
      number, as the sys_thread_t type, because that ID is the only
@@ -401,7 +440,7 @@ sys_thread_create (sys_thread_t *thread_ptr, const char *name,
      Therefore, we return some more or less arbitrary value of the
      thread ID from this function. */
   *thread_ptr = thandle & 0xFFFFFFFF;
-  return 1;
+  return true;
 }
 
 void

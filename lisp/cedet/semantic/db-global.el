@@ -1,6 +1,6 @@
 ;;; semantic/db-global.el --- Semantic database extensions for GLOBAL
 
-;; Copyright (C) 2002-2006, 2008-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2002-2006, 2008-2019 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 ;; Keywords: tags
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -38,6 +38,8 @@
   )
 
 ;;; Code:
+
+(defvar semanticdb--ih)
 
 ;;;###autoload
 (defun semanticdb-enable-gnu-global-databases (mode &optional noerror)
@@ -64,10 +66,10 @@ values."
     (when (stringp mode)
       (setq mode (intern mode)))
 
-    (let ((ih (mode-local-value mode 'semantic-init-mode-hook)))
+    (let ((semanticdb--ih (mode-local-value mode 'semantic-init-mode-hook)))
       (eval `(setq-mode-local
               ,mode semantic-init-mode-hook
-              (cons 'semanticdb-enable-gnu-global-hook ih))))
+              (cons 'semanticdb-enable-gnu-global-hook semanticdb--ih))))
     t
     )
   )
@@ -94,7 +96,7 @@ if optional DONT-ERR-IF-NOT-AVAILABLE is non-nil; else throw an error."
       (setq
        ;; Add to the system database list.
        semanticdb-project-system-databases
-       (cons (semanticdb-project-database-global "global")
+       (cons (make-instance 'semanticdb-project-database-global)
 	     semanticdb-project-system-databases)
        ;; Apply the throttle.
        semanticdb-find-default-throttle
@@ -112,10 +114,14 @@ if optional DONT-ERR-IF-NOT-AVAILABLE is non-nil; else throw an error."
    )
   "A table for returning search results from GNU Global.")
 
-(cl-defmethod object-print ((obj semanticdb-table-global) &rest strings)
+(cl-defmethod semanticdb-debug-info ((obj semanticdb-table-global))
+  (list "(proxy)"))
+
+(cl-defmethod cl-print-object ((obj semanticdb-table-global) stream)
   "Pretty printer extension for `semanticdb-table-global'.
 Adds the number of tags in this file to the object print name."
-  (apply 'call-next-method obj (cons " (proxy)" strings)))
+  (princ (eieio-object-name obj (semanticdb-debug-info obj))
+         stream))
 
 (cl-defmethod semanticdb-equivalent-mode ((table semanticdb-table-global) &optional buffer)
   "Return t, pretend that this table's mode is equivalent to BUFFER.
@@ -132,7 +138,7 @@ For each file hit, get the traditional semantic table from that file."
   ;; We need to return something since there is always the "master table"
   ;; The table can then answer file name type questions.
   (when (not (slot-boundp obj 'tables))
-    (let ((newtable (semanticdb-table-global "GNU Global Search Table")))
+    (let ((newtable (make-instance 'semanticdb-table-global)))
       (oset obj tables (list newtable))
       (oset newtable parent-db obj)
       (oset newtable tags nil)
@@ -191,7 +197,7 @@ Returns a table of all matching tags."
 	   (faketags nil)
 	   )
       (when result
-	(dolist (T (oref result :hit-text))
+	(dolist (T (oref result hit-text))
 	  ;; We should look up each tag one at a time, but I'm lazy!
 	  ;; Doing this may be good enough.
 	  (setq faketags (cons

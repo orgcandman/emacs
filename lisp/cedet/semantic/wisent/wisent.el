@@ -1,9 +1,8 @@
 ;;; semantic/wisent/wisent.el --- GNU Bison for Emacs - Runtime
 
-;;; Copyright (C) 2002-2007, 2009-2017 Free Software Foundation, Inc.
+;;; Copyright (C) 2002-2007, 2009-2019 Free Software Foundation, Inc.
 
 ;; Author: David Ponce <david@dponce.com>
-;; Maintainer: David Ponce <david@dponce.com>
 ;; Created: 30 January 2002
 ;; Keywords: syntax
 
@@ -20,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -114,7 +113,7 @@ If OBJ is a symbol check its value."
   (and (vectorp obj) (= 4 (length obj))
        (vectorp (aref obj 0)) (vectorp (aref obj 1))
        (= (length (aref obj 0)) (length (aref obj 1)))
-       (listp (aref obj 2)) (vectorp (aref obj 3))))
+       (listp (aref obj 2)) (obarrayp (aref obj 3))))
 
 (defsubst wisent-region (&rest positions)
   "Return the start/end positions of the region including POSITIONS.

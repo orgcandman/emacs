@@ -1,6 +1,6 @@
 ;;; easymenu.el --- support the easymenu interface for defining a menu  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1994, 1996, 1998-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1994, 1996, 1998-2019 Free Software Foundation, Inc.
 
 ;; Keywords: emulations
 ;; Author: Richard Stallman <rms@gnu.org>
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -70,6 +70,17 @@ pairs:
     ENABLE is an expression.  The menu is enabled for selection
     if the expression evaluates to a non-nil value.  `:enable' is
     an alias for `:active'.
+
+ :label FORM
+    FORM is an expression that is dynamically evaluated and whose
+    value serves as the menu's label (the default is the first
+    element of MENU).
+
+ :help HELP
+    HELP is a string, the help to display for the menu.
+    In a GUI this is a \"tooltip\" on the menu button.  (Though
+    in Lucid :help is not shown for the top-level menu bar, only
+    for sub-menus.)
 
 The rest of the elements in MENU are menu items.
 A menu item can be a vector of three elements:
@@ -226,14 +237,14 @@ possibly preceded by keyword pairs as described in `easy-menu-define'."
       (let ((arg (cadr menu-items)))
         (setq menu-items (cddr menu-items))
         (pcase keyword
-          (`:filter
+          (:filter
            (setq filter (lambda (menu)
                           (easy-menu-filter-return (funcall arg menu)
                                                    menu-name))))
-          ((or `:enable `:active) (setq enable (or arg ''nil)))
-          (`:label (setq label arg))
-          (`:help (setq help arg))
-          ((or `:included `:visible) (setq visible (or arg ''nil))))))
+          ((or :enable :active) (setq enable (or arg ''nil)))
+          (:label (setq label arg))
+          (:help (setq help arg))
+          ((or :included :visible) (setq visible (or arg ''nil))))))
     (if (equal visible ''nil)
 	nil				; Invisible menu entry, return nil.
       (if (and visible (not (easy-menu-always-true-p visible)))
@@ -325,15 +336,15 @@ ITEM defines an item as in `easy-menu-define'."
 		(setq arg (aref item (1+ count)))
 		(setq count (+ 2 count))
 		(pcase keyword
-                  ((or `:included `:visible) (setq visible (or arg ''nil)))
-                  (`:key-sequence (setq cache arg cache-specified t))
-                  (`:keys (setq keys arg no-name nil))
-                  (`:label (setq label arg))
-                  ((or `:active `:enable) (setq active (or arg ''nil)))
-                  (`:help (setq prop (cons :help (cons arg prop))))
-                  (`:suffix (setq suffix arg))
-                  (`:style (setq style arg))
-                  (`:selected (setq selected (or arg ''nil)))))
+                  ((or :included :visible) (setq visible (or arg ''nil)))
+                  (:key-sequence (setq cache arg cache-specified t))
+                  (:keys (setq keys arg no-name nil))
+                  (:label (setq label arg))
+                  ((or :active :enable) (setq active (or arg ''nil)))
+                  (:help (setq prop (cons :help (cons arg prop))))
+                  (:suffix (setq suffix arg))
+                  (:style (setq style arg))
+                  (:selected (setq selected (or arg ''nil)))))
 	      (if suffix
 		  (setq label
 			(if (stringp suffix)
@@ -489,7 +500,7 @@ To implement dynamic menus, either call this from
 
 ;; XEmacs needs the following two functions to add and remove menus.
 ;; In Emacs this is done automatically when switching keymaps, so
-;; here easy-menu-remove is a noop.
+;; here easy-menu-remove and easy-menu-add are a noops.
 (defalias 'easy-menu-remove 'ignore
   "Remove MENU from the current menu bar.
 Contrary to XEmacs, this is a nop on Emacs since menus are automatically
@@ -497,15 +508,16 @@ Contrary to XEmacs, this is a nop on Emacs since menus are automatically
 
 \(fn MENU)")
 
-(defun easy-menu-add (_menu &optional _map)
+(defalias 'easy-menu-add #'ignore
   "Add the menu to the menubar.
-On Emacs, menus are already automatically activated when the
-corresponding keymap is activated.  On XEmacs this is needed to
-actually add the menu to the current menubar.
+On Emacs this is a nop, because menus are already automatically
+activated when the corresponding keymap is activated.  On XEmacs
+this is needed to actually add the menu to the current menubar.
 
 You should call this once the menu and keybindings are set up
-completely and menu filter functions can be expected to work."
-  )
+completely and menu filter functions can be expected to work.
+
+\(fn MENU &optional MAP)")
 
 (defun add-submenu (menu-path submenu &optional before in-menu)
   "Add submenu SUBMENU in the menu at MENU-PATH.

@@ -1,6 +1,6 @@
-;;; paren.el --- highlight matching paren
+;;; paren.el --- highlight matching paren  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1993, 1996, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1993, 1996, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: rms@gnu.org
 ;; Maintainer: emacs-devel@gnu.org
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -60,7 +60,7 @@ active, you must toggle the mode off and on again for this to take effect."
 
 (defcustom show-paren-priority 1000
   "Priority of paren highlighting overlays."
-  :type 'integer 
+  :type 'integer
   :version "21.1")
 
 (defcustom show-paren-ring-bell-on-mismatch nil
@@ -100,9 +100,6 @@ its position."
 ;;;###autoload
 (define-minor-mode show-paren-mode
   "Toggle visualization of matching parens (Show Paren mode).
-With a prefix argument ARG, enable Show Paren mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-the mode if ARG is omitted or nil.
 
 Show Paren mode is a global minor mode.  When enabled, any
 matching parenthesis is highlighted in `show-paren-style' after
@@ -176,6 +173,9 @@ if there's no opener/closer near point, or a list of the form
 Where HERE-BEG..HERE-END is expected to be near point.")
 
 (defun show-paren--default ()
+  "Find the opener/closer near point and its match.
+
+It is the default value of `show-paren-data-function'."
   (let* ((temp (show-paren--locate-near-paren))
 	 (dir (car temp))
 	 (outside (cdr temp))
@@ -228,9 +228,8 @@ Where HERE-BEG..HERE-END is expected to be near point.")
 		  (if (= dir 1) pos (1+ pos))
 		  mismatch)))))))
 
-;; Find the place to show, if there is one,
-;; and show it until input arrives.
 (defun show-paren-function ()
+  "Highlight the parentheses until the next input arrives."
   (let ((data (and show-paren-mode (funcall show-paren-data-function))))
     (if (not data)
         (progn
@@ -245,13 +244,21 @@ Where HERE-BEG..HERE-END is expected to be near point.")
              (there-beg (nth 2 data))
              (there-end (nth 3 data))
              (mismatch (nth 4 data))
+             (highlight-expression
+              (or (eq show-paren-style 'expression)
+                  (and there-beg
+                       (eq show-paren-style 'mixed)
+                       (let ((closest (if (< there-beg here-beg)
+                                          (1- there-end) (1+ there-beg))))
+                         (not (pos-visible-in-window-p closest))))))
              (face
-              (if mismatch
-                  (progn
-                    (if show-paren-ring-bell-on-mismatch
-                        (beep))
-                    'show-paren-mismatch)
-                'show-paren-match)))
+              (cond
+               (mismatch
+                (if show-paren-ring-bell-on-mismatch
+                    (beep))
+                'show-paren-mismatch)
+               (highlight-expression 'show-paren-match-expression)
+               (t 'show-paren-match))))
         ;;
         ;; If matching backwards, highlight the closeparen
         ;; before point as well as its matching open.
@@ -274,11 +281,7 @@ Where HERE-BEG..HERE-END is expected to be near point.")
         ;; If it's an unmatched paren, turn off any such highlighting.
         (if (not there-beg)
             (delete-overlay show-paren--overlay)
-          (if (or (eq show-paren-style 'expression)
-                  (and (eq show-paren-style 'mixed)
-                       (let ((closest (if (< there-beg here-beg)
-                                          (1- there-end) (1+ there-beg))))
-                         (not (pos-visible-in-window-p closest)))))
+          (if highlight-expression
               (move-overlay show-paren--overlay
 			    (if (< there-beg here-beg) here-end here-beg)
                             (if (< there-beg here-beg) there-beg there-end)

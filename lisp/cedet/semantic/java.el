@@ -1,6 +1,6 @@
 ;;; semantic/java.el --- Semantic functions for Java
 
-;;; Copyright (C) 1999-2017 Free Software Foundation, Inc.
+;;; Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
 ;; Author: David Ponce <david@dponce.com>
 
@@ -17,7 +17,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -51,7 +51,7 @@
             "\\|"
             "\\<[0-9]+[eE][-+]?[0-9]+[fFdD]?\\>"
             "\\|"
-            "\\<0[xX][0-9a-fA-F]+[lL]?\\>"
+            "\\<0[xX][[:xdigit:]]+[lL]?\\>"
             "\\|"
             "\\<[0-9]+[lLfFdD]?\\>"
             "\\)"
@@ -63,7 +63,7 @@ DECIMAL_LITERAL:
     [1-9][0-9]*
   ;
 HEX_LITERAL:
-    0[xX][0-9a-fA-F]+
+    0[xX][[:xdigit:]]+
   ;
 OCTAL_LITERAL:
     0[0-7]*

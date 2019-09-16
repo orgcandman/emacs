@@ -1,6 +1,6 @@
 ;;; simple-test.el --- Tests for simple.el           -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2015-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2015-2019 Free Software Foundation, Inc.
 
 ;; Author: Artur Malabarba <bruce.connor.am@gmail.com>
 
@@ -15,11 +15,17 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Code:
 
 (require 'ert)
+(eval-when-compile (require 'cl-lib))
+
+(defun simple-test--buffer-substrings ()
+  "Return cons of buffer substrings before and after point."
+  (cons (buffer-substring (point-min) (point))
+        (buffer-substring (point) (point-max))))
 
 (defmacro simple-test--dummy-buffer (&rest body)
   (declare (indent 0)
@@ -30,11 +36,10 @@
      (insert "(a b")
      (save-excursion (insert " c d)"))
      ,@body
-     (with-no-warnings
-       (cons (buffer-substring (point-min) (point))
-             (buffer-substring (point) (point-max))))))
+     (with-no-warnings (simple-test--buffer-substrings))))
 
-
+
+;;; `transpose-sexps'
 (defmacro simple-test--transpositions (&rest body)
   (declare (indent 0)
            (debug t))
@@ -43,8 +48,14 @@
      (insert "(s1) (s2) (s3) (s4) (s5)")
      (backward-sexp 1)
      ,@body
-     (cons (buffer-substring (point-min) (point))
-           (buffer-substring (point) (point-max)))))
+     (simple-test--buffer-substrings)))
+
+;;; Transposition with negative args (bug#20698, bug#21885)
+(ert-deftest simple-transpose-subr ()
+  (should (equal (simple-test--transpositions (transpose-sexps -1))
+                 '("(s1) (s2) (s4)" . " (s3) (s5)")))
+  (should (equal (simple-test--transpositions (transpose-sexps -2))
+                 '("(s1) (s4)" . " (s2) (s3) (s5)"))))
 
 
 ;;; `newline'
@@ -178,7 +189,7 @@
 ;; From 24 Oct - 21 Nov 2015, `open-line' took a second argument
 ;; INTERACTIVE and ran `post-self-insert-hook' if the argument was
 ;; true.  This test tested that.  Currently, however, `open-line'
-;; does not run run `post-self-insert-hook' at all, so for now
+;; does not run `post-self-insert-hook' at all, so for now
 ;; this test just makes sure that it doesn't.
 (ert-deftest open-line-hook ()
   (let* ((x 0)
@@ -202,6 +213,147 @@
             (open-line 10))
           (should (= x 0)))
       (remove-hook 'post-self-insert-hook inc))))
+
+
+;;; `delete-indentation'
+
+(ert-deftest simple-delete-indentation-no-region ()
+  "Test `delete-indentation' when no mark is set; see bug#35021."
+  (with-temp-buffer
+    (insert " first \n second \n third \n fourth ")
+    (should-not (mark t))
+    ;; Without prefix argument.
+    (should-not (call-interactively #'delete-indentation))
+    (should (equal (simple-test--buffer-substrings)
+                   '(" first \n second \n third" . " fourth ")))
+    (should-not (call-interactively #'delete-indentation))
+    (should (equal (simple-test--buffer-substrings)
+                   '(" first \n second" . " third fourth ")))
+    ;; With prefix argument.
+    (goto-char (point-min))
+    (let ((current-prefix-arg '(4)))
+      (should-not (call-interactively #'delete-indentation)))
+    (should (equal (simple-test--buffer-substrings)
+                   '(" first" . " second third fourth ")))))
+
+(ert-deftest simple-delete-indentation-inactive-region ()
+  "Test `delete-indentation'  with an inactive region."
+  (with-temp-buffer
+    (insert " first \n second \n third ")
+    (set-marker (mark-marker) (point-min))
+    (should (mark t))
+    (should-not (call-interactively #'delete-indentation))
+    (should (equal (simple-test--buffer-substrings)
+                   '(" first \n second" . " third ")))))
+
+(ert-deftest simple-delete-indentation-blank-line ()
+  "Test `delete-indentation' does not skip blank lines.
+See bug#35036."
+  (with-temp-buffer
+    (insert "\n\n third \n \n \n sixth \n\n")
+    ;; Without prefix argument.
+    (should-not (delete-indentation))
+    (should (equal (simple-test--buffer-substrings)
+                   '("\n\n third \n \n \n sixth \n" . "")))
+    (should-not (delete-indentation))
+    (should (equal (simple-test--buffer-substrings)
+                   '("\n\n third \n \n \n sixth" . "")))
+    (should-not (delete-indentation))
+    (should (equal (simple-test--buffer-substrings)
+                   '("\n\n third \n \n" . "sixth")))
+    ;; With prefix argument.
+    (goto-char (point-min))
+    (should-not (delete-indentation t))
+    (should (equal (simple-test--buffer-substrings)
+                   '("" . "\n third \n \nsixth")))
+    (should-not (delete-indentation t))
+    (should (equal (simple-test--buffer-substrings)
+                   '("" . "third \n \nsixth")))
+    (should-not (delete-indentation t))
+    (should (equal (simple-test--buffer-substrings)
+                   '("third" . "\nsixth")))
+    (should-not (delete-indentation t))
+    (should (equal (simple-test--buffer-substrings)
+                   '("third" . " sixth")))))
+
+(ert-deftest simple-delete-indentation-boundaries ()
+  "Test `delete-indentation' motion at buffer boundaries."
+  (with-temp-buffer
+    (insert " first \n second \n third ")
+    ;; Stay at EOB.
+    (should-not (delete-indentation t))
+    (should (equal (simple-test--buffer-substrings)
+                   '(" first \n second \n third " . "")))
+    ;; Stay at BOB.
+    (forward-line -1)
+    (save-restriction
+      (narrow-to-region (point) (line-end-position))
+      (should-not (delete-indentation))
+      (should (equal (simple-test--buffer-substrings)
+                     '("" . " second ")))
+      ;; Go to EOB.
+      (should-not (delete-indentation t))
+      (should (equal (simple-test--buffer-substrings)
+                     '(" second " . ""))))
+    ;; Go to BOB.
+    (end-of-line 0)
+    (should-not (delete-indentation))
+    (should (equal (simple-test--buffer-substrings)
+                   '("" . " first \n second \n third ")))))
+
+(ert-deftest simple-delete-indentation-region ()
+  "Test `delete-indentation' with an active region."
+  (with-temp-buffer
+    ;; Empty region.
+    (insert " first ")
+    (should-not (delete-indentation nil (point) (point)))
+    (should (equal (simple-test--buffer-substrings)
+                   '(" first " . "")))
+    ;; Single line.
+    (should-not (delete-indentation
+                 nil (line-beginning-position) (1- (point))))
+    (should (equal (simple-test--buffer-substrings)
+                   '("" . " first ")))
+    (should-not (delete-indentation nil (1+ (point)) (line-end-position)))
+    (should (equal (simple-test--buffer-substrings)
+                   '(" " . "first ")))
+    (should-not (delete-indentation
+                 nil (line-beginning-position) (line-end-position)))
+    (should (equal (simple-test--buffer-substrings)
+                   '("" . " first ")))
+    ;; Multiple lines.
+    (goto-char (point-max))
+    (insert "\n second \n third \n fourth ")
+    (goto-char (point-min))
+    (should-not (delete-indentation
+                 nil (line-end-position) (line-beginning-position 2)))
+    (should (equal (simple-test--buffer-substrings)
+                   '(" first" . " second \n third \n fourth ")))
+    (should-not (delete-indentation
+                 nil (point) (1+ (line-beginning-position 2))))
+    (should (equal (simple-test--buffer-substrings)
+                   '(" first second" . " third \n fourth ")))
+    ;; Prefix argument overrides region.
+    (should-not (delete-indentation t (point-min) (point)))
+    (should (equal (simple-test--buffer-substrings)
+                   '(" first second third" . " fourth ")))))
+
+(ert-deftest simple-delete-indentation-prefix ()
+  "Test `delete-indentation' with a fill prefix."
+  (with-temp-buffer
+    (insert "> first \n> second \n> third \n> fourth ")
+    (let ((fill-prefix ""))
+      (delete-indentation))
+    (should (equal (simple-test--buffer-substrings)
+                   '("> first \n> second \n> third" . " > fourth ")))
+    (let ((fill-prefix "<"))
+      (delete-indentation))
+    (should (equal (simple-test--buffer-substrings)
+                   '("> first \n> second" . " > third > fourth ")))
+    (let ((fill-prefix ">"))
+      (delete-indentation))
+    (should (equal (simple-test--buffer-substrings)
+                   '("> first" . " second > third > fourth ")))))
 
 
 ;;; `delete-trailing-whitespace'
@@ -239,8 +391,8 @@
       (should (equal ?\s (char-syntax ?\f)))
       (should (equal ?\s (char-syntax ?\n))))))
 
-
-;;; auto-boundary tests
+
+;;; undo auto-boundary tests
 (ert-deftest undo-auto-boundary-timer ()
   (should
    undo-auto-current-boundary-timer))
@@ -269,16 +421,8 @@
      (insert "hello")
      (undo-auto--boundaries 'test))))
 
-;;; Transposition with negative args (bug#20698, bug#21885)
-(ert-deftest simple-transpose-subr ()
-  (should (equal (simple-test--transpositions (transpose-sexps -1))
-                 '("(s1) (s2) (s4)" . " (s3) (s5)")))
-  (should (equal (simple-test--transpositions (transpose-sexps -2))
-                 '("(s1) (s4)" . " (s2) (s3) (s5)"))))
-
-
 ;; Test for a regression introduced by undo-auto--boundaries changes.
-;; https://lists.gnu.org/archive/html/emacs-devel/2015-11/msg01652.html
+;; https://lists.gnu.org/r/emacs-devel/2015-11/msg01652.html
 (defun undo-test-kill-c-a-then-undo ()
   (with-temp-buffer
     (switch-to-buffer (current-buffer))
@@ -373,6 +517,199 @@ See Bug#21722."
        (undo-boundary)
        (undo)
        (point)))))
+
+
+;;; `eval-expression'
+
+(ert-deftest eval-expression-print-format-sym ()
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'read--expression) (lambda (&rest _) t)))
+      (let ((current-prefix-arg '(4)))
+        (call-interactively #'eval-expression)
+        (should (equal (buffer-string) "t"))))))
+
+(ert-deftest eval-expression-print-format-sym-echo ()
+  ;; We can only check the echo area when running interactive.
+  (skip-unless (not noninteractive))
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'read--expression) (lambda (&rest _) t)))
+      (let ((current-prefix-arg nil))
+        (message nil)
+        (call-interactively #'eval-expression)
+        (should (equal (current-message) "t"))))))
+
+(ert-deftest eval-expression-print-format-small-int ()
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'read--expression) (lambda (&rest _) ?A)))
+      (let ((current-prefix-arg '(4)))
+        (erase-buffer)
+        (call-interactively #'eval-expression)
+        (should (equal (buffer-string) "65")))
+      (let ((current-prefix-arg 0))
+        (erase-buffer)
+        (call-interactively #'eval-expression)
+        (should (equal (buffer-string) "65 (#o101, #x41, ?A)"))))))
+
+(ert-deftest eval-expression-print-format-small-int-echo ()
+  (skip-unless (not noninteractive))
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'read--expression) (lambda (&rest _) ?A)))
+      (let ((current-prefix-arg nil))
+        (message nil)
+        (call-interactively #'eval-expression)
+        (should (equal (current-message) "65 (#o101, #x41, ?A)"))))))
+
+(ert-deftest eval-expression-print-format-large-int ()
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'read--expression) (lambda (&rest _) ?B))
+              (eval-expression-print-maximum-character ?A))
+      (let ((current-prefix-arg '(4)))
+        (erase-buffer)
+        (call-interactively #'eval-expression)
+        (should (equal (buffer-string) "66")))
+      (let ((current-prefix-arg 0))
+        (erase-buffer)
+        (call-interactively #'eval-expression)
+        (should (equal (buffer-string) "66 (#o102, #x42)")))
+      (let ((current-prefix-arg -1))
+        (erase-buffer)
+        (call-interactively #'eval-expression)
+        (should (equal (buffer-string) "66 (#o102, #x42, ?B)"))))))
+
+(ert-deftest eval-expression-print-format-large-int-echo ()
+  (skip-unless (not noninteractive))
+  (with-temp-buffer
+    (cl-letf (((symbol-function 'read--expression) (lambda (&rest _) ?B))
+              (eval-expression-print-maximum-character ?A))
+      (let ((current-prefix-arg nil))
+        (message nil)
+        (call-interactively #'eval-expression)
+        (should (equal (current-message) "66 (#o102, #x42)")))
+      (let ((current-prefix-arg '-))
+        (message nil)
+        (call-interactively #'eval-expression)
+        (should (equal (current-message) "66 (#o102, #x42, ?B)"))))))
+
+(ert-deftest command-execute-prune-command-history ()
+  "Check that Bug#31211 is fixed."
+  (let ((history-length 1)
+        (command-history ()))
+    (dotimes (_ (1+ history-length))
+      (command-execute "" t))
+    (should (= (length command-history) history-length))))
+
+
+;;; `line-number-at-pos'
+
+(ert-deftest line-number-at-pos-in-widen-buffer ()
+  (let ((target-line 3))
+    (with-temp-buffer
+      (insert "a\nb\nc\nd\n")
+      (goto-char (point-min))
+      (forward-line (1- target-line))
+      (should (equal (line-number-at-pos) target-line))
+      (should (equal (line-number-at-pos nil t) target-line)))))
+
+(ert-deftest line-number-at-pos-in-narrow-buffer ()
+  (let ((target-line 3))
+    (with-temp-buffer
+      (insert "a\nb\nc\nd\n")
+      (goto-char (point-min))
+      (forward-line (1- target-line))
+      (narrow-to-region (line-beginning-position) (line-end-position))
+      (should (equal (line-number-at-pos) 1))
+      (should (equal (line-number-at-pos nil t) target-line)))))
+
+(ert-deftest line-number-at-pos-keeps-restriction ()
+  (with-temp-buffer
+    (insert "a\nb\nc\nd\n")
+    (goto-char (point-min))
+    (forward-line 2)
+    (narrow-to-region (line-beginning-position) (line-end-position))
+    (should (equal (line-number-at-pos) 1))
+    (line-number-at-pos nil t)
+    (should (equal (line-number-at-pos) 1))))
+
+(ert-deftest line-number-at-pos-keeps-point ()
+  (let (pos)
+    (with-temp-buffer
+      (insert "a\nb\nc\nd\n")
+      (goto-char (point-min))
+      (forward-line 2)
+      (setq pos (point))
+      (line-number-at-pos)
+      (line-number-at-pos nil t)
+      (should (equal pos (point))))))
+
+(ert-deftest line-number-at-pos-when-passing-point ()
+  (with-temp-buffer
+    (insert "a\nb\nc\nd\n")
+    (should (equal (line-number-at-pos 1) 1))
+    (should (equal (line-number-at-pos 3) 2))
+    (should (equal (line-number-at-pos 5) 3))
+    (should (equal (line-number-at-pos 7) 4))))
+
+
+;;; Auto fill.
+
+(ert-deftest auto-fill-mode-no-break-before-length-of-fill-prefix ()
+  (with-temp-buffer
+    (setq-local fill-prefix "   ")
+    (set-fill-column 5)
+    ;; Shouldn't break after 'foo' (3 characters) when the next
+    ;; line is indented >= to that, that wouldn't result in shorter
+    ;; lines.
+    (insert "foo bar")
+    (do-auto-fill)
+    (should (string-equal (buffer-string) "foo bar"))))
+
+
+;;; Shell command.
+
+(ert-deftest simple-tests-async-shell-command-30280 ()
+  "Test for https://debbugs.gnu.org/30280 ."
+  (let* ((async-shell-command-buffer 'new-buffer)
+         (async-shell-command-display-buffer nil)
+         (base "name")
+         (first (buffer-name (generate-new-buffer base)))
+         (second (generate-new-buffer-name base))
+         ;; `save-window-excursion' doesn't restore frame configurations.
+         (pop-up-frames nil)
+         (inhibit-message t)
+         (emacs (expand-file-name invocation-name invocation-directory)))
+    (skip-unless (file-executable-p emacs))
+    ;; Let `shell-command' create the buffer as needed.
+    (kill-buffer first)
+    (unwind-protect
+        (save-window-excursion
+          ;; One command has no output, the other does.
+          ;; Removing the -eval argument also yields no output, but
+          ;; then both commands exit simultaneously when
+          ;; `accept-process-output' is called on the second command.
+          (dolist (form '("(sleep-for 8)" "(message \"\")"))
+            (async-shell-command (format "%s -Q -batch -eval '%s'"
+                                         emacs form)
+                                 first))
+          ;; First command should neither have nor display output.
+          (let* ((buffer (get-buffer first))
+                 (process (get-buffer-process buffer)))
+            (should (buffer-live-p buffer))
+            (should process)
+            (should (zerop (buffer-size buffer)))
+            (should (not (get-buffer-window buffer))))
+          ;; Second command should both have and display output.
+          (let* ((buffer (get-buffer second))
+                 (process (get-buffer-process buffer)))
+            (should (buffer-live-p buffer))
+            (should process)
+            (should (accept-process-output process 4 nil t))
+            (should (> (buffer-size buffer) 0))
+            (should (get-buffer-window buffer))))
+      (dolist (name (list first second))
+        (let* ((buffer (get-buffer name))
+               (process (and buffer (get-buffer-process buffer))))
+          (when process (delete-process process))
+          (when buffer (kill-buffer buffer)))))))
 
 (provide 'simple-test)
 ;;; simple-test.el ends here

@@ -1,6 +1,6 @@
 /* Definitions and headers for GTK widgets.
 
-Copyright (C) 2003-2017 Free Software Foundation, Inc.
+Copyright (C) 2003-2019 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -15,7 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #ifndef GTKUTIL_H
 #define GTKUTIL_H
@@ -143,20 +143,20 @@ extern void xg_set_toolkit_horizontal_scroll_bar_thumb (struct scroll_bar *bar,
 							int position,
 							int whole);
 extern bool xg_event_is_for_scrollbar (struct frame *, const XEvent *);
-extern int xg_get_default_scrollbar_width (void);
-extern int xg_get_default_scrollbar_height (void);
+extern int xg_get_default_scrollbar_width (struct frame *f);
+extern int xg_get_default_scrollbar_height (struct frame *f);
 
 extern void update_frame_tool_bar (struct frame *f);
 extern void free_frame_tool_bar (struct frame *f);
 extern void xg_change_toolbar_position (struct frame *f, Lisp_Object pos);
 
-extern void xg_clear_under_internal_border (struct frame *f);
 extern void xg_frame_resized (struct frame *f,
                               int pixelwidth,
                               int pixelheight);
 extern void xg_frame_set_char_size (struct frame *f, int width, int height);
 extern GtkWidget * xg_win_to_widget (Display *dpy, Window wdesc);
 
+extern int xg_get_scale (struct frame *f);
 extern void xg_display_open (char *display_name, Display **dpy);
 extern void xg_display_close (Display *dpy);
 extern GdkCursor * xg_create_default_cursor (Display *dpy);
@@ -166,11 +166,18 @@ extern void xg_free_frame_widgets (struct frame *f);
 extern void xg_set_background_color (struct frame *f, unsigned long bg);
 extern bool xg_check_special_colors (struct frame *f,
 				     const char *color_name,
-				     XColor *color);
+				     Emacs_Color *color);
 
 extern void xg_set_frame_icon (struct frame *f,
                                Pixmap icon_pixmap,
                                Pixmap icon_mask);
+
+extern void xg_set_undecorated (struct frame *f, Lisp_Object undecorated);
+extern void xg_frame_restack (struct frame *f1, struct frame *f2, bool above);
+extern void xg_set_skip_taskbar (struct frame *f, Lisp_Object skip_taskbar);
+extern void xg_set_no_focus_on_map (struct frame *f, Lisp_Object no_focus_on_map);
+extern void xg_set_no_accept_focus (struct frame *f, Lisp_Object no_accept_focus);
+extern void xg_set_override_redirect (struct frame *f, Lisp_Object override_redirect);
 
 extern bool xg_prepare_tooltip (struct frame *f,
 				Lisp_Object string,
@@ -195,5 +202,6 @@ extern void xg_initialize (void);
    to indicate that the callback should do nothing.  */
 extern bool xg_ignore_gtk_scrollbar;
 
+extern bool xg_gtk_initialized;
 #endif /* USE_GTK */
 #endif /* GTKUTIL_H */

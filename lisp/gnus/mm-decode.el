@@ -1,6 +1,6 @@
-;;; mm-decode.el --- Functions for decoding MIME things
+;;; mm-decode.el --- Functions for decoding MIME things  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1998-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;;	MORIOKA Tomohiko <morioka@jaist.ac.jp>
@@ -17,7 +17,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -25,7 +25,7 @@
 
 (require 'mail-parse)
 (require 'mm-bodies)
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 (autoload 'gnus-map-function "gnus-util")
 
@@ -118,8 +118,7 @@
 	((executable-find "w3m") 'gnus-w3m)
 	((executable-find "links") 'links)
 	((executable-find "lynx") 'lynx)
-	((locate-library "html2text") 'html2text)
-	(t nil))
+	((locate-library "html2text") 'html2text))
   "Render of HTML contents.
 It is one of defined renderer types, or a rendering function.
 The defined renderer types are:
@@ -129,9 +128,8 @@ The defined renderer types are:
 `w3m-standalone': use plain w3m;
 `links': use links;
 `lynx': use lynx;
-`html2text': use html2text;
-nil    : use external viewer (default web browser)."
-  :version "24.1"
+`html2text': use html2text."
+  :version "27.1"
   :type '(choice (const shr)
                  (const gnus-w3m)
                  (const w3m :tag "emacs-w3m")
@@ -139,7 +137,6 @@ nil    : use external viewer (default web browser)."
 		 (const links)
 		 (const lynx)
 		 (const html2text)
-		 (const nil :tag "External viewer")
 		 (function))
   :group 'mime-display)
 
@@ -193,45 +190,45 @@ before the external MIME handler is invoked."
   :group 'mime-display)
 
 (defcustom mm-inline-media-tests
-  '(("image/p?jpeg"
+  `(("image/p?jpeg"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'jpeg handle)))
     ("image/png"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'png handle)))
     ("image/gif"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'gif handle)))
     ("image/tiff"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'tiff handle)))
     ("image/xbm"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'xbm handle)))
     ("image/x-xbitmap"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'xbm handle)))
     ("image/xpm"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'xpm handle)))
     ("image/x-xpixmap"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'xpm handle)))
     ("image/bmp"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'bmp handle)))
     ("image/x-portable-bitmap"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (mm-valid-and-fit-image-p 'pbm handle)))
     ("text/plain" mm-inline-text identity)
     ("text/enriched" mm-inline-text identity)
@@ -239,6 +236,7 @@ before the external MIME handler is invoked."
     ("text/x-patch" mm-display-patch-inline identity)
     ;; In case mime.types uses x-diff (as does Debian's mime-support-3.40).
     ("text/x-diff" mm-display-patch-inline identity)
+    ("application/x-patch" mm-display-patch-inline identity)
     ("application/emacs-lisp" mm-display-elisp-inline identity)
     ("application/x-emacs-lisp" mm-display-elisp-inline identity)
     ("application/x-shellscript" mm-display-shell-script-inline identity)
@@ -249,13 +247,14 @@ before the external MIME handler is invoked."
     ("text/x-org" mm-display-org-inline identity)
     ("text/html"
      mm-inline-text-html
-     (lambda (handle)
+     ,(lambda (_handle)
        mm-text-html-renderer))
     ("text/x-vcard"
      mm-inline-text-vcard
-     (lambda (handle)
+     ,(lambda (_handle)
        (or (featurep 'vcard)
 	   (locate-library "vcard"))))
+    ("text/calendar" gnus-icalendar-mm-inline identity)
     ("message/delivery-status" mm-inline-text identity)
     ("message/rfc822" mm-inline-message identity)
     ("message/partial" mm-inline-partial identity)
@@ -263,15 +262,6 @@ before the external MIME handler is invoked."
     ("text/.*" mm-inline-text identity)
     ("application/x-.?tar\\(-.*\\)?" mm-archive-dissect-and-inline identity)
     ("application/zip" mm-archive-dissect-and-inline identity)
-    ("audio/wav" mm-inline-audio
-     (lambda (handle)
-       (and (or (featurep 'nas-sound) (featurep 'native-sound))
-	    (device-sound-enabled-p))))
-    ("audio/au"
-     mm-inline-audio
-     (lambda (handle)
-       (and (or (featurep 'nas-sound) (featurep 'native-sound))
-	    (device-sound-enabled-p))))
     ("application/pgp-signature" ignore identity)
     ("application/x-pkcs7-signature" ignore identity)
     ("application/pkcs7-signature" ignore identity)
@@ -282,7 +272,7 @@ before the external MIME handler is invoked."
     ("multipart/related" ignore identity)
     ("image/.*"
      mm-inline-image
-     (lambda (handle)
+     ,(lambda (handle)
        (and (mm-valid-image-format-p 'imagemagick)
 	    (mm-with-unibyte-buffer
 	      (mm-insert-part handle)
@@ -305,8 +295,9 @@ before the external MIME handler is invoked."
 
 (defcustom mm-inlined-types
   '("image/.*" "text/.*" "message/delivery-status" "message/rfc822"
-    "message/partial" "message/external-body" "application/emacs-lisp"
-    "application/x-emacs-lisp"
+    "message/partial" "message/external-body"
+    "application/x-patch"
+    "application/emacs-lisp" "application/x-emacs-lisp"
     "application/pgp-signature" "application/x-pkcs7-signature"
     "application/pkcs7-signature" "application/x-pkcs7-mime"
     "application/pkcs7-mime"
@@ -323,15 +314,18 @@ type inline."
 
 (defcustom mm-keep-viewer-alive-types
   '("application/postscript" "application/msword" "application/vnd.ms-excel"
-    "application/pdf" "application/x-dvi")
-  "List of media types for which the external viewer will not be killed
-when selecting a different article."
-  :version "22.1"
+    "application/pdf" "application/x-dvi"
+    "application/vnd.*")
+  "Media types for viewers not to be killed when selecting a different article.
+Instead the viewers will be killed on Gnus exit instead.  This is
+a list of regexps."
+  :version "27.1"
   :type '(repeat regexp)
   :group 'mime-display)
 
 (defcustom mm-automatic-display
   '("text/plain" "text/enriched" "text/richtext" "text/html" "text/x-verbatim"
+    "text/calendar"
     "text/x-vcard" "image/.*" "message/delivery-status" "multipart/.*"
     "message/rfc822" "text/x-patch" "text/dns" "application/pgp-signature"
     "application/emacs-lisp" "application/x-emacs-lisp"
@@ -676,7 +670,7 @@ MIME-Version header before proceeding."
 				  (mm-alist-to-plist (cdr ctl)) (car ctl))
 
 	     ;; what really needs to be done here is a way to link a
-	     ;; MIME handle back to it's parent MIME handle (in a multilevel
+	     ;; MIME handle back to its parent MIME handle (in a multilevel
 	     ;; MIME article).  That would probably require changing
 	     ;; the mm-handle API so we simply store the multipart buffer
 	     ;; name as a text property of the "multipart/whatever" string.
@@ -761,10 +755,10 @@ MIME-Version header before proceeding."
 (defun mm-copy-to-buffer ()
   "Copy the contents of the current buffer to a fresh buffer."
   (let ((obuf (current-buffer))
-        (mb (mm-multibyte-p))
+        (mb enable-multibyte-characters)
         beg)
     (goto-char (point-min))
-    (search-forward-regexp "^\n" nil t)
+    (search-forward-regexp "^\n" nil 'move) ;; There might be no body.
     (setq beg (point))
     (with-current-buffer
           (generate-new-buffer " *mm*")
@@ -773,15 +767,16 @@ MIME-Version header before proceeding."
       (insert-buffer-substring obuf beg)
       (current-buffer))))
 
-(defun mm-display-parts (handle &optional no-default)
-  (if (stringp (car handle))
-      (mapcar 'mm-display-parts (cdr handle))
-    (if (bufferp (car handle))
-	(save-restriction
-	  (narrow-to-region (point) (point))
-	  (mm-display-part handle)
-	  (goto-char (point-max)))
-      (mapcar 'mm-display-parts handle))))
+(defun mm-display-parts (handle)
+  (cond
+   ((stringp (car handle)) (mapcar #'mm-display-parts (cdr handle)))
+   ((bufferp (car handle))
+    (save-restriction
+      (narrow-to-region (point) (point))
+      (mm-display-part handle)
+      (goto-char (point-max))))
+   (t
+    (mapcar #'mm-display-parts handle))))
 
 (autoload 'mailcap-parse-mailcaps "mailcap")
 (autoload 'mailcap-mime-info "mailcap")
@@ -890,6 +885,7 @@ external if displayed external."
 	    (when method
 	      (message "Viewing with %s" method))
 	    (let ((mm (current-buffer))
+		  (attachment-filename (mm-handle-filename handle))
 		  (non-viewer (assq 'non-viewer
 				    (mailcap-mime-info
 				     (mm-handle-media-type handle) t))))
@@ -897,12 +893,14 @@ external if displayed external."
 		  (if method
 		      (progn
 			(when (and (boundp 'gnus-summary-buffer)
-				   (bufferp gnus-summary-buffer)
-				   (buffer-name gnus-summary-buffer))
+                                   (buffer-live-p gnus-summary-buffer))
+			  (when attachment-filename
+			    (with-current-buffer mm
+			      (rename-buffer
+			       (format "*mm* %s" attachment-filename) t)))
 			  ;; So that we pop back to the right place, sort of.
 			  (switch-to-buffer gnus-summary-buffer)
 			  (switch-to-buffer mm))
-			(delete-other-windows)
 			(funcall method))
 		    (mm-save-part handle))
 		(when (and (not non-viewer)
@@ -961,15 +959,15 @@ external if displayed external."
 				      mm-external-terminal-program
 				      "-e" shell-file-name
 				      shell-command-switch command)
-		       `(lambda (process state)
-			  (if (eq 'exit (process-status process))
-			      (run-at-time
-			       60.0 nil
-			       (lambda ()
-				 (ignore-errors (delete-file ,file))
-				 (ignore-errors (delete-directory
-						 ,(file-name-directory
-						   file))))))))
+		       (lambda (process _state)
+			 (if (eq 'exit (process-status process))
+			     (run-at-time
+			      60.0 nil
+			      (lambda ()
+				(ignore-errors (delete-file file))
+				(ignore-errors (delete-directory
+						(file-name-directory
+						 file))))))))
 		    (require 'term)
 		    (require 'gnus-win)
 		    (set-buffer
@@ -982,13 +980,13 @@ external if displayed external."
 		    (term-char-mode)
 		    (set-process-sentinel
 		     (get-buffer-process buffer)
-		     `(lambda (process state)
-			(when (eq 'exit (process-status process))
-			  (ignore-errors (delete-file ,file))
-			  (ignore-errors
-			    (delete-directory ,(file-name-directory file)))
-			  (gnus-configure-windows
-			   ',gnus-current-window-configuration))))
+                     (let ((wc gnus-current-window-configuration))
+		       (lambda (process _state)
+			 (when (eq 'exit (process-status process))
+			   (ignore-errors (delete-file file))
+			   (ignore-errors
+			     (delete-directory (file-name-directory file)))
+			   (gnus-configure-windows wc)))))
 		    (gnus-configure-windows 'display-term))
 		(mm-handle-set-external-undisplayer handle (cons file buffer))
 		(add-to-list 'mm-temp-files-to-be-deleted file t))
@@ -1032,34 +1030,29 @@ external if displayed external."
 				   shell-command-switch command)
 		    (set-process-sentinel
 		     (get-buffer-process buffer)
-		     (lexical-let ((outbuf outbuf)
-				   (file file)
-				   (buffer buffer)
-				   (command command)
-				   (handle handle))
-		       (lambda (process state)
-			 (when (eq (process-status process) 'exit)
-			   (run-at-time
-			    60.0 nil
-			    (lambda ()
-			      (ignore-errors (delete-file file))
-			      (ignore-errors (delete-directory
-					      (file-name-directory file)))))
-			   (when (buffer-live-p outbuf)
-			     (with-current-buffer outbuf
-			       (let ((buffer-read-only nil)
-				     (point (point)))
-				 (forward-line 2)
-				 (let ((start (point)))
-				   (mm-insert-inline
-				    handle (with-current-buffer buffer
-					     (buffer-string)))
-				   (put-text-property start (point)
-						      'face 'mm-command-output))
-				 (goto-char point))))
-			   (when (buffer-live-p buffer)
-			     (kill-buffer buffer)))
-			 (message "Displaying %s...done" command)))))
+		     (lambda (process _state)
+		       (when (eq (process-status process) 'exit)
+			 (run-at-time
+			  60.0 nil
+			  (lambda ()
+			    (ignore-errors (delete-file file))
+			    (ignore-errors (delete-directory
+					    (file-name-directory file)))))
+			 (when (buffer-live-p outbuf)
+			   (with-current-buffer outbuf
+			     (let ((buffer-read-only nil)
+				   (point (point)))
+			       (forward-line 2)
+			       (let ((start (point)))
+				 (mm-insert-inline
+				  handle (with-current-buffer buffer
+					   (buffer-string)))
+				 (put-text-property start (point)
+						    'face 'mm-command-output))
+			       (goto-char point))))
+			 (when (buffer-live-p buffer)
+			   (kill-buffer buffer)))
+		       (message "Displaying %s...done" command))))
 		(mm-handle-set-external-undisplayer
 		 handle (cons file buffer))
 		(add-to-list 'mm-temp-files-to-be-deleted file t))
@@ -1117,7 +1110,7 @@ external if displayed external."
 	  (mm-remove-part handle)))))))
 
 (defun mm-destroy-parts (handles)
-  "Remove the displayed MIME parts represented by HANDLES."
+  "Destroy the displayed MIME parts represented by HANDLES."
   (if (and (listp handles)
 	   (bufferp (car handles)))
       (mm-destroy-part handles)
@@ -1158,9 +1151,8 @@ external if displayed external."
 	  (ignore-errors (delete-file (car object)))
 	  (ignore-errors (delete-directory (file-name-directory
 					    (car object)))))
-	 ((bufferp object)
-	  (when (buffer-live-p object)
-	    (kill-buffer object)))))
+         ((buffer-live-p object)
+          (kill-buffer object))))
       (mm-handle-set-undisplayer handle nil))))
 
 (defun mm-display-inline (handle)
@@ -1170,9 +1162,9 @@ external if displayed external."
     (goto-char (point-min))))
 
 (defun mm-assoc-string-match (alist type)
-  (dolist (elem alist)
+  (cl-dolist (elem alist)
     (when (string-match (car elem) type)
-      (return elem))))
+      (cl-return elem))))
 
 (defun mm-automatic-display-p (handle)
   "Say whether the user wants HANDLE to be displayed automatically."
@@ -1302,8 +1294,6 @@ are ignored."
 			 'gnus-decoded)
 		     (with-current-buffer (mm-handle-buffer handle)
 		       (buffer-string)))
-		    ((mm-multibyte-p)
-		     (string-to-multibyte (mm-get-part handle no-cache)))
 		    (t
 		     (mm-get-part handle no-cache)))))
     (save-restriction
@@ -1363,7 +1353,7 @@ PROMPT overrides the default one used to ask user for a file name."
 		       (mm-handle-disposition handle) 'filename)
 		      (mail-content-type-get
 		       (mm-handle-type handle) 'name)))
-	file)
+	file directory)
     (when filename
       (setq filename (gnus-map-function mm-file-name-rewrite-functions
 					(file-name-nondirectory filename))))
@@ -1372,16 +1362,20 @@ PROMPT overrides the default one used to ask user for a file name."
 	  (setq file
 		(read-file-name
 		 (or prompt
-		     (format "Save MIME part to (default %s): "
-			     (or filename "")))
-		 (or mm-default-directory default-directory)
-		 (expand-file-name (or filename "")
-				   (or mm-default-directory default-directory))))
+		     (format "Save MIME part to%s: "
+			     (if filename
+				 (format " (default %s)" filename)
+			       "")))
+		 (or directory mm-default-directory default-directory)
+		 (expand-file-name
+		  (or filename "")
+		  (or directory mm-default-directory default-directory))))
 	  (cond ((or (not file) (equal file ""))
 		 (message "Please enter a file name")
 		 t)
 		((and (file-directory-p file)
 		      (not filename))
+		 (setq directory file)
 		 (message "Please enter a non-directory file name")
 		 t)
 		(t nil)))
@@ -1413,11 +1407,10 @@ Return t if meta tag is added or replaced."
       (let ((case-fold-search t))
 	(goto-char (point-min))
 	(if (re-search-forward "\
-<meta\\s-+http-equiv=[\"']?content-type[\"']?\\s-+content=[\"']\
-text/\\(\\sw+\\)\\(?:;\\s-*charset=\\([^\"'>]+\\)\\)?[^>]*>" nil t)
+<meta\\s-+http-equiv=[\"']?content-type[\"']?\\s-+content=[\"']?\
+text/html\\(?:;\\s-*charset=\\([^\t\n\r \"'>]+\\)\\)?[^>]*>" nil t)
 	    (if (and (not force-charset)
-		     (match-beginning 2)
-		     (string-match "\\`html\\'" (match-string 1)))
+		     (match-beginning 1))
 		;; Don't modify existing meta tag.
 		nil
 	      ;; Replace it with the one specifying charset.
@@ -1445,8 +1438,7 @@ text/\\(\\sw+\\)\\(?:;\\s-*charset=\\([^\"'>]+\\)\\)?[^>]*>" nil t)
 (defun mm-pipe-part (handle &optional cmd)
   "Pipe HANDLE to a process.
 Use CMD as the process."
-  (let ((name (mail-content-type-get (mm-handle-type handle) 'name))
-	(command (or cmd
+  (let ((command (or cmd
 		     (read-shell-command
 		      "Shell command on MIME part: " mm-last-shell-command))))
     (mm-with-unibyte-buffer
@@ -1556,6 +1548,8 @@ be determined."
 	    "xbm")
 	   ((equal type "x-portable-bitmap")
 	    "pbm")
+	   ((equal type "svg+xml")
+	    "svg")
 	   (t type)))
     (or (mm-handle-cache handle)
 	(mm-with-unibyte-buffer
@@ -1779,6 +1773,9 @@ If RECURSIVE, search recursively."
 (declare-function shr-insert-document "shr" (dom))
 (defvar shr-blocked-images)
 (defvar shr-use-fonts)
+(defvar shr-width)
+(defvar shr-content-function)
+(defvar shr-inhibit-images)
 
 (defun mm-shr (handle)
   ;; Require since we bind its variables.
@@ -1793,79 +1790,52 @@ If RECURSIVE, search recursively."
 				      (buffer-string))))))
 	(shr-inhibit-images mm-html-inhibit-images)
 	(shr-blocked-images mm-html-blocked-images)
-	charset char)
-    (unless handle
-      (setq handle (mm-dissect-buffer t)))
-    (setq charset (mail-content-type-get (mm-handle-type handle) 'charset))
+	charset coding char document)
+    (mm-with-part (or handle (setq handle (mm-dissect-buffer t)))
+      (setq case-fold-search t)
+      (or (setq charset
+		(mail-content-type-get (mm-handle-type handle) 'charset))
+	  (progn
+	    (goto-char (point-min))
+	    (and (re-search-forward "\
+<meta\\s-+http-equiv=[\"']?content-type[\"']?\\s-+content=[\"']?\
+text/html;\\s-*charset=\\([^\t\n\r \"'>]+\\)[^>]*>" nil t)
+		 (setq coding (mm-charset-to-coding-system (match-string 1)
+							   nil t))))
+	  (setq charset mail-parse-charset))
+      (when (and (or coding
+		     (setq coding (mm-charset-to-coding-system charset nil t)))
+		 (not (eq coding 'ascii)))
+	(insert (prog1
+		    (decode-coding-string (buffer-string) coding)
+		  (erase-buffer)
+		  (set-buffer-multibyte t))))
+      (goto-char (point-min))
+      (while (re-search-forward
+	      "&#\\(?:x\\([89][0-9a-f]\\)\\|\\(1[2-5][0-9]\\)\\);" nil t)
+	(when (setq char
+		    (cdr (assq (if (match-beginning 1)
+				   (string-to-number (match-string 1) 16)
+				 (string-to-number (match-string 2)))
+			       mm-extra-numeric-entities)))
+	  (replace-match (char-to-string char))))
+      ;; Remove "soft hyphens".
+      (goto-char (point-min))
+      (while (search-forward "­" nil t)
+	(replace-match "" t t))
+      (setq document (libxml-parse-html-region (point-min) (point-max))))
     (save-restriction
       (narrow-to-region (point) (point))
-      (shr-insert-document
-       (mm-with-part handle
-	 (insert (prog1
-		     (if (and charset
-			      (setq charset
-				    (mm-charset-to-coding-system charset
-								 nil t))
-			      (not (eq charset 'ascii)))
-			 (decode-coding-string (buffer-string) charset)
-		       (string-as-multibyte (buffer-string)))
-		   (erase-buffer)
-		   (mm-enable-multibyte)))
-	 (goto-char (point-min))
-	 (setq case-fold-search t)
-	 (while (re-search-forward
-		 "&#\\(?:x\\([89][0-9a-f]\\)\\|\\(1[2-5][0-9]\\)\\);" nil t)
-	   (when (setq char
-		       (cdr (assq (if (match-beginning 1)
-				      (string-to-number (match-string 1) 16)
-				    (string-to-number (match-string 2)))
-				  mm-extra-numeric-entities)))
-	     (replace-match (char-to-string char))))
-	 ;; Remove "soft hyphens".
-	 (goto-char (point-min))
-	 (while (search-forward "­" nil t)
-	   (replace-match "" t t))
-	 (libxml-parse-html-region (point-min) (point-max))))
+      (shr-insert-document document)
       (unless (bobp)
 	(insert "\n"))
-      (mm-convert-shr-links)
       (mm-handle-set-undisplayer
        handle
-       `(lambda ()
-	  (let ((inhibit-read-only t))
-	    (delete-region ,(point-min-marker)
-			   ,(point-max-marker))))))))
-
-(defvar shr-image-map)
-
-(autoload 'widget-convert-button "wid-edit")
-(defvar widget-keymap)
-
-(defun mm-convert-shr-links ()
-  (let ((start (point-min))
-	end keymap)
-    (while (and start
-		(< start (point-max)))
-      (when (setq start (text-property-not-all start (point-max) 'shr-url nil))
-	(setq end (next-single-property-change start 'shr-url nil (point-max)))
-	(widget-convert-button
-	 'url-link start end
-	 :help-echo (get-text-property start 'help-echo)
-	 :keymap (setq keymap (copy-keymap shr-image-map))
-	 (get-text-property start 'shr-url))
-	;; Mask keys that launch `widget-button-click'.
-	;; Those bindings are provided by `widget-keymap'
-	;; that is a parent of `gnus-article-mode-map'.
-	(dolist (key (where-is-internal #'widget-button-click widget-keymap))
-	  (unless (lookup-key keymap key)
-	    (define-key keymap key #'ignore)))
-	;; Avoid `shr-next-link' and `shr-previous-link' in `keymap' so
-	;; TAB and M-TAB run `widget-forward' and `widget-backward' instead.
-	(substitute-key-definition 'shr-next-link nil keymap)
-	(substitute-key-definition 'shr-previous-link nil keymap)
-	(dolist (overlay (overlays-at start))
-	  (overlay-put overlay 'face nil))
-	(setq start end)))))
+       (let ((min (point-min-marker))
+             (max (point-max-marker)))
+         (lambda ()
+	   (let ((inhibit-read-only t))
+	     (delete-region min max))))))))
 
 (defun mm-handle-filename (handle)
   "Return filename of HANDLE if any."

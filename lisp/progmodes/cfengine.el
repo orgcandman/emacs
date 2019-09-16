@@ -1,6 +1,6 @@
 ;;; cfengine.el --- mode for editing Cfengine files
 
-;; Copyright (C) 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Dave Love <fx@gnu.org>
 ;; Maintainer: Ted Zlatanov <tzz@lifelogs.com>
@@ -20,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -852,8 +852,8 @@ This includes those for cfservd as well as cfagent.")
     ;; Classes.
     ("^[ \t]*\\([[:alnum:]_().|!]+\\)::" 1 font-lock-function-name-face)
     ;; Variables.
-    ("$(\\([[:alnum:]_]+\\))" 1 font-lock-variable-name-face)
-    ("${\\([[:alnum:]_]+\\)}" 1 font-lock-variable-name-face)
+    ("\\$(\\([[:alnum:]_]+\\))" 1 font-lock-variable-name-face)
+    ("\\${\\([[:alnum:]_]+\\)}" 1 font-lock-variable-name-face)
     ;; Variable definitions.
     ("\\_<\\([[:alnum:]_]+\\)[ \t]*=[ \t]*(" 1 font-lock-variable-name-face)
     ;; File, acl &c in group:   { token ... }

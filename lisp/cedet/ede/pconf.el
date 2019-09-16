@@ -1,6 +1,6 @@
 ;;; ede/pconf.el --- configure.ac maintenance for EDE
 
-;;; Copyright (C) 1998-2000, 2005, 2008-2017 Free Software Foundation,
+;;; Copyright (C) 1998-2000, 2005, 2008-2019 Free Software Foundation,
 ;;; Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -135,7 +135,9 @@ don't do it.  A value of nil means to just do it.")
 	  (with-current-buffer "*compilation*"
 	    (goto-char (point-max))
 
-	    (when (not (string= mode-line-process ":exit [0]"))
+	    ;; FIXME: Use `compilation-finish-functions' or similar to
+	    ;; avoid relying on exact format of `mode-line-process'.
+            (when (not (string= (car mode-line-process) ":exit [0]"))
 	      (error "Configure failed!"))
 
 	    ;; The Makefile is now recreated by configure?

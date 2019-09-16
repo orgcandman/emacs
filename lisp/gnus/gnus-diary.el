@@ -1,9 +1,8 @@
 ;;; gnus-diary.el --- Wrapper around the NNDiary Gnus back end
 
-;; Copyright (C) 1999-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
-;; Author:        Didier Verna <didier@xemacs.org>
-;; Maintainer:    Didier Verna <didier@xemacs.org>
+;; Author:        Didier Verna <didier@didierverna.net>
 ;; Created:       Tue Jul 20 10:42:55 1999
 ;; Keywords:      calendar mail news
 
@@ -20,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 
 ;;; Commentary:
@@ -159,32 +158,29 @@ There are currently two built-in format functions:
   ;; Code partly stolen from article-make-date-line
   (let* ((extras (mail-header-extra header))
 	 (sched (gnus-diary-header-schedule extras))
-	 (occur (nndiary-next-occurence sched (current-time)))
 	 (now (current-time))
+	 (occur (nndiary-next-occurrence sched now))
 	 (real-time (time-subtract occur now)))
-    (if (null real-time)
-	"?????"
-      (let* ((sec (+ (* (float (car real-time)) 65536) (cadr real-time)))
-	     (past (< sec 0))
-	     delay)
-	(and past (setq sec (- sec)))
-	(unless (zerop sec)
-	  ;; This is a bit convoluted, but basically we go through the time
-	  ;; units for years, weeks, etc, and divide things to see whether
-	  ;; that results in positive answers.
-	  (let ((units `((year . ,(* 365.25 24 3600))
-			 (month . ,(* 31 24 3600))
-			 (week . ,(* 7 24 3600))
-			 (day . ,(* 24 3600))
-			 (hour . 3600)
-			 (minute . 60)))
-		unit num)
-	    (while (setq unit (pop units))
-	      (unless (zerop (setq num (ffloor (/ sec (cdr unit)))))
-		(setq delay (append delay `((,(floor num) . ,(car unit))))))
-	      (setq sec (- sec (* num (cdr unit)))))))
-	(funcall gnus-diary-delay-format-function past delay)))
-    ))
+    (let* ((sec (time-convert real-time 'integer))
+	   (past (< sec 0))
+	   delay)
+      (and past (setq sec (- sec)))
+      (unless (zerop sec)
+	;; This is a bit convoluted, but basically we go through the time
+	;; units for years, weeks, etc, and divide things to see whether
+	;; that results in positive answers.
+	(let ((units `((year . ,(round (* 365.25 24 3600)))
+		       (month . ,(* 31 24 3600))
+		       (week . ,(* 7 24 3600))
+		       (day . ,(* 24 3600))
+		       (hour . 3600)
+		       (minute . 60)))
+	      unit num)
+	  (while (setq unit (pop units))
+	    (unless (zerop (setq num (floor sec (cdr unit))))
+	      (setq delay (append delay `((,num . ,(car unit))))))
+	    (setq sec (mod sec (cdr unit))))))
+      (funcall gnus-diary-delay-format-function past delay))))
 
 ;; #### NOTE: Gnus sometimes gives me a HEADER not corresponding to any
 ;; message, with all fields set to nil here. I don't know what it is for, and
@@ -194,7 +190,7 @@ There are currently two built-in format functions:
   ;; Returns a formatted time string for the next occurrence of this message.
   (let* ((extras (mail-header-extra header))
 	 (sched (gnus-diary-header-schedule extras))
-	 (occur (nndiary-next-occurence sched (current-time))))
+	 (occur (nndiary-next-occurrence sched (current-time))))
     (format-time-string gnus-diary-time-format occur)))
 
 
@@ -206,8 +202,8 @@ There are currently two built-in format functions:
 	 (e2 (mail-header-extra h2))
 	 (s1 (gnus-diary-header-schedule e1))
 	 (s2 (gnus-diary-header-schedule e2))
-	 (o1 (nndiary-next-occurence s1 now))
-	 (o2 (nndiary-next-occurence s2 now)))
+	 (o1 (nndiary-next-occurrence s1 now))
+	 (o2 (nndiary-next-occurrence s2 now)))
     (if (and (= (car o1) (car o2)) (= (cadr o1) (cadr o2)))
 	(< (mail-header-number h1) (mail-header-number h2))
       (time-less-p o1 o2))))

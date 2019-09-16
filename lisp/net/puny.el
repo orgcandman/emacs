@@ -1,6 +1,6 @@
 ;;; puny.el --- translate non-ASCII domain names to ASCII
 
-;; Copyright (C) 2015-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2015-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: mail, net
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -27,6 +27,7 @@
 
 ;;; Code:
 
+(eval-when-compile (require 'cl-lib))
 (require 'seq)
 
 (defun puny-encode-domain (domain)
@@ -150,10 +151,12 @@ For instance \"xn--bcher-kva\" => \"bücher\"."
 (defun puny-decode-string-internal (string)
   (with-temp-buffer
     (insert string)
-    (goto-char (point-max))
-    (search-backward "-" nil (point-min))
-    ;; The encoded chars are after the final dash.
-    (let ((encoded (buffer-substring (1+ (point)) (point-max)))
+    ;; The encoded chars are after any final dash, else the whole string.
+    (let ((encoded (buffer-substring
+                    (if (search-backward "-" nil 'move)
+                        (1+ (point))
+                      (point))
+                    (point-max)))
           (ic 0)
           (i 0)
           (bias puny-initial-bias)

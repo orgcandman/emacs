@@ -1,10 +1,8 @@
-;;; ispell.el --- interface to International Ispell Versions 3.1 and 3.2  -*- lexical-binding:t -*-
+;;; ispell.el --- interface to spell checkers  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1994-1995, 1997-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1994-1995, 1997-2019 Free Software Foundation, Inc.
 
-;; Author:           Ken Stevens <k.stevens@ieee.org>
-;; Status          : Release with 3.1.12+ and 3.2.0+ ispell.
-;; Keywords: unix wp
+;; Author: Ken Stevens <k.stevens@ieee.org>
 
 ;; This file is part of GNU Emacs.
 
@@ -19,25 +17,13 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
-
-;; Note: version numbers and time stamp are not updated
-;;   when this file is edited for release with GNU Emacs.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
 ;; INSTRUCTIONS
 
-;;   This code contains a section of user-settable variables that you
-;; should inspect prior to installation.  Look past the end of the history
-;; list.  Set them up for your locale and the preferences of the majority
-;; of the users.  Otherwise the users may need to set a number of variables
-;; themselves.
-;;   You particularly may want to change the default dictionary for your
-;; country and language.
-;;   Most dictionary changes should be made in this file so all users can
-;; enjoy them.  Local or modified dictionaries are supported in your .emacs
-;; file.  Use the variable `ispell-local-dictionary-alist' to specify
+;;   Use the variable `ispell-local-dictionary-alist' to specify
 ;; your own dictionaries.
 
 ;;  Depending on the mail system you use, you may want to include these:
@@ -112,7 +98,7 @@
 ;;  Need a way to select between different character mappings without separate
 ;;    dictionary entries.
 ;;  Multi-byte characters if not defined by current dictionary may result in the
-;;    evil "misalignment error" in some versions of MULE Emacs.
+;;    evil "misalignment error" in some versions of Emacs.
 ;;  On some versions of Emacs, growing the minibuffer fails.
 ;;    see `ispell-help-in-bufferp'.
 ;;  Recursive edits (?C-r or ?R) inside a keyboard text replacement check (?r)
@@ -121,6 +107,7 @@
 ;;; Code:
 
 (eval-when-compile (require 'cl-lib))
+(eval-when-compile (require 'subr-x))
 
 (defvar mail-yank-prefix)
 
@@ -129,6 +116,8 @@
   :group 'applications)
 
 (defalias 'check-ispell-version 'ispell-check-version)
+
+(declare-function flyspell-unhighlight-at "flyspell" (pos))
 
 ;;; **********************************************************************
 ;;; The following variables should be set according to personal preference
@@ -208,6 +197,10 @@ Must be greater than 1."
   :type 'integer
   :group 'ispell)
 
+;; XXX Add enchant to this list once enchant >= 2.1.0 is widespread.
+;; Before that, adding it is useless, as if it is found, it will just
+;; cause an error; and one of the other spelling engines below is
+;; almost certainly installed in any case, for enchant to use.
 (defcustom ispell-program-name
   (or (executable-find "aspell")
       (executable-find "ispell")
@@ -327,18 +320,21 @@ The following values are supported:
   :type 'boolean
   :group 'ispell)
 
+(defvaralias 'ispell-format-word 'ispell-format-word-function)
+
 (defcustom ispell-format-word-function (function upcase)
   "Formatting function for displaying word being spell checked.
 The function must take one string argument and return a string."
   :type 'function
   :group 'ispell)
-(defvaralias 'ispell-format-word 'ispell-format-word-function)
 
+;; FIXME framepop.el last updated c 2003 (?),
+;; probably something else replaces it these days.
 (defcustom ispell-use-framepop-p nil
   "When non-nil ispell uses framepop to display choices in a dedicated frame.
 You can set this variable to dynamically use framepop if you are in a
 window system by evaluating the following on startup to set this variable:
-  (and window-system (condition-case () (require \\='framepop) (error nil)))"
+  (and (display-graphic-p) (require \\='framepop nil t))"
   :type 'boolean
   :group 'ispell)
 
@@ -398,7 +394,12 @@ for language-specific arguments."
   "Indicates whether ispell should skip spell checking of SGML markup.
 If t, always skip SGML markup; if nil, never skip; if non-t and non-nil,
 guess whether SGML markup should be skipped according to the name of the
-buffer's major mode."
+buffer's major mode.
+
+SGML markup is any text inside the brackets \"<>\" or entities
+such as \"&amp;\".  See `ispell-html-skip-alists' for more details.
+
+This variable affects spell-checking of HTML, XML, and SGML files."
   :type '(choice (const :tag "always" t) (const :tag "never" nil)
 		 (const :tag "use-mode-name" use-mode-name))
   :group 'ispell)
@@ -605,6 +606,8 @@ english.aff).  Aspell and Hunspell don't have this limitation.")
   "Non-nil if we can use Aspell extensions.")
 (defvar ispell-really-hunspell nil
   "Non-nil if we can use Hunspell extensions.")
+(defvar ispell-really-enchant nil
+  "Non-nil if we can use Enchant extensions.")
 (defvar ispell-encoding8-command nil
   "Command line option prefix to select encoding if supported, nil otherwise.
 If setting the encoding is supported by spellchecker and is selectable from
@@ -719,37 +722,51 @@ Otherwise returns the library directory name, if that is defined."
 	  (error "%s exited with %s %s" ispell-program-name
 		 (if (stringp status) "signal" "code") status))
 
-      ;; Get relevant version strings. Only xx.yy.... format works well
+      ;; Get relevant version strings.
       (let (case-fold-search)
 	(setq ispell-program-version
-	      (and (search-forward-regexp "\\([0-9]+\\.[0-9\\.]+\\)" nil t)
+	      (and (search-forward-regexp "\\([0-9]+\\.[0-9.]+\\)" nil t)
 		   (match-string 1)))
 
 	;; Make sure these variables are (re-)initialized to the default value
 	(setq ispell-really-aspell nil
               ispell-really-hunspell nil
+              ispell-really-enchant nil
 	      ispell-encoding8-command nil)
 
 	(goto-char (point-min))
 	(or (setq ispell-really-aspell
-		  (and (search-forward-regexp
-			"(but really Aspell \\([0-9]+\\.[0-9\\.-]+\\)?)" nil t)
-		       (match-string 1)))
+		  (and
+                   (search-forward-regexp
+                    "(but really Aspell \\([0-9]+\\.[0-9.]+\\([-._+ ]?[a-zA-Z0-9]+\\)?\\)?)"
+                    nil t)
+		   (match-string 1)))
 	    (setq ispell-really-hunspell
-		  (and (search-forward-regexp
-			"(but really Hunspell \\([0-9]+\\.[0-9\\.-]+\\)?)"
-                        nil t)
-		       (match-string 1)))))
+		  (and
+                   (search-forward-regexp
+		    "(but really Hunspell \\([0-9]+\\.[0-9.]+\\([-._+ ]?[a-zA-Z0-9]+\\)?\\)?)"
+                    nil t)
+		   (match-string 1)))
+            (setq ispell-really-enchant
+		  (and
+                   (search-forward-regexp
+		    "(but really Enchant \\([0-9]+\\.[0-9.]+\\([-._+ ]?[a-zA-Z0-9]+\\)?\\)?)"
+                    nil t)
+		   (match-string 1)))))
 
       (let* ((aspell8-minver   "0.60")
              (ispell-minver    "3.1.12")
              (hunspell8-minver "1.1.6")
+             (enchant-minver   "2.1.0")
              (minver (cond
                       ((not (version<= ispell-minver ispell-program-version))
                        ispell-minver)
                       ((and ispell-really-aspell
                             (not (version<= aspell8-minver ispell-really-aspell)))
-                       aspell8-minver))))
+                       aspell8-minver)
+                      ((and ispell-really-enchant
+                            (not (version<= enchant-minver ispell-really-enchant)))
+                       enchant-minver))))
 
         (if minver
 	    (error "%s release %s or greater is required"
@@ -805,16 +822,6 @@ See `ispell-buffer-with-debug' for an example of use."
 ;; The preparation of the menu bar menu must be autoloaded
 ;; because otherwise this file gets autoloaded every time Emacs starts
 ;; so that it can set up the menus and determine keyboard equivalents.
-
-;;;###autoload
-(defvar ispell-menu-map nil "Key map for ispell menu.")
-;; Redo menu when loading ispell to get dictionary modifications
-(setq ispell-menu-map nil)
-
-;;; Set up dictionary
-;;;###autoload
-(defvar ispell-menu-map-needed
-  (unless ispell-menu-map 'reload))
 
 (defvar ispell-library-directory (condition-case ()
 				     (ispell-check-version)
@@ -1094,10 +1101,10 @@ in the list must have an affix file where Hunspell affix files are kept."
 
 (defun ispell-find-hunspell-dictionaries ()
   "Look for installed Hunspell dictionaries.
-Will initialize `ispell-hunspell-dictionary-alist' and
-`ispell-hunspell-dictionary-alist' after values found
-and remove `ispell-dicts-name2locale-equivs-alist'
-entries if a specific dictionary was found."
+Will initialize `ispell-hunspell-dictionary-alist' according
+to dictionaries found, and will remove aliases from the list
+in `ispell-dicts-name2locale-equivs-alist' if an explicit
+dictionary from that list was found."
   (let ((hunspell-found-dicts
 	 (split-string
 	  (with-temp-buffer
@@ -1105,23 +1112,44 @@ entries if a specific dictionary was found."
 				 null-device
 				 t
 				 nil
-				 "-D")
+                                 "-D"
+                                 ;; Use -a to prevent Hunspell from
+                                 ;; trying to initialize its
+                                 ;; curses/termcap UI, which causes it
+                                 ;; to crash or fail to start in some
+                                 ;; MS-Windows ports.
+                                 "-a"
+                                 ;; Hunspell 1.7.0 (and later?) won't
+                                 ;; show LOADED DICTIONARY unless
+                                 ;; there's at least one file argument
+                                 ;; on the command line.  So we feed
+                                 ;; it with the null device.
+				 null-device)
 	    (buffer-string))
 	  "[\n\r]+"
 	  t))
 	hunspell-default-dict
-	hunspell-default-dict-entry)
+	hunspell-default-dict-entry
+	hunspell-multi-dict)
     (dolist (dict hunspell-found-dicts)
       (let* ((full-name (file-name-nondirectory dict))
 	     (basename  (file-name-sans-extension full-name))
 	     (affix-file (concat dict ".aff")))
 	(if (string-match "\\.aff$" dict)
 	    ;; Found default dictionary
-	    (if hunspell-default-dict
-		(error "ispell-fhd: Default dict already defined as %s.  Not using %s.\n"
-		       hunspell-default-dict dict)
-	      (setq affix-file dict)
-	      (setq hunspell-default-dict (list basename affix-file)))
+	    (progn
+	      (if hunspell-default-dict
+		  (setq hunspell-multi-dict
+			(concat (or hunspell-multi-dict
+				    (car hunspell-default-dict))
+				"," basename))
+		(setq affix-file dict)
+		;; FIXME: The cdr of the list we cons below is never
+		;; used.  Why do we need a list?
+		(setq hunspell-default-dict (list basename affix-file)))
+	      (ispell-print-if-debug
+	       "++ ispell-fhd: default dict-entry:%s name:%s basename:%s\n"
+	       dict full-name basename))
 	  (if (and (not (assoc basename ispell-hunspell-dict-paths-alist))
 		   (file-exists-p affix-file))
 	      ;; Entry has an associated .aff file and no previous value.
@@ -1161,7 +1189,14 @@ entries if a specific dictionary was found."
 	      (cl-pushnew (list dict-equiv-key affix-file)
                           ispell-hunspell-dict-paths-alist :test #'equal)))))
     ;; Parse and set values for default dictionary.
-    (setq hunspell-default-dict (car hunspell-default-dict))
+    (setq hunspell-default-dict (or hunspell-multi-dict
+				    (car hunspell-default-dict)))
+    ;; If hunspell-default-dict is nil, ispell-parse-hunspell-affix-file
+    ;; will barf with an error message that doesn't help users figure
+    ;; out what is wrong.  Produce an error message that points to the
+    ;; root cause of the problem.
+    (or hunspell-default-dict
+        (error "Can't find Hunspell dictionary with a .aff affix file"))
     (setq hunspell-default-dict-entry
 	  (ispell-parse-hunspell-affix-file hunspell-default-dict))
     ;; Create an alist of found dicts with only names, except for default dict.
@@ -1173,10 +1208,62 @@ entries if a specific dictionary was found."
                     (list dict))
                   ispell-hunspell-dictionary-alist :test #'equal))))
 
+;; Make ispell.el work better with enchant.
+
+(defvar ispell-enchant-dictionary-alist nil
+  "An alist of parsed Enchant dicts and associated parameters.
+Internal use.")
+
+(defun ispell--call-enchant-lsmod (&rest args)
+  "Call enchant-lsmod with ARGS and return the output as string."
+  (with-output-to-string
+    (with-current-buffer
+        standard-output
+      (apply #'ispell-call-process
+             (replace-regexp-in-string "enchant\\(-[0-9]\\)?\\'"
+                                       "enchant-lsmod\\1"
+                                       ispell-program-name)
+             nil t nil args))))
+
+(defun ispell--get-extra-word-characters (&optional lang)
+  "Get the extra word characters for LANG as a character class.
+If LANG is omitted, get the extra word characters for the default language."
+  (let ((extra (string-trim-right
+                (apply 'ispell--call-enchant-lsmod
+                       (append '("-word-chars") (if lang `(,lang)))))))
+    (if (string= extra "") "" (concat "[" extra "]"))))
+
+(defun ispell-find-enchant-dictionaries ()
+  "Find Enchant's dictionaries, and record in `ispell-enchant-dictionary-alist'."
+  (let* ((dictionaries
+	  (split-string
+	   (ispell--call-enchant-lsmod "-list-dicts" (buffer-string)) " ([^)]+)\n"))
+         (found
+          (mapcar #'(lambda (lang)
+                      `(,lang "[[:alpha:]]" "[^[:alpha:]]"
+                              ,(ispell--get-extra-word-characters) t nil nil utf-8))
+                  dictionaries)))
+    ;; Merge into FOUND any elements from the standard ispell-dictionary-base-alist
+    ;; which have no element in FOUND at all.
+    (dolist (dict ispell-dictionary-base-alist)
+      (unless (assoc (car dict) found)
+	(setq found (nconc found (list dict)))))
+    (setq ispell-enchant-dictionary-alist found)
+    ;; Add a default entry
+    (let ((default-dict
+            `(nil "[[:alpha:]]" "[^[:alpha:]]"
+                  ,(ispell--get-extra-word-characters)
+                  t nil nil utf-8)))
+      (push default-dict ispell-enchant-dictionary-alist))))
+
 ;; Set params according to the selected spellchecker
 
 (defvar ispell-last-program-name nil
   "Last value of `ispell-program-name'.  Internal use.")
+
+;; Allow dynamically binding ispell-base-dicts-override-alist as
+;; advertised in the doc string of ispell-initialize-spellchecker-hook.
+(defvar ispell-base-dicts-override-alist)
 
 (defvar ispell-initialize-spellchecker-hook nil
   "Normal hook run on spellchecker initialization.
@@ -1191,14 +1278,13 @@ aspell is used along with Emacs).")
 (defun ispell-set-spellchecker-params ()
   "Initialize some spellchecker parameters when changed or first used."
   (unless (eq ispell-last-program-name ispell-program-name)
-    (setq ispell-last-program-name ispell-program-name)
     (ispell-kill-ispell t)
     (if (and (condition-case ()
 		 (progn
 		   (setq ispell-library-directory (ispell-check-version))
 		   t)
 	       (error nil))
-	     ispell-encoding8-command)
+	     (or ispell-encoding8-command ispell-really-enchant))
 	;; auto-detection will only be used if spellchecker is not
 	;; ispell and supports a way to set communication to UTF-8.
 	(if ispell-really-aspell
@@ -1206,11 +1292,14 @@ aspell is used along with Emacs).")
 		(ispell-find-aspell-dictionaries))
 	  (if ispell-really-hunspell
 	      (or ispell-hunspell-dictionary-alist
-		  (ispell-find-hunspell-dictionaries)))))
+		  (ispell-find-hunspell-dictionaries))
+            (if ispell-really-enchant
+                (or ispell-enchant-dictionary-alist
+                    (ispell-find-enchant-dictionaries))))))
 
     ;; Substitute ispell-dictionary-alist with the list of
     ;; dictionaries corresponding to the given spellchecker.
-    ;; If a recent aspell or hunspell, use the list of really
+    ;; With programs that support it, use the list of really
     ;; installed dictionaries and add to it elements of the original
     ;; list that are not present there. Allow distro info.
     (let ((found-dicts-alist
@@ -1219,17 +1308,19 @@ aspell is used along with Emacs).")
 		   ispell-aspell-dictionary-alist
 		 (if ispell-really-hunspell
 		     ispell-hunspell-dictionary-alist))
-	     nil))
+	     (if ispell-really-enchant
+                 ispell-enchant-dictionary-alist
+               nil)))
 	  (ispell-dictionary-base-alist ispell-dictionary-base-alist)
 	  ispell-base-dicts-override-alist ; Override only base-dicts-alist
 	  all-dicts-alist)
 
       ;; While ispell and aspell (through aliases) use the traditional
-      ;; dict naming originally expected by ispell.el, hunspell
-      ;; uses locale based names with no alias.  We need to map
+      ;; dict naming originally expected by ispell.el, hunspell & Enchant
+      ;; use locale-based names with no alias.  We need to map
       ;; standard names to locale based names to make default dict
-      ;; definitions available for hunspell.
-      (if ispell-really-hunspell
+      ;; definitions available to these programs.
+      (if (or ispell-really-hunspell ispell-really-enchant)
 	  (let (tmp-dicts-alist)
 	    (dolist (adict ispell-dictionary-base-alist)
 	      (let* ((dict-name (nth 0 adict))
@@ -1254,7 +1345,7 @@ aspell is used along with Emacs).")
 			(setq ispell-args
 			      (nconc ispell-args (list "-d" dict-equiv)))
 		      (message
-		       "ispell-set-spellchecker-params: Missing Hunspell equiv for \"%s\". Skipping."
+		       "ispell-set-spellchecker-params: Missing equivalent for \"%s\". Skipping."
 		       dict-name)
 		      (setq skip-dict t)))
 
@@ -1296,12 +1387,13 @@ aspell is used along with Emacs).")
                          (nth 4 adict)   ; many-otherchars-p
                          (nth 5 adict)   ; ispell-args
                          (nth 6 adict)   ; extended-character-mode
-                         (if ispell-encoding8-command
+                         (if (or ispell-encoding8-command ispell-really-enchant)
                              'utf-8
                            (nth 7 adict)))
                       adict)
                     tmp-dicts-alist :test #'equal))
-      (setq ispell-dictionary-alist tmp-dicts-alist))))
+      (setq ispell-dictionary-alist tmp-dicts-alist)))
+      (setq ispell-last-program-name ispell-program-name))
 
 (defun ispell-valid-dictionary-list ()
   "Return a list of valid dictionaries.
@@ -1339,80 +1431,78 @@ The variable `ispell-library-directory' defines their location."
 	  (push name dict-list)))
     dict-list))
 
-;; Define commands in menu in opposite order you want them to appear.
 ;;;###autoload
-(if ispell-menu-map-needed
-    (progn
-      (setq ispell-menu-map (make-sparse-keymap "Spell"))
-      (define-key ispell-menu-map [ispell-change-dictionary]
-	`(menu-item ,(purecopy "Change Dictionary...") ispell-change-dictionary
-		    :help ,(purecopy "Supply explicit dictionary file name")))
-      (define-key ispell-menu-map [ispell-kill-ispell]
-	`(menu-item ,(purecopy "Kill Process")
-		    (lambda () (interactive) (ispell-kill-ispell nil 'clear))
-		    :enable (and (boundp 'ispell-process) ispell-process
-				 (eq (ispell-process-status) 'run))
-		    :help ,(purecopy "Terminate Ispell subprocess")))
-      (define-key ispell-menu-map [ispell-pdict-save]
-	`(menu-item ,(purecopy "Save Dictionary")
-		    (lambda () (interactive) (ispell-pdict-save t t))
-		    :help ,(purecopy "Save personal dictionary")))
-      (define-key ispell-menu-map [ispell-customize]
-	`(menu-item ,(purecopy "Customize...")
-		    (lambda () (interactive) (customize-group 'ispell))
-		    :help ,(purecopy "Customize spell checking options")))
-      (define-key ispell-menu-map [ispell-help]
-	;; use (x-popup-menu last-nonmenu-event(list "" ispell-help-list)) ?
-	`(menu-item ,(purecopy "Help")
-		    (lambda () (interactive) (describe-function 'ispell-help))
-		    :help ,(purecopy "Show standard Ispell keybindings and commands")))
-      (define-key ispell-menu-map [flyspell-mode]
-	`(menu-item ,(purecopy "Automatic spell checking (Flyspell)")
-		    flyspell-mode
-		    :help ,(purecopy "Check spelling while you edit the text")
-		    :button (:toggle . (bound-and-true-p flyspell-mode))))
-      (define-key ispell-menu-map [ispell-complete-word]
-	`(menu-item ,(purecopy "Complete Word") ispell-complete-word
-		    :help ,(purecopy "Complete word at cursor using dictionary")))
-      (define-key ispell-menu-map [ispell-complete-word-interior-frag]
-	`(menu-item ,(purecopy "Complete Word Fragment")
-                    ispell-complete-word-interior-frag
-		    :help ,(purecopy "Complete word fragment at cursor")))))
+(defconst ispell-menu-map
+  ;; Use `defconst' so as to redo the menu when loading ispell, like the
+  ;; previous code did.
 
+  ;; Define commands in menu in opposite order you want them to appear.
+  (let ((map (make-sparse-keymap "Spell")))
+    (define-key map [ispell-change-dictionary]
+      `(menu-item ,(purecopy "Change Dictionary...") ispell-change-dictionary
+		  :help ,(purecopy "Supply explicit dictionary file name")))
+    (define-key map [ispell-kill-ispell]
+      `(menu-item ,(purecopy "Kill Process")
+		  (lambda () (interactive) (ispell-kill-ispell nil 'clear))
+		  :enable (and (boundp 'ispell-process) ispell-process
+			       (eq (ispell-process-status) 'run))
+		  :help ,(purecopy "Terminate Ispell subprocess")))
+    (define-key map [ispell-pdict-save]
+      `(menu-item ,(purecopy "Save Dictionary")
+		  (lambda () (interactive) (ispell-pdict-save t t))
+		  :help ,(purecopy "Save personal dictionary")))
+    (define-key map [ispell-customize]
+      `(menu-item ,(purecopy "Customize...")
+		  (lambda () (interactive) (customize-group 'ispell))
+		  :help ,(purecopy "Customize spell checking options")))
+    (define-key map [ispell-help]
+      ;; use (x-popup-menu last-nonmenu-event(list "" ispell-help-list)) ?
+      `(menu-item ,(purecopy "Help")
+		  (lambda () (interactive) (describe-function 'ispell-help))
+		  :help ,(purecopy "Show standard Ispell keybindings and commands")))
+    (define-key map [flyspell-mode]
+      `(menu-item ,(purecopy "Automatic spell checking (Flyspell)")
+		  flyspell-mode
+		  :help ,(purecopy "Check spelling while you edit the text")
+		  :button (:toggle . (bound-and-true-p flyspell-mode))))
+    (define-key map [ispell-complete-word]
+      `(menu-item ,(purecopy "Complete Word") ispell-complete-word
+		  :help ,(purecopy "Complete word at cursor using dictionary")))
+    (define-key map [ispell-complete-word-interior-frag]
+      `(menu-item ,(purecopy "Complete Word Fragment")
+                  ispell-complete-word-interior-frag
+		  :help ,(purecopy "Complete word fragment at cursor")))
+
+    (define-key map [ispell-continue]
+      `(menu-item ,(purecopy "Continue Spell-Checking") ispell-continue
+		  :enable (and (boundp 'ispell-region-end)
+			       (marker-position ispell-region-end)
+			       (equal (marker-buffer ispell-region-end)
+				      (current-buffer)))
+		  :help ,(purecopy "Continue spell checking last region")))
+    (define-key map [ispell-word]
+      `(menu-item ,(purecopy "Spell-Check Word") ispell-word
+		  :help ,(purecopy "Spell-check word at cursor")))
+    (define-key map [ispell-comments-and-strings]
+      `(menu-item ,(purecopy "Spell-Check Comments")
+                  ispell-comments-and-strings
+		  :help ,(purecopy "Spell-check only comments and strings")))
+
+    (define-key map [ispell-region]
+      `(menu-item ,(purecopy "Spell-Check Region") ispell-region
+		  :enable mark-active
+		  :help ,(purecopy "Spell-check text in marked region")))
+    (define-key map [ispell-message]
+      `(menu-item ,(purecopy "Spell-Check Message") ispell-message
+		  :visible (eq major-mode 'mail-mode)
+		  :help ,(purecopy "Skip headers and included message text")))
+    (define-key map [ispell-buffer]
+      `(menu-item ,(purecopy "Spell-Check Buffer") ispell-buffer
+		  :help ,(purecopy "Check spelling of selected buffer")))
+    map)
+  "Key map for ispell menu.")
 ;;;###autoload
-(if ispell-menu-map-needed
-    (progn
-      (define-key ispell-menu-map [ispell-continue]
-	`(menu-item ,(purecopy "Continue Spell-Checking") ispell-continue
-		    :enable (and (boundp 'ispell-region-end)
-				 (marker-position ispell-region-end)
-				 (equal (marker-buffer ispell-region-end)
-					(current-buffer)))
-		    :help ,(purecopy "Continue spell checking last region")))
-      (define-key ispell-menu-map [ispell-word]
-	`(menu-item ,(purecopy "Spell-Check Word") ispell-word
-		    :help ,(purecopy "Spell-check word at cursor")))
-      (define-key ispell-menu-map [ispell-comments-and-strings]
-	`(menu-item ,(purecopy "Spell-Check Comments")
-                    ispell-comments-and-strings
-		    :help ,(purecopy "Spell-check only comments and strings")))))
-
-;;;###autoload
-(if ispell-menu-map-needed
-    (progn
-      (define-key ispell-menu-map [ispell-region]
-	`(menu-item ,(purecopy "Spell-Check Region") ispell-region
-		    :enable mark-active
-		    :help ,(purecopy "Spell-check text in marked region")))
-      (define-key ispell-menu-map [ispell-message]
-	`(menu-item ,(purecopy "Spell-Check Message") ispell-message
-		    :visible (eq major-mode 'mail-mode)
-		    :help ,(purecopy "Skip headers and included message text")))
-      (define-key ispell-menu-map [ispell-buffer]
-	`(menu-item ,(purecopy "Spell-Check Buffer") ispell-buffer
-		    :help ,(purecopy "Check spelling of selected buffer")))
-      (fset 'ispell-menu-map (symbol-value 'ispell-menu-map))))
-
+(fset 'ispell-menu-map (symbol-value 'ispell-menu-map))
 
 ;;; **********************************************************************
 
@@ -1425,25 +1515,17 @@ used as key in `ispell-local-dictionary-alist' and `ispell-dictionary-alist'.")
   "The name of the current personal dictionary, or nil for the default.
 This is passed to the Ispell process using the `-p' switch.")
 
-(defun ispell-decode-string (str)
-  "Decodes multibyte character strings."
-  (decode-coding-string str (ispell-get-coding-system)))
-
 ;; Return a string decoded from Nth element of the current dictionary.
 (defun ispell-get-decoded-string (n)
   "Get the decoded string in slot N of the descriptor of the current dict."
   (let* ((slot (or
 		(assoc ispell-current-dictionary ispell-local-dictionary-alist)
 		(assoc ispell-current-dictionary ispell-dictionary-alist)
-		(error "No data for dictionary \"%s\", neither in `ispell-local-dictionary-alist' nor in `ispell-dictionary-alist'"
+		(error "No data for dictionary \"%s\" in `ispell-local-dictionary-alist' or `ispell-dictionary-alist'"
 		       ispell-current-dictionary)))
-	 (str (nth n slot)))
-    (when (and (> (length str) 0)
-	       (not (multibyte-string-p str)))
-      (setq str (ispell-decode-string str))
-      (or (multibyte-string-p str)
-	  (setq str (string-to-multibyte str))))
-    str))
+         (str (nth n slot)))
+    (if (stringp str)
+        (decode-coding-string str (ispell-get-coding-system) t))))
 
 (defun ispell-get-casechars ()
   (ispell-get-decoded-string 1))
@@ -1713,11 +1795,15 @@ You can set this variable in hooks in your init file -- eg:
 
 
 (defun ispell-accept-output (&optional timeout-secs timeout-msecs)
-  "Wait for output from Ispell process, or TIMEOUT-SECS and TIMEOUT-MSECS.
+  "Wait for output from Ispell process, or for TIMEOUT-SECS + TIMEOUT-MSECS.
+\(The TIMEOUT-MSECS argument is obsolete and should be avoided.)
 If asynchronous subprocesses are not supported, call function `ispell-filter'
 and pass it the output of the last Ispell invocation."
   (if ispell-async-processp
-      (accept-process-output ispell-process timeout-secs timeout-msecs)
+      (let ((timeout (if timeout-msecs
+			 (+ (or timeout-secs 0) (/ timeout-msecs 1000.0))
+		       timeout-secs)))
+	(accept-process-output ispell-process timeout))
     (if (null ispell-process)
 	(error "No Ispell process to read output from!")
       (let ((buf ispell-output-buffer)
@@ -1732,9 +1818,10 @@ and pass it the output of the last Ispell invocation."
 	    (erase-buffer)))))))
 
 (defun ispell-send-replacement (misspelled replacement)
-  "Notify Aspell that MISSPELLED should be spelled REPLACEMENT.
-This allows improving the suggestion list based on actual misspellings."
-  (and ispell-really-aspell
+  "Notify spell checker that MISSPELLED should be spelled REPLACEMENT.
+This allows improving the suggestion list based on actual misspellings.
+Only works for Aspell and Enchant."
+  (and (or ispell-really-aspell ispell-really-enchant)
        (ispell-send-string (concat "$$ra " misspelled "," replacement "\n"))))
 
 
@@ -1761,11 +1848,9 @@ This allows improving the suggestion list based on actual misspellings."
 	(setq default-directory defdir)
 	(insert string)
 	(if (not (memq cmd cmds-to-defer))
-	    (let (coding-system-for-read coding-system-for-write status)
-	      (if (and (boundp 'enable-multibyte-characters)
-		       enable-multibyte-characters)
-		  (setq coding-system-for-read (ispell-get-coding-system)
-			coding-system-for-write (ispell-get-coding-system)))
+	    (let* ((coding-system-for-read (ispell-get-coding-system))
+                   (coding-system-for-write coding-system-for-read)
+                   status)
 	      (set-buffer output-buf)
 	      (erase-buffer)
 	      (set-buffer session-buf)
@@ -2004,7 +2089,7 @@ which is in `ispell-local-dictionary-alist' or `ispell-dictionary-alist'."
 	(if ispell-check-only
 	    ;; return dummy word when just flagging misspellings
 	    (list "" (point) (point))
-	  (error "No word found to check!"))
+	  (user-error "No word found to check!"))
       (setq start (copy-marker (match-beginning 0))
 	    end (point-marker)
 	    word (buffer-substring-no-properties start end))
@@ -2027,10 +2112,7 @@ If so, ask if it needs to be saved."
 	     (or no-query
 		 (y-or-n-p "Personal dictionary modified.  Save? ")))
     (ispell-send-string "#\n")	; save dictionary
-    (message "Personal dictionary saved.")
-    (when flyspell-mode
-      (flyspell-mode 0)
-      (flyspell-mode 1)))
+    (message "Personal dictionary saved."))
   ;; unassert variable, even if not saved to avoid questioning.
   (setq ispell-pdict-modified-p nil))
 
@@ -2158,15 +2240,16 @@ Global `ispell-quit' set to start location to continue spell session."
 		   ((= char ?i)		; accept and insert word into pers dict
 		    (ispell-send-string (concat "*" word "\n"))
 		    (setq ispell-pdict-modified-p '(t)) ; dictionary modified!
-		    (when (fboundp 'flyspell-unhighlight-at)
-                          (flyspell-unhighlight-at start))
+
+                    (when flyspell-mode
+                      (flyspell-unhighlight-at start))
 		    nil)
 		   ((or (= char ?a) (= char ?A)) ; accept word without insert
 		    (ispell-send-string (concat "@" word "\n"))
 		    (cl-pushnew word ispell-buffer-session-localwords
                                 :test #'equal)
-		    (when (fboundp 'flyspell-unhighlight-at)
-                          (flyspell-unhighlight-at start))
+		    (when flyspell-mode
+                      (flyspell-unhighlight-at start))
 		    (or ispell-buffer-local-name ; session localwords might conflict
 			(setq ispell-buffer-local-name (buffer-name)))
 		    (if (null ispell-pdict-modified-p)
@@ -2207,8 +2290,9 @@ Global `ispell-quit' set to start location to continue spell session."
 		    (ispell-pdict-save ispell-silently-savep)
 		    (message "%s"
 		     (substitute-command-keys
-		      (concat "Spell-checking suspended;"
-			      " use C-u \\[ispell-word] to resume")))
+		      (concat
+                       "Spell-checking suspended; use "
+		       "\\[universal-argument] \\[ispell-word] to resume")))
 		    (setq ispell-quit start)
 		    nil)
 		   ((= char ?q)
@@ -2894,6 +2978,9 @@ With CLEAR, buffer session localwords are cleaned."
     (message "Ispell process killed")
     nil))
 
+(defvar ispell-change-dictionary-hook nil
+  "Hook run after changing dictionary.")
+
 ;; ispell-change-dictionary is set in some people's hooks.  Maybe this should
 ;;  call ispell-init-process rather than wait for a spell checking command?
 
@@ -2919,7 +3006,8 @@ By just answering RET you can find out what the current dictionary is."
 	 (ispell-internal-change-dictionary)
 	 (message "Using %s dictionary"
 		  (or (and (not arg) ispell-local-dictionary)
-		      ispell-dictionary "default")))
+		      ispell-dictionary "default"))
+         (run-hooks 'ispell-change-dictionary-hook))
 	((equal dict (or (and (not arg) ispell-local-dictionary)
 			 ispell-dictionary "default"))
 	 ;; Specified dictionary is the default already. Could reload
@@ -2941,7 +3029,8 @@ By just answering RET you can find out what the current dictionary is."
 	 (setq ispell-buffer-session-localwords nil)
 	 (message "%s Ispell dictionary set to %s"
 		  (if arg "Global" "Local")
-		  dict))))
+		  dict)
+         (run-hooks 'ispell-change-dictionary-hook))))
 
 (defun ispell-internal-change-dictionary ()
   "Update the dictionary and the personal dictionary used by Ispell.
@@ -3396,7 +3485,7 @@ Returns the sum SHIFT due to changes in word replacements."
             ;; Error in tex mode when a potential math mode change exists.
             (if (and replace (listp replace) (= 2 (length replace)))
                 (if (and (eq ispell-parser 'tex)
-                         (string-match "[\\\\][]()[]\\|\\\\begin\\|\\$"
+                         (string-match "[\\][]()[]\\|\\\\begin\\|\\$"
                                        (regexp-quote string)))
                     (error
                      "Don't start query replace on a line with math characters"
@@ -3450,17 +3539,9 @@ Returns the sum SHIFT due to changes in word replacements."
                       (setq ispell-filter recheck-region
                             recheck-region nil
                             replace replace-word)))))
+              (setq shift (+ shift (- (length replace) word-len)))))
 
-              (setq shift (+ shift (- (length replace) word-len)))
-
-              ;; Move line-start across word...
-              ;; new shift function does this now...
-              ;;(set-marker line-start (+ line-start
-              ;;			(- (length replace)
-              ;;			   (length (car poss)))))
-              ))
             (if (not ispell-quit)
-                ;; FIXME: remove redundancy with identical code above.
                 (let (message-log-max)
                   (message
                    "Continuing spelling check using %s with %s dictionary..."
@@ -3648,9 +3729,6 @@ available on the net."
 ;;;###autoload
 (define-minor-mode ispell-minor-mode
   "Toggle last-word spell checking (Ispell minor mode).
-With a prefix argument ARG, enable Ispell minor mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-the mode if ARG is omitted or nil.
 
 Ispell minor mode is a buffer-local minor mode.  When enabled,
 typing SPC or RET warns you if the previous word is incorrectly
@@ -3948,7 +4026,7 @@ You can bind this to the key C-c i in GNUS or mail by adding to
 
 (defun ispell-non-empty-string (string)
   (if (or (not string) (string-equal string ""))
-      "\\'\\`" ; An unmatchable string if string is null.
+      regexp-unmatchable
     (regexp-quote string)))
 
 
@@ -4127,9 +4205,6 @@ Both should not be used to define a buffer-local dictionary."
 			  (newline)
 			  (insert comment-end)))))
 	      (insert (concat " " word))))))))
-
-;;FIXME: Use `user-error' instead!
-(add-to-list 'debug-ignored-errors "^No word found to check!$")
 
 (provide 'ispell)
 

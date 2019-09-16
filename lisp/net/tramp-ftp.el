@@ -1,6 +1,6 @@
-;;; tramp-ftp.el --- Tramp convenience functions for Ange-FTP
+;;; tramp-ftp.el --- Tramp convenience functions for Ange-FTP  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2002-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2002-2019 Free Software Foundation, Inc.
 
 ;; Author: Michael Albinus <michael.albinus@gmx.de>
 ;; Keywords: comm, processes
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -32,7 +32,6 @@
 
 ;; Pacify byte-compiler.
 (eval-when-compile
-  (require 'cl)
   (require 'custom))
 (defvar ange-ftp-ftp-name-arg)
 (defvar ange-ftp-ftp-name-res)
@@ -54,11 +53,10 @@ present for backward compatibility."
     (setq file-name-handler-alist
 	  (delete a1 (delete a2 file-name-handler-alist)))))
 
-(eval-after-load "ange-ftp"
-  '(when (functionp 'tramp-disable-ange-ftp)
-     (tramp-disable-ange-ftp)))
+(with-eval-after-load 'ange-ftp
+  (tramp-disable-ange-ftp))
 
-;;;###autoload
+;;;###tramp-autoload
 (defun tramp-ftp-enable-ange-ftp ()
   "Reenable Ange-FTP, when Tramp is unloaded."
   ;; The following code is commented out in Ange-FTP.
@@ -87,7 +85,7 @@ present for backward compatibility."
 			 ange-ftp-completion-hook-function)
 		       file-name-handler-alist)))))
 
-(add-hook 'tramp-ftp-unload-hook 'tramp-ftp-enable-ange-ftp)
+(add-hook 'tramp-ftp-unload-hook #'tramp-ftp-enable-ange-ftp)
 
 ;; Define FTP method ...
 ;;;###tramp-autoload
@@ -96,22 +94,19 @@ present for backward compatibility."
 
 ;; ... and add it to the method list.
 ;;;###tramp-autoload
-(add-to-list 'tramp-methods (cons tramp-ftp-method nil))
+(tramp--with-startup
+ (add-to-list 'tramp-methods (cons tramp-ftp-method nil))
 
-;; Add some defaults for `tramp-default-method-alist'.
-;;;###tramp-autoload
-(add-to-list 'tramp-default-method-alist
-	     (list "\\`ftp\\." nil tramp-ftp-method))
-;;;###tramp-autoload
-(add-to-list 'tramp-default-method-alist
-	     (list nil "\\`\\(anonymous\\|ftp\\)\\'" tramp-ftp-method))
+ ;; Add some defaults for `tramp-default-method-alist'.
+ (add-to-list 'tramp-default-method-alist
+	      (list "\\`ftp\\." nil tramp-ftp-method))
+ (add-to-list 'tramp-default-method-alist
+	      (list nil "\\`\\(anonymous\\|ftp\\)\\'" tramp-ftp-method))
 
-;; Add completion function for FTP method.
-;;;###tramp-autoload
-(eval-after-load 'tramp
-  '(tramp-set-completion-function
-     tramp-ftp-method
-     '((tramp-parse-netrc "~/.netrc"))))
+ ;; Add completion function for FTP method.
+ (tramp-set-completion-function
+  tramp-ftp-method
+  '((tramp-parse-netrc "~/.netrc"))))
 
 ;;;###tramp-autoload
 (defun tramp-ftp-file-name-handler (operation &rest args)
@@ -143,9 +138,9 @@ pass to the OPERATION."
        ;; because this returns another user but the one declared in
        ;; "~/.netrc".
        ((memq operation '(file-directory-p file-exists-p))
-	(if (apply 'ange-ftp-hook-function operation args)
+	(if (apply #'ange-ftp-hook-function operation args)
 	    (let ((v (tramp-dissect-file-name (car args) t)))
-	      (aset v 0 tramp-ftp-method)
+	      (setf (tramp-file-name-method v) tramp-ftp-method)
 	      (tramp-set-connection-property v "started" t))
 	  nil))
 
@@ -177,19 +172,21 @@ pass to the OPERATION."
 			(and (eq inhibit-file-name-operation operation)
 			     inhibit-file-name-handlers)))
 		 (inhibit-file-name-operation operation))
-	    (apply 'ange-ftp-hook-function operation args)))))))
+	    (apply #'ange-ftp-hook-function operation args)))))))
 
 ;; It must be a `defsubst' in order to push the whole code into
 ;; tramp-loaddefs.el.  Otherwise, there would be recursive autoloading.
 ;;;###tramp-autoload
 (defsubst tramp-ftp-file-name-p (filename)
   "Check if it's a filename that should be forwarded to Ange-FTP."
-  (string= (tramp-file-name-method (tramp-dissect-file-name filename))
-	   tramp-ftp-method))
+  (and (tramp-tramp-file-p filename)
+       (string= (tramp-file-name-method (tramp-dissect-file-name filename))
+		tramp-ftp-method)))
 
 ;;;###tramp-autoload
-(add-to-list 'tramp-foreign-file-name-handler-alist
-	     (cons 'tramp-ftp-file-name-p 'tramp-ftp-file-name-handler))
+(tramp--with-startup
+ (add-to-list 'tramp-foreign-file-name-handler-alist
+	      (cons #'tramp-ftp-file-name-p #'tramp-ftp-file-name-handler)))
 
 (add-hook 'tramp-unload-hook
 	  (lambda ()

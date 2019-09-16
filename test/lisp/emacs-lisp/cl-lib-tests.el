@@ -1,6 +1,6 @@
-;;; cl-lib.el --- tests for emacs-lisp/cl-lib.el  -*- lexical-binding:t -*-
+;;; cl-lib-tests.el --- tests for emacs-lisp/cl-lib.el  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2013-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2013-2019 Free Software Foundation, Inc.
 
 ;; This file is part of GNU Emacs.
 
@@ -15,7 +15,7 @@
 ;; General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see `http://www.gnu.org/licenses/'.
+;; along with this program.  If not, see `https://www.gnu.org/licenses/'.
 
 ;;; Commentary:
 
@@ -195,14 +195,15 @@
   (should (eql (cl-mismatch "Aa" "aA") 0))
   (should (eql (cl-mismatch '(a b c) '(a b d)) 2)))
 
-(ert-deftest cl-lib-test-loop ()
-  (should (eql (cl-loop with (a b c) = '(1 2 3) return (+ a b c)) 6)))
-
 (ert-deftest cl-lib-keyword-names-versus-values ()
   (should (equal
            (funcall (cl-function (lambda (&key a b) (list a b)))
                     :b :a :a 42)
            '(42 :a))))
+
+(ert-deftest cl-lib-empty-keyargs ()
+  (should-error (funcall (cl-function (lambda (&key) 1))
+                         :b 1)))
 
 (cl-defstruct (mystruct
                (:constructor cl-lib--con-1 (&aux (abc 1)))
@@ -219,7 +220,7 @@
     (should-error (cl-struct-slot-offset 'mystruct 'marypoppins))
     (should (pcase (cl-struct-slot-info 'mystruct)
               (`((cl-tag-slot) (abc 5 :readonly t)
-                 (def . ,(or `nil `(nil))))
+                 (def . ,(or 'nil '(nil))))
                t)))))
 (ert-deftest cl-lib-struct-constructors ()
   (should (string-match "\\`Constructor docstring."
@@ -480,9 +481,6 @@
   (should (= 239 (cl-parse-integer "zzef" :radix 16 :start 2)))
   (should (= -123 (cl-parse-integer "	-123  "))))
 
-(ert-deftest cl-loop-destructuring-with ()
-  (should (equal (cl-loop with (a b c) = '(1 2 3) return (+ a b c)) 6)))
-
 (ert-deftest cl-flet-test ()
   (should (equal (cl-flet ((f1 (x) x)) (let ((x #'f1)) (funcall x 5))) 5)))
 
@@ -493,4 +491,78 @@
   (should (cl-typep '* 'cl-lib-test-type))
   (should-not (cl-typep 1 'cl-lib-test-type)))
 
-;;; cl-lib.el ends here
+(ert-deftest cl-lib-symbol-macrolet ()
+  ;; bug#26325
+  (should (equal (cl-flet ((f (x) (+ x 5)))
+                   (let ((x 5))
+                     (f (+ x 6))))
+                 ;; Go through `eval', otherwise the macro-expansion
+                 ;; error prevents running the whole test suite :-(
+                 (eval '(cl-symbol-macrolet ((f (+ x 6)))
+                          (cl-flet ((f (x) (+ x 5)))
+                            (let ((x 5))
+                              (f f))))
+                       t))))
+
+(defmacro cl-lib-symbol-macrolet-4+5 ()
+  ;; bug#26068
+  (let* ((sname "x")
+         (s1 (make-symbol sname))
+         (s2 (make-symbol sname)))
+    `(cl-symbol-macrolet ((,s1 4)
+                          (,s2 5))
+       (+ ,s1 ,s2))))
+
+(ert-deftest cl-lib-symbol-macrolet-2 ()
+  (should (equal (cl-lib-symbol-macrolet-4+5) (+ 4 5))))
+
+
+(ert-deftest cl-lib-symbol-macrolet-hide ()
+  ;; bug#26325, bug#26073
+  (should (equal (let ((y 5))
+                   (cl-symbol-macrolet ((x y))
+                     (list x
+                           (let ((x 6)) (list x y))
+                           (cl-letf ((x 6)) (list x y))
+                           (apply (lambda (x) (+ x 1)) (list 8)))))
+                 '(5 (6 5) (6 6) 9))))
+
+(defun cl-lib-tests--dummy-function ()
+  ;; Dummy function to see if the file is compiled.
+  t)
+
+(ert-deftest cl-lib-defstruct-record ()
+  ;; This test fails when compiled, see Bug#24402/27718.
+  :expected-result (if (byte-code-function-p
+                        (symbol-function 'cl-lib-tests--dummy-function))
+                       :failed :passed)
+  (cl-defstruct foo x)
+  (let ((x (make-foo :x 42)))
+    (should (recordp x))
+    (should (eq (type-of x) 'foo))
+    (should (eql (foo-x x) 42))))
+
+(ert-deftest old-struct ()
+  (cl-defstruct foo x)
+  (let ((x [cl-struct-foo])
+        (saved cl-old-struct-compat-mode))
+    (cl-old-struct-compat-mode -1)
+    (should (eq (type-of x) 'vector))
+
+    (cl-old-struct-compat-mode 1)
+    (let ((cl-struct-foo (cl--struct-get-class 'foo)))
+      (setf (symbol-function 'cl-struct-foo) :quick-object-witness-check)
+      (should (eq (type-of x) 'foo))
+      (should (eq (type-of [foo]) 'vector)))
+
+    (cl-old-struct-compat-mode (if saved 1 -1))))
+
+(ert-deftest cl-lib-old-struct ()
+  (let ((saved cl-old-struct-compat-mode))
+    (cl-old-struct-compat-mode -1)
+    (cl-struct-define 'foo "" 'cl-structure-object nil nil nil
+                      'cl-struct-foo-tags 'cl-struct-foo t)
+    (should cl-old-struct-compat-mode)
+    (cl-old-struct-compat-mode (if saved 1 -1))))
+
+;;; cl-lib-tests.el ends here

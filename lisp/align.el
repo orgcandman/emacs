@@ -1,6 +1,6 @@
 ;;; align.el --- align text to a specific column, by regexp -*- lexical-binding:t -*-
 
-;; Copyright (C) 1999-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
 ;; Author: John Wiegley <johnw@gnu.org>
 ;; Maintainer: emacs-devel@gnu.org
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -399,7 +399,7 @@ The possible settings for `align-region-separate' are:
 		   (lambda (end reverse)
 		     (funcall (if reverse 're-search-backward
 				're-search-forward)
-			      (concat "[^ \t\n\\\\]"
+			      (concat "[^ \t\n\\]"
 				      (regexp-quote comment-start)
 				      "\\(.+\\)$") end t))))
      (modes    . align-open-comment-modes))
@@ -411,7 +411,7 @@ The possible settings for `align-region-separate' are:
     (c-variable-declaration
      (regexp   . ,(concat "[*&0-9A-Za-z_]>?[&*]*\\(\\s-+[*&]*\\)"
 			  "[A-Za-z_][0-9A-Za-z:_]*\\s-*\\(\\()\\|"
-			  "=[^=\n].*\\|(.*)\\|\\(\\[.*\\]\\)*\\)?"
+			  "=[^=\n].*\\|(.*)\\|\\(\\[.*\\]\\)*\\)"
 			  "\\s-*[;,]\\|)\\s-*$\\)"))
      (group    . 1)
      (modes    . align-c++-modes)
@@ -438,7 +438,7 @@ The possible settings for `align-region-separate' are:
      (tab-stop . nil))
 
     (perl-assignment
-     (regexp   . ,(concat "[^=!^&*-+<>/| \t\n]\\(\\s-*\\)=[~>]?"
+     (regexp   . ,(concat "[^=!^&*+<>/| \t\n-]\\(\\s-*\\)=[~>]?"
 			  "\\(\\s-*\\)\\([^>= \t\n]\\|$\\)"))
      (group    . (1 2))
      (modes    . align-perl-modes)
@@ -452,7 +452,7 @@ The possible settings for `align-region-separate' are:
      (tab-stop . nil))
 
     (make-assignment
-     (regexp   . "^\\s-*\\w+\\(\\s-*\\):?=\\(\\s-*\\)\\([^\t\n \\\\]\\|$\\)")
+     (regexp   . "^\\s-*\\w+\\(\\s-*\\):?=\\(\\s-*\\)\\([^\t\n \\]\\|$\\)")
      (group    . (1 2))
      (modes    . '(makefile-mode))
      (tab-stop . nil))
@@ -759,7 +759,7 @@ The following attributes are meaningful:
 	  (lambda (end reverse)
 	    (funcall (if reverse 're-search-backward
 		       're-search-forward)
-		     (concat "[^ \t\n\\\\]"
+		     (concat "[^ \t\n\\]"
 			     (regexp-quote comment-start)
 			     "\\(.+\\)$") end t))))
      (modes  . align-open-comment-modes))
@@ -1322,8 +1322,7 @@ aligner would have dealt with are."
 	     (modes (assq 'modes rule)))
 	;; unless the `run-if' form tells us not to, look for the
 	;; rule..
-	(unless (or (and modes (not (memq major-mode
-					  (eval (cdr modes)))))
+	(unless (or (and modes (not (apply #'derived-mode-p (eval (cdr modes)))))
 		    (and run-if (not (funcall (cdr run-if)))))
 	  (let* ((case-fold-search case-fold-search)
 		 (case-fold (assq 'case-fold rule))

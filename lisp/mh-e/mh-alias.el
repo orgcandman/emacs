@@ -1,6 +1,6 @@
 ;;; mh-alias.el --- MH-E mail alias completion and expansion
 
-;; Copyright (C) 1994-1997, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1994-1997, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Peter S. Galbraith <psg@debian.org>
 ;; Maintainer: Bill Wohler <wohler@newt.com>
@@ -20,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -29,8 +29,6 @@
 ;;; Code:
 
 (require 'mh-e)
-
-(mh-require-cl)
 
 (require 'goto-addr)
 
@@ -78,10 +76,9 @@ If ARG is non-nil, set timestamp with the current time."
                     (function
                      (lambda (file)
                        (when (and file (file-exists-p file))
-                         (setq stamp (nth 5 (file-attributes file)))
-                         (or (> (car stamp) (car mh-alias-tstamp))
-                             (and (= (car stamp) (car mh-alias-tstamp))
-                                  (> (cadr stamp) (cadr mh-alias-tstamp)))))))
+                         (setq stamp (file-attribute-modification-time
+				      (file-attributes file)))
+			 (time-less-p mh-alias-tstamp stamp))))
                     (mh-alias-filenames t)))))))
 
 (defun mh-alias-filenames (arg)
@@ -252,8 +249,9 @@ Blind aliases or users from /etc/passwd are not expanded."
    (t
     (mh-alias-ali alias))))
 
-(mh-require 'crm nil t)                 ; completing-read-multiple
-(mh-require 'multi-prompt nil t)
+(eval-and-compile
+  (mh-require 'crm nil t)                 ; completing-read-multiple
+  (mh-require 'multi-prompt nil t))
 
 ;;;###mh-autoload
 (defun mh-read-address (prompt)
@@ -308,7 +306,7 @@ Blind aliases or users from /etc/passwd are not expanded."
        (if (not mh-alias-expand-aliases-flag)
            mh-alias-alist
          (lambda (string pred action)
-           (case action
+           (cl-case action
              ((nil)
               (let ((res (try-completion string mh-alias-alist pred)))
                 (if (or (eq res t)
@@ -338,7 +336,7 @@ NO-COMMA-SWAP is non-nil."
     ;; Two words -> first.last
     (downcase
      (format "%s.%s" (match-string 1 string) (match-string 2 string))))
-   ((string-match "^\\([-a-zA-Z0-9._]+\\)@[-a-zA-z0-9_]+\\.+[a-zA-Z0-9]+$"
+   ((string-match "^\\([-a-zA-Z0-9._]+\\)@[-a-zA-Z0-9_]+\\.+[a-zA-Z0-9]+$"
                   string)
     ;; email only -> downcase username
     (downcase (match-string 1 string)))
@@ -589,7 +587,7 @@ filing messages."
       (set-buffer (get-buffer-create mh-temp-buffer))
       (insert-file-contents (mh-msg-filename (mh-get-msg-num t))))
      ((eq major-mode 'mh-folder-mode)
-      (error "Cursor not pointing to a message")))
+      (user-error "Cursor not pointing to a message")))
     (let* ((address (or (mh-extract-from-header-value)
                         (error "Message has no From: header")))
            (alias (mh-alias-suggest-alias address)))

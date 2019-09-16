@@ -1,6 +1,6 @@
 ;;; frameset.el --- save and restore frame and window setup -*- lexical-binding: t -*-
 
-;; Copyright (C) 2013-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2013-2019 Free Software Foundation, Inc.
 
 ;; Author: Juanma Barranquero <lekktu@gmail.com>
 ;; Keywords: convenience
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -230,11 +230,10 @@ Properties can be set with
 ;; filtering functions) is copied to FILTERED as is.  Keyword values :save,
 ;; :restore and :never tell the function to copy CURRENT to FILTERED in the
 ;; respective situations, that is, when saving, restoring, or never at all.
-;; Values :save and :restore are not used in this package, because usually if
-;; you don't want to save a parameter, you don't want to restore it either.
-;; But they can be useful, for example, if you already have a saved frameset
-;; created with some intent, and want to reuse it for a different objective
-;; where the expected parameter list has different requirements.
+;; Values :save and :restore can be useful, for example, if you already
+;; have a saved frameset created with some intent, and want to reuse it for
+;; a different objective where the expected parameter list has different
+;; requirements.
 ;;
 ;; Finally, the value can also be a filtering function, or a filtering
 ;; function plus some arguments.  The function is called for each matching
@@ -290,6 +289,11 @@ Properties can be set with
 ;;   automatically set to t, and then `name' no longer changes dynamically.
 ;;   So, in general, not saving `name' is the right thing to do, though
 ;;   surely there are applications that will want to override this filter.
+;;
+;; - `frameset--text-pixel-height', `frameset--text-pixel-width': These are used to
+;;   save the pixel width and height of a frame. They are necessary
+;;   during restore, but should not be set on the actual frame after
+;;   restoring, so `:save' is used to ensure they are only saved.
 ;;
 ;; - `font', `fullscreen', `height' and `width': These parameters suffer
 ;;   from the fact that they are badly mangled when going through a
@@ -442,25 +446,34 @@ DO NOT MODIFY.  See `frameset-filter-alist' for a full description.")
 ;;;###autoload
 (defvar frameset-persistent-filter-alist
   (nconc
-   '((background-color   . frameset-filter-sanitize-color)
-     (buffer-list        . :never)
-     (buffer-predicate   . :never)
-     (buried-buffer-list . :never)
-     (font               . frameset-filter-shelve-param)
-     (foreground-color   . frameset-filter-sanitize-color)
-     (fullscreen         . frameset-filter-shelve-param)
-     (GUI:font           . frameset-filter-unshelve-param)
-     (GUI:fullscreen     . frameset-filter-unshelve-param)
-     (GUI:height         . frameset-filter-unshelve-param)
-     (GUI:width          . frameset-filter-unshelve-param)
-     (height             . frameset-filter-shelve-param)
-     (outer-window-id    . :never)
-     (parent-id          . :never)
-     (tty                . frameset-filter-tty-to-GUI)
-     (tty-type           . frameset-filter-tty-to-GUI)
-     (width              . frameset-filter-shelve-param)
-     (window-id          . :never)
-     (window-system      . :never))
+   '((background-color            . frameset-filter-sanitize-color)
+     (buffer-list                 . :never)
+     (buffer-predicate            . :never)
+     (buried-buffer-list          . :never)
+     ;; Don't save the 'client' parameter to avoid that a subsequent
+     ;; `save-buffers-kill-terminal' in a non-client session barks at
+     ;; the user (Bug#29067).
+     (client                      . :never)
+     (delete-before               . :never)
+     (font                        . frameset-filter-font-param)
+     (foreground-color            . frameset-filter-sanitize-color)
+     (frameset--text-pixel-height . :save)
+     (frameset--text-pixel-width  . :save)
+     (fullscreen                  . frameset-filter-shelve-param)
+     (GUI:font                    . frameset-filter-unshelve-param)
+     (GUI:fullscreen              . frameset-filter-unshelve-param)
+     (GUI:height                  . frameset-filter-unshelve-param)
+     (GUI:width                   . frameset-filter-unshelve-param)
+     (height                      . frameset-filter-shelve-param)
+     (outer-window-id             . :never)
+     (parent-frame                . :never)
+     (parent-id                   . :never)
+     (mouse-wheel-frame           . :never)
+     (tty                         . frameset-filter-tty-to-GUI)
+     (tty-type                    . frameset-filter-tty-to-GUI)
+     (width                       . frameset-filter-shelve-param)
+     (window-id                   . :never)
+     (window-system               . :never))
    frameset-session-filter-alist)
   "Parameters to filter for persistent framesets.
 DO NOT MODIFY.  See `frameset-filter-alist' for a full description.")
@@ -628,6 +641,17 @@ see `frameset-filter-alist'."
 	  (setcdr found val)
 	  nil))))
 
+(defun frameset-filter-font-param (current filtered parameters saving
+                                           &optional prefix)
+  "When switching from a tty frame to a GUI frame, remove the FONT param.
+
+When switching from a GUI frame to a tty frame, behave
+as `frameset-filter-shelve-param' does."
+  (or saving
+      (if (frameset-switch-to-tty-p parameters)
+          (frameset-filter-shelve-param current filtered parameters saving
+                                        prefix))))
+
 (defun frameset-filter-iconified (_current _filtered parameters saving)
   "Remove CURRENT when saving an iconified frame.
 This is used for positional parameters `left' and `top', which are
@@ -651,7 +675,7 @@ nil while the filtering is done to restore it."
       ;; of a frameset, so we must copy parameters to avoid inadvertent
       ;; modifications.
       (pcase (cdr (assq (car current) filter-alist))
-	(`nil
+	('nil
 	 (push (if saving current (copy-tree current)) filtered))
 	(:never
 	 nil)
@@ -717,9 +741,20 @@ If nil, check all live frames."
 
 ;; Saving framesets
 
-(defun frameset--record-minibuffer-relationships (frame-list)
-  "Process FRAME-LIST and record minibuffer relationships.
-FRAME-LIST is a list of frames.  Internal use only."
+(defun frameset--record-relationships (frame-list)
+  "Process FRAME-LIST and record relationships.
+FRAME-LIST is a list of frames.
+
+The relationships recorded for each frame are
+
+- `minibuffer' via `frameset--mini'
+- `delete-before' via `frameset--delete-before'
+- `parent-frame' via `frameset--parent-frame'
+- `mouse-wheel-frame' via `frameset--mouse-wheel-frame'
+- `text-pixel-width' via `frameset--text-pixel-width'
+- `text-pixel-height' via `frameset--text-pixel-height'
+
+Internal use only."
   ;; Record frames with their own minibuffer
   (dolist (frame (minibuffer-frame-list))
     (when (memq frame frame-list)
@@ -730,22 +765,52 @@ FRAME-LIST is a list of frames.  Internal use only."
       (set-frame-parameter frame
 			   'frameset--mini
 			   (cons t (eq frame default-minibuffer-frame)))))
-  ;; Now link minibufferless frames with their minibuffer frames
+  ;; Now link minibufferless frames with their minibuffer frames and
+  ;; store `parent-frame', `delete-before' and `mouse-wheel-frame'
+  ;; relationships in a similar way.
   (dolist (frame frame-list)
-    (unless (frame-parameter frame 'frameset--mini)
-      (frameset--set-id frame)
-      (let ((mb-frame (window-frame (minibuffer-window frame))))
-	;; For minibufferless frames, frameset--mini is a cons
-	;; (nil . FRAME-ID), where FRAME-ID is the frameset--id of
-	;; the frame containing its minibuffer window.
-	;; FRAME-ID can be set to nil, if FRAME-LIST doesn't contain
-	;; the minibuffer frame of a minibufferless frame; we allow
-	;; it without trying to second-guess the user.
-	(set-frame-parameter frame
-			     'frameset--mini
-			     (cons nil
-				   (and mb-frame
-					(frameset-frame-id mb-frame))))))))
+    (let ((parent-frame (frame-parent frame))
+          (delete-before (frame-parameter frame 'delete-before))
+          (mouse-wheel-frame (frame-parameter frame 'mouse-wheel-frame))
+          (nomini (not (frame-parameter frame 'frameset--mini))))
+      (when (or nomini parent-frame delete-before mouse-wheel-frame)
+        (when nomini
+          (frameset--set-id frame))
+        (when parent-frame
+          (set-frame-parameter
+           frame 'frameset--parent-frame (frameset-frame-id parent-frame)))
+        (when delete-before
+          (set-frame-parameter
+           frame 'frameset--delete-before (frameset-frame-id delete-before)))
+        (when mouse-wheel-frame
+          (set-frame-parameter
+           frame 'frameset--mouse-wheel-frame
+           (frameset-frame-id mouse-wheel-frame)))
+        (when nomini
+          (let ((mb-frame (window-frame (minibuffer-window frame))))
+            ;; For minibufferless frames, frameset--mini is a cons
+            ;; (nil . FRAME-ID), where FRAME-ID is the frameset--id of
+            ;; the frame containing its minibuffer window.
+            ;; FRAME-ID can be set to nil, if FRAME-LIST doesn't contain
+            ;; the minibuffer frame of a minibufferless frame; we allow
+            ;; it without trying to second-guess the user.
+            (set-frame-parameter
+             frame
+             'frameset--mini
+             (cons nil
+                   (and mb-frame
+                        (frameset-frame-id mb-frame)))))))))
+  ;; Now store text-pixel width and height if `frame-resize-pixelwise'
+  ;; is set.  (Bug#30141)
+  (dolist (frame frame-list)
+    (when (and frame-resize-pixelwise
+               (not (frame-parameter frame 'fullscreen)))
+      (set-frame-parameter
+       frame 'frameset--text-pixel-width
+       (frame-text-width frame))
+      (set-frame-parameter
+       frame 'frameset--text-pixel-height
+       (frame-text-height frame)))))
 
 ;;;###autoload
 (cl-defun frameset-save (frame-list
@@ -768,7 +833,7 @@ PROPERTIES is a user-defined property list to add to the frameset."
 				       (cl-delete-if-not predicate list)
 				     list)))
 	 fs)
-    (frameset--record-minibuffer-relationships frames)
+    (frameset--record-relationships frames)
     (setq fs (frameset--make
 	      :app app
 	      :name name
@@ -838,7 +903,7 @@ NOTE: This only works for non-iconified frames."
 		      (< fr-right  left) (> fr-right  right)
 		      (< fr-top    top)  (> fr-top    bottom)))
 	    ;; Displaced to the left, right, above or below the screen.
-	    (`t   (or (> fr-left   right)
+	    ('t   (or (> fr-left   right)
 		      (< fr-right  left)
 		      (> fr-top    bottom)
 		      (< fr-bottom top)))
@@ -905,8 +970,7 @@ is the parameter alist of the frame being restored.  Internal use only."
 	   ;; that frame has already been loaded (which can happen after
 	   ;; M-x desktop-read).
 	   (setq frame (frameset--find-frame-if
-			(lambda (f id)
-			  (frameset-frame-id-equal-p f id))
+			#'frameset-frame-id-equal-p
 			display (frameset-cfg-id parameters)))
 	   ;; If it has not been loaded, and it is not a minibuffer-only frame,
 	   ;; let's look for an existing non-minibuffer-only frame to reuse.
@@ -956,6 +1020,14 @@ Internal use only."
 	 (display (cdr (assq 'display filtered-cfg))) ;; post-filtering
 	 alt-cfg frame)
 
+    ;; Use text-pixels for height and width, if available.
+    (let ((text-pixel-width (cdr (assq 'frameset--text-pixel-width parameters)))
+          (text-pixel-height (cdr (assq 'frameset--text-pixel-height parameters))))
+      (when text-pixel-width
+        (setf (alist-get 'width filtered-cfg) (cons 'text-pixels text-pixel-width)))
+      (when text-pixel-height
+        (setf (alist-get 'height filtered-cfg) (cons 'text-pixels text-pixel-height))))
+
     (when fullscreen
       ;; Currently Emacs has the limitation that it does not record the size
       ;; and position of a frame before maximizing it, so we cannot save &
@@ -993,6 +1065,20 @@ Internal use only."
 					       (frameset--initial-params filtered-cfg))))
       (puthash frame :created frameset--action-map))
 
+    ;; Remove `border-width' from the list of parameters.  If it has not
+    ;; been assigned via `make-frame-on-display', any attempt to assign
+    ;; it now via `modify-frame-parameters' may result in an error on X
+    ;; (Bug#28873).
+    (setq filtered-cfg (assq-delete-all 'border-width filtered-cfg))
+
+    ;; Try to assign parent-frame right here - it will improve things
+    ;; for minibuffer-less child frames.
+    (let* ((frame-id (frame-parameter frame 'frameset--parent-frame))
+           (parent-frame
+            (and frame-id (frameset-frame-with-id frame-id))))
+      (when (frame-live-p parent-frame)
+        (set-frame-parameter frame 'parent-frame parent-frame)))
+
     (modify-frame-parameters frame
 			     (if (eq (frame-parameter frame 'fullscreen) fullscreen)
 				 ;; Workaround for bug#14949
@@ -1016,11 +1102,20 @@ Internal use only."
   "Predicate to sort frame states in an order suitable for creating frames.
 It sorts minibuffer-owning frames before minibufferless ones.
 Internal use only."
-  (pcase-let ((`(,hasmini1 ,id-def1) (assq 'frameset--mini (car state1)))
-	      (`(,hasmini2 ,id-def2) (assq 'frameset--mini (car state2))))
-    (cond ((eq id-def1 t) t)
+  (pcase-let ((`(,hasmini1 . ,id-def1) (cdr (assq 'frameset--mini (car state1))))
+	      (`(,hasmini2 . ,id-def2) (cdr (assq 'frameset--mini (car state2)))))
+    ;; hasmini1 is t when 1st frame has its own minibuffer
+    ;; hasmini2 is t when 2nd frame has its own minibuffer
+    ;; id-def1 is t when 1st minibuffer-owning frame is the default-minibuffer-frame
+    ;;         or frame-id of 1st frame if it's minibufferless
+    ;; id-def2 is t when 2nd minibuffer-owning frame is the default-minibuffer-frame
+    ;;         or frame-id of 2nd frame if it's minibufferless
+    (cond ;; Sort the minibuffer-owning default-minibuffer-frame first
+	  ((eq id-def1 t) t)
 	  ((eq id-def2 t) nil)
-	  ((not (eq hasmini1 hasmini2)) (eq hasmini1 t))
+	  ;; Sort non-default minibuffer-owning frames before minibufferless
+	  ((not (eq hasmini1 hasmini2)) (eq hasmini1 t)) ;; boolean xor
+	  ;; Sort minibufferless frames with frame-id before some remaining
 	  ((eq hasmini1 nil) (or id-def1 id-def2))
 	  (t t))))
 
@@ -1108,11 +1203,11 @@ All keyword parameters default to nil."
 	 ;; will decide which ones can be reused, and how to deal with any leftover.
 	 (frameset--reuse-list
 	  (pcase reuse-frames
-	    (`t
+	    ('t
 	     frames)
-	    (`nil
+	    ('nil
 	     nil)
-	    (`match
+	    ('match
 	     (cl-loop for (state) in (frameset-states frameset)
 		      when (frameset-frame-with-id (frameset-cfg-id state) frames)
 		      collect it))
@@ -1205,6 +1300,29 @@ All keyword parameters default to nil."
 	    (error
 	     (delay-warning 'frameset (error-message-string err) :error))))))
 
+    ;; Setting the parent frame after the frame has been created is a
+    ;; pain because one can see the frame move on the screen.  Ideally,
+    ;; we would restore minibuffer equipped child frames after their
+    ;; respective parents have been made but this might interfere with
+    ;; the reordering of minibuffer frames.  Left to the experts ...
+    (dolist (frame (frame-list))
+      (let* ((frame-id (frame-parameter frame 'frameset--parent-frame))
+             (parent-frame
+              (and frame-id (frameset-frame-with-id frame-id))))
+        (when (and (not (eq (frame-parameter frame 'parent-frame) parent-frame))
+                   (frame-live-p parent-frame))
+          (set-frame-parameter frame 'parent-frame parent-frame)))
+      (let* ((frame-id (frame-parameter frame 'frameset--delete-before))
+             (delete-before
+              (and frame-id (frameset-frame-with-id frame-id))))
+        (when (frame-live-p delete-before)
+          (set-frame-parameter frame 'delete-before delete-before)))
+      (let* ((frame-id (frame-parameter frame 'frameset--mouse-wheel-frame))
+             (mouse-wheel-frame
+              (and frame-id (frameset-frame-with-id frame-id))))
+        (when (frame-live-p mouse-wheel-frame)
+          (set-frame-parameter frame 'mouse-wheel-frame mouse-wheel-frame))))
+
     ;; In case we try to delete the initial frame, we want to make sure that
     ;; other frames are already visible (discussed in thread for bug#14841).
     (sit-for 0 t)
@@ -1228,6 +1346,16 @@ All keyword parameters default to nil."
 	    (error
 	     (delay-warning 'frameset (error-message-string err) :warning))))))
 
+    ;; Make sure the frame with last-focus-update has focus.
+    (let ((last-focus-frame
+           (catch 'last-focus
+             (maphash (lambda (frame _)
+                        (when (frame-parameter frame 'last-focus-update)
+                          (throw 'last-focus frame)))
+                      frameset--action-map))))
+      (when last-focus-frame
+        (select-frame-set-input-focus last-focus-frame)))
+
     ;; Make sure there's at least one visible frame.
     (unless (or (daemonp)
 		(catch 'visible
@@ -1240,41 +1368,44 @@ All keyword parameters default to nil."
 
 ;; Register support
 
-;;;###autoload
-(defun frameset--jump-to-register (data)
-  "Restore frameset from DATA stored in register.
-Called from `jump-to-register'.  Internal use only."
+(cl-defstruct (frameset-register
+               (:constructor nil)
+               (:constructor frameset-make-register (frameset frame-id point)))
+  frameset frame-id point)
+
+(cl-defmethod register-val-jump-to ((data frameset-register) arg)
   (frameset-restore
-   (aref data 0)
+   (frameset-register-frameset data)
    :filters frameset-session-filter-alist
-   :reuse-frames (if current-prefix-arg t 'match)
-   :cleanup-frames (if current-prefix-arg
+   :reuse-frames (if arg t 'match)
+   :cleanup-frames (if arg
 		       ;; delete frames
 		       nil
 		     ;; iconify frames
 		     (lambda (frame action)
 		       (pcase action
-			 (`rejected (iconify-frame frame))
+			 ('rejected (iconify-frame frame))
 			 ;; In the unexpected case that a frame was a candidate
 			 ;; (matching frame id) and yet not restored, remove it
 			 ;; because it is in fact a duplicate.
-			 (`ignored (delete-frame frame))))))
+			 ('ignored (delete-frame frame))))))
 
   ;; Restore selected frame, buffer and point.
-  (let ((frame (frameset-frame-with-id (aref data 1)))
+  (let ((frame (frameset-frame-with-id (frameset-register-frame-id data)))
+        (marker (frameset-register-point data))
 	buffer window)
     (when frame
       (select-frame-set-input-focus frame)
-      (when (and (buffer-live-p (setq buffer (marker-buffer (aref data 2))))
+      (when (and (buffer-live-p
+                  (setq buffer (marker-buffer marker)))
 		 (window-live-p (setq window (get-buffer-window buffer frame))))
 	(set-frame-selected-window frame window)
-	(with-current-buffer buffer (goto-char (aref data 2)))))))
+	(with-current-buffer buffer (goto-char marker))))))
 
-;;;###autoload
-(defun frameset--print-register (data)
+(cl-defmethod register-val-describe ((data frameset-register) _verbose)
   "Print basic info about frameset stored in DATA.
 Called from `list-registers' and `view-register'.  Internal use only."
-  (let* ((fs (aref data 0))
+  (let* ((fs (frameset-register-frameset data))
 	 (ns (length (frameset-states fs))))
     (princ (format "a frameset (%d frame%s, saved on %s)."
 		   ns
@@ -1290,16 +1421,14 @@ Argument is a character, naming the register.
 Interactively, reads the register using `register-read-with-preview'."
   (interactive (list (register-read-with-preview "Frameset to register: ")))
   (set-register register
-		(registerv-make
-		 (vector (frameset-save nil
-					:app 'register
-					:filters frameset-session-filter-alist)
-			 ;; frameset-save does not include the value of point
-			 ;; in the current buffer, so record that separately.
-			 (frameset-frame-id nil)
-			 (point-marker))
-		 :print-func #'frameset--print-register
-		 :jump-func #'frameset--jump-to-register)))
+		(frameset-make-register
+                 (frameset-save nil
+				:app 'register
+				:filters frameset-session-filter-alist)
+		 ;; frameset-save does not include the value of point
+		 ;; in the current buffer, so record that separately.
+		 (frameset-frame-id nil)
+		 (point-marker))))
 
 (provide 'frameset)
 

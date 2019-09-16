@@ -1,6 +1,6 @@
 ;;; nnoo.el --- OO Gnus Backends
 
-;; Copyright (C) 1996-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: news
@@ -18,14 +18,14 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
 ;;; Code:
 
 (require 'nnheader)
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 (defvar nnoo-definition-alist nil)
 (defvar nnoo-state-alist nil)
@@ -142,7 +142,7 @@
 	(if (numberp (nth i (cdr m)))
 	    (push `(nth ,i args) margs)
 	  (push (nth i (cdr m)) margs))
-	(incf i))
+	(cl-incf i))
       (eval `(deffoo ,(nnoo-symbol backend (nnoo-rest-symbol (car m)))
 		 (&rest args)
 	       (nnoo-parent-function ',backend ',(car m)
@@ -269,8 +269,7 @@
 
 (defun nnoo-server-opened (backend server)
   (and (nnoo-current-server-p backend server)
-       nntp-server-buffer
-       (buffer-name nntp-server-buffer)))
+       (buffer-live-p nntp-server-buffer)))
 
 (defmacro nnoo-define-basics (backend)
   "Define `close-server', `server-opened' and `status-message'."

@@ -1,8 +1,8 @@
 ;;; gnus-ml.el --- Mailing list minor mode for Gnus
 
-;; Copyright (C) 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2000-2019 Free Software Foundation, Inc.
 
-;; Author: Julien Gilles  <jgilles@free.fr>
+;; Author: Julien Gilles <jgilles@free.fr>
 ;; Keywords: news, mail
 
 ;; This file is part of GNU Emacs.
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -28,7 +28,6 @@
 
 (require 'gnus)
 (require 'gnus-msg)
-(eval-when-compile (require 'cl))
 
 ;;; Mailing list minor mode
 

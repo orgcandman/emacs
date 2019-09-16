@@ -1,6 +1,6 @@
 ;;; semantic/bovine/el.el --- Semantic details for Emacs Lisp
 
-;; Copyright (C) 1999-2005, 2007-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2005, 2007-2019 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 
@@ -17,7 +17,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -248,6 +248,9 @@ Return a bovination list to use."
   defun*
   defsubst
   defmacro
+  cl-defun
+  cl-defsubst
+  cl-defmacro
   define-overload ;; @todo - remove after cleaning up semantic.
   define-overloadable-function
   )
@@ -392,6 +395,7 @@ Return a bovination list to use."
          (cons nil nil)
          )))
   defstruct
+  cl-defstruct
   )
 
 (semantic-elisp-setup-form-parser
@@ -610,7 +614,7 @@ Returns non-nil it is not possible to go up a context."
   (let ((last-up (semantic-up-context-default)))
   (while
       (and (not (looking-at
-		 "(\\(let\\*?\\|def\\(un\\|method\\|generic\\|\
+		 "(\\(let\\*?\\|\\(?:cl-\\)?def\\(un\\|method\\|generic\\|\
 define-mode-overload\\)\
 \\|with-slots\\)"))
 	   (not last-up))

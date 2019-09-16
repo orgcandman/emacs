@@ -1,10 +1,9 @@
 ;;; mh-show.el --- MH-Show mode
 
-;; Copyright (C) 1993, 1995, 1997, 2000-2017 Free Software Foundation,
+;; Copyright (C) 1993, 1995, 1997, 2000-2019 Free Software Foundation,
 ;; Inc.
 
 ;; Author: Bill Wohler <wohler@newt.com>
-;; Maintainer: Bill Wohler <wohler@newt.com>
 ;; Keywords: mail
 ;; See: mh-e.el
 
@@ -21,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -375,8 +374,8 @@ still visible.\n")
            (cond ((not normal-exit)
                   (set-window-configuration config))
                  ,(if dont-return
-                      `(t (setq mh-previous-window-config config))
-                    `((and (get-buffer cur-buffer-name)
+                      '(t (setq mh-previous-window-config config))
+                    '((and (get-buffer cur-buffer-name)
                            (window-live-p (get-buffer-window
                                            (get-buffer cur-buffer-name))))
                       (pop-to-buffer (get-buffer cur-buffer-name) nil)))))))))
@@ -774,7 +773,7 @@ operation."
     ("^\\(Apparently-To:\\|Newsgroups:\\)\\(.*\\)"
      (1 'default)
      (2 'mh-show-cc))
-    ("^\\(In-reply-to\\|Date\\):\\(.*\\)$"
+    ("^\\(In-Reply-To\\|Date\\):\\(.*\\)$"
      (1 'default)
      (2 'mh-show-date))
     (mh-letter-header-font-lock
@@ -901,7 +900,7 @@ See also `mh-folder-mode'.
   ;; Don't allow Gnus to create buttons while highlighting, maybe this is bad
   ;; style?
   (mh-flet
-   ((gnus-article-add-button (&rest args) nil))
+   ((gnus-article-add-button (&rest _args) nil))
    (let* ((modified (buffer-modified-p))
           (gnus-article-buffer (buffer-name))
           (gnus-cite-face-list `(,@(cdr gnus-cite-face-list)

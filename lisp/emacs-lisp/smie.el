@@ -1,6 +1,6 @@
 ;;; smie.el --- Simple Minded Indentation Engine -*- lexical-binding: t -*-
 
-;; Copyright (C) 2010-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2010-2019 Free Software Foundation, Inc.
 
 ;; Author: Stefan Monnier <monnier@iro.umontreal.ca>
 ;; Keywords: languages, lisp, internal, parsing, indentation
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -122,6 +122,8 @@
 ;;   the indent rules don't do what the user wants).  Not sure what to do.
 
 (eval-when-compile (require 'cl-lib))
+
+(require 'prog-mode)
 
 (defgroup smie nil
   "Simple Minded Indentation Engine."
@@ -531,9 +533,9 @@ PREC2 is a table as returned by `smie-precs->prec2' or
                      (setq y (cons nil (cons nil nil)))
                      (push (cons (cdr k) y) table))
                    (pcase v
-                     (`= (push (cons x y) eqs))
-                     (`< (push (cons x y) csts))
-                     (`> (push (cons y x) csts))
+                     ('= (push (cons x y) eqs))
+                     ('< (push (cons x y) csts))
+                     ('> (push (cons y x) csts))
                      (_ (error "SMIE error: prec2 has %S↦%S which ∉ {<,+,>}"
                                k v))))))
              prec2)
@@ -610,8 +612,8 @@ PREC2 is a table as returned by `smie-precs->prec2' or
     (dolist (x (gethash :smie-open/close-alist prec2))
       (let* ((token (car x))
              (cons (pcase (cdr x)
-                     (`closer (cddr (assoc token table)))
-                     (`opener (cdr (assoc token table))))))
+                     ('closer (cddr (assoc token table)))
+                     ('opener (cdr (assoc token table))))))
         ;; `cons' can be nil for openers/closers which only contain
         ;; "atomic" elements.
         (when cons
@@ -1444,9 +1446,9 @@ in order to figure out the indentation of some other (further down) point."
   (and (smie-indent--bolp)
        (save-excursion
          (comment-normalize-vars)
-         (re-search-forward (concat comment-start-skip
+         (re-search-forward (concat "\\(?:" comment-start-skip "\\)"
                                     "fixindent"
-                                    comment-end-skip)
+                                    "\\(?:" comment-end-skip "\\)")
                             ;; 1+ to account for the \n comment termination.
                             (1+ (line-end-position)) t))
        (current-column)))
@@ -1455,7 +1457,7 @@ in order to figure out the indentation of some other (further down) point."
   ;; Start the file at column 0.
   (save-excursion
     (forward-comment (- (point)))
-    (if (bobp) 0)))
+    (if (bobp) (prog-first-column))))
 
 (defun smie-indent-close ()
   ;; Align close paren with opening paren.
@@ -1646,11 +1648,33 @@ should not be computed on the basis of the following token."
          (let ((ppss (syntax-ppss)))
            (save-excursion
              (forward-line -1)
-             (if (<= (point) (nth 8 ppss))
-                 (progn (goto-char (1+ (nth 8 ppss))) (current-column))
-               (skip-chars-forward " \t")
-               (if (looking-at (regexp-quote continue))
-                   (current-column))))))))
+             (let ((start (nth 8 ppss)))
+               (if (<= (point) start)
+                   (progn
+                     (goto-char start)
+                     (if (not (and comment-start-skip
+                                   (looking-at comment-start-skip)))
+                         (forward-char 1)
+                       (goto-char (match-end 0))
+                       (skip-chars-backward " \t")
+                       ;; Try to align the first char of the comment-continue
+                       ;; with the second char of the comment-start or the
+                       ;; first char if the comment-start is made of
+                       ;; a single char.  E.g.
+                       ;;
+                       ;;     /* foo
+                       ;;      * bar */
+                       ;;
+                       ;; but
+                       ;;
+                       ;;     { foo
+                       ;;     | bar }
+                       (goto-char (if (eq (point) (1+ start))
+                                      start (1+ start))))
+                     (current-column))
+                 (skip-chars-forward " \t")
+                 (if (looking-at (regexp-quote continue))
+                     (current-column)))))))))
 
 (defun smie-indent-comment-close ()
   (and (boundp 'comment-end-skip)
@@ -1854,9 +1878,9 @@ KEYWORDS are additional arguments, which can use the following keywords:
     (let ((k (pop keywords))
           (v (pop keywords)))
       (pcase k
-        (`:forward-token
+        (:forward-token
          (set (make-local-variable 'smie-forward-token-function) v))
-        (`:backward-token
+        (:backward-token
          (set (make-local-variable 'smie-backward-token-function) v))
         (_ (message "smie-setup: ignoring unknown keyword %s" k)))))
   (let ((ca (cdr (assq :smie-closer-alist grammar))))
@@ -1954,7 +1978,7 @@ E.g. provided via a file-local call to `smie-config-local'.")
 (defvar smie-config--modefuns nil)
 
 (defun smie-config--setter (var value)
-  (setq-default var value)
+  (set-default var value)
   (let ((old-modefuns smie-config--modefuns))
     (setq smie-config--modefuns nil)
     (pcase-dolist (`(,mode . ,rules) value)
@@ -1980,7 +2004,7 @@ value with which to replace it."
   ;; FIXME improve value-type.
   :type '(choice (const nil)
                  (alist :key-type symbol))
-  :initialize 'custom-initialize-default
+  :initialize 'custom-initialize-set
   :set #'smie-config--setter)
 
 (defun smie-config-local (rules)

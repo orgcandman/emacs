@@ -1,9 +1,9 @@
 ;;; dcl-mode.el --- major mode for editing DCL command files
 
-;; Copyright (C) 1997, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1997, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Odd Gripenstam <gripenstamol@decus.se>
-;; Maintainer: Odd Gripenstam <gripenstamol@decus.se>
+;; Maintainer: emacs-devel@gnu.org
 ;; Keywords: DCL editing major-mode languages
 
 ;; This file is part of GNU Emacs.
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -459,7 +459,7 @@ Preloaded with all known option names from dcl-option-alist")
 ;    ("GOSUB" (, (concat dcl-cmd-r
 ;			"GOSUB[ \t]+\\([A-Za-z0-9_$]+\\)")) 5)
 ;    ("CALL" (, (concat dcl-cmd-r "CALL[ \t]+\\([A-Za-z0-9_$]+\\)")) 5)))
-;  "*Default imenu generic expression for DCL.
+;  "Default imenu generic expression for DCL.
 
 ;The default includes SUBROUTINE labels in the main listing and
 ;sub-listings for other labels, CALL, GOTO and GOSUB statements.
@@ -1580,7 +1580,7 @@ Find the column of the first non-blank character on the line.
 Returns the column offset."
   (save-excursion
     (beginning-of-line)
-    (re-search-forward "^$[ \t]*" nil t)
+    (re-search-forward "^\\$[ \t]*" nil t)
     (current-column)))
 
 

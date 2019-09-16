@@ -1,6 +1,6 @@
 ;;; newst-plainview.el --- Single buffer frontend for newsticker.
 
-;; Copyright (C) 2003-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2003-2019 Free Software Foundation, Inc.
 
 ;; Author:      Ulf Jasper <ulf.jasper@web.de>
 ;; Filename:    newst-plainview.el
@@ -22,7 +22,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;; ======================================================================
 ;;; Commentary:
@@ -562,7 +562,6 @@ This does NOT start the retrieval timers."
         (newsticker--debug-msg "Getting news for %s" (symbol-name feed))
         (newsticker-get-news (symbol-name feed)))))
 
-(unless (fboundp 'declare-function) (defmacro declare-function (&rest r)))
 (declare-function w3m-toggle-inline-image "ext:w3m" (&optional force no-cache))
 
 (defun newsticker-w3m-show-inline-images ()
@@ -1003,7 +1002,7 @@ not get changed."
              ;; toggle
              (add-text-properties pos1 pos2
                                   (list 'invisible org-inv-prop))
-             (remove-text-properties pos1 pos2 '(org-invisible))))))
+             (remove-text-properties pos1 pos2 '(org-invisible nil))))))
   (newsticker--buffer-redraw))
 
 (defun newsticker-show-entry ()
@@ -1029,7 +1028,7 @@ not get changed."
              ;; toggle
              (add-text-properties pos1 pos2
                                   (list 'invisible org-inv-prop))
-             (remove-text-properties pos1 pos2 '(org-invisible))))))
+             (remove-text-properties pos1 pos2 '(org-invisible nil))))))
   (newsticker--buffer-redraw))
 
 (defun newsticker-toggle-auto-narrow-to-feed ()

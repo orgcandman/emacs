@@ -1,5 +1,5 @@
 /* Definitions and global variables for intervals.
-   Copyright (C) 1993-1994, 2000-2017 Free Software Foundation, Inc.
+   Copyright (C) 1993-1994, 2000-2019 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -14,7 +14,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #ifndef EMACS_INTERVALS_H
 #define EMACS_INTERVALS_H
@@ -29,14 +29,17 @@ INLINE_HEADER_BEGIN
 struct interval
 {
   /* The first group of entries deal with the tree structure.  */
-
   ptrdiff_t total_length;       /* Length of myself and both children.  */
   ptrdiff_t position;	        /* Cache of interval's character position.  */
-				/* This field is usually updated
-				   simultaneously with an interval
-				   traversal, there is no guarantee
-				   that it is valid for a random
-				   interval.  */
+                                /* This field is valid in the final
+                                   target interval returned by
+                                   find_interval, next_interval,
+                                   previous_interval and
+                                   update_interval.  It cannot be
+                                   depended upon in any intermediate
+                                   intervals traversed by these
+                                   functions, or any other
+                                   interval. */
   struct interval *left;	/* Intervals which precede me.  */
   struct interval *right;	/* Intervals which succeed me.  */
 
@@ -85,10 +88,10 @@ struct interval
 #define LEAF_INTERVAL_P(i) ((i)->left == NULL && (i)->right == NULL)
 
 /* True if this interval has no parent and is therefore the root.  */
-#define ROOT_INTERVAL_P(i) (NULL_PARENT (i))
+#define ROOT_INTERVAL_P(i) NULL_PARENT (i)
 
 /* True if this interval is the only interval in the interval tree.  */
-#define ONLY_INTERVAL_P(i) (ROOT_INTERVAL_P ((i)) && LEAF_INTERVAL_P ((i)))
+#define ONLY_INTERVAL_P(i) (ROOT_INTERVAL_P (i) && LEAF_INTERVAL_P (i))
 
 /* True if this interval has both left and right children.  */
 #define BOTH_KIDS_P(i) ((i)->left != NULL && (i)->right != NULL)
@@ -98,13 +101,13 @@ struct interval
 #define TOTAL_LENGTH(i) ((i) == NULL ? 0 : (i)->total_length)
 
 /* The size of text represented by this interval alone.  */
-#define LENGTH(i) ((i) == NULL ? 0 : (TOTAL_LENGTH ((i))		\
-				      - TOTAL_LENGTH ((i)->right)	\
-				      - TOTAL_LENGTH ((i)->left)))
+#define LENGTH(i) ((i)->total_length			\
+		   - TOTAL_LENGTH ((i)->right)		\
+		   - TOTAL_LENGTH ((i)->left))
 
 /* The position of the character just past the end of I.  Note that
    the position cache i->position must be valid for this to work.  */
-#define INTERVAL_LAST_POS(i) ((i)->position + LENGTH ((i)))
+#define INTERVAL_LAST_POS(i) ((i)->position + LENGTH (i))
 
 /* The total size of the left subtree of this interval.  */
 #define LEFT_TOTAL_LENGTH(i) ((i)->left ? (i)->left->total_length : 0)
@@ -116,7 +119,7 @@ struct interval
 
 /* True if this is a default interval, which is the same as being null
    or having no properties.  */
-#define DEFAULT_INTERVAL_P(i) (!i || EQ ((i)->plist, Qnil))
+#define DEFAULT_INTERVAL_P(i) (!i || NILP ((i)->plist))
 
 /* Test what type of parent we have.  Three possibilities: another
    interval, a buffer or string object, or NULL.  */
@@ -242,8 +245,7 @@ extern void traverse_intervals (INTERVAL, ptrdiff_t,
                                 void (*) (INTERVAL, Lisp_Object),
                                 Lisp_Object);
 extern void traverse_intervals_noorder (INTERVAL,
-                                        void (*) (INTERVAL, Lisp_Object),
-                                        Lisp_Object);
+					void (*) (INTERVAL, void *), void *);
 extern INTERVAL split_interval_right (INTERVAL, ptrdiff_t);
 extern INTERVAL split_interval_left (INTERVAL, ptrdiff_t);
 extern INTERVAL find_interval (INTERVAL, ptrdiff_t);
@@ -290,7 +292,7 @@ Lisp_Object text_property_list (Lisp_Object, Lisp_Object, Lisp_Object,
 void add_text_properties_from_list (Lisp_Object, Lisp_Object, Lisp_Object);
 Lisp_Object extend_property_ranges (Lisp_Object, Lisp_Object, Lisp_Object);
 Lisp_Object get_char_property_and_overlay (Lisp_Object, Lisp_Object,
-                                           Lisp_Object, Lisp_Object*);
+                                           Lisp_Object, Lisp_Object *);
 extern int text_property_stickiness (Lisp_Object prop, Lisp_Object pos,
                                      Lisp_Object buffer);
 

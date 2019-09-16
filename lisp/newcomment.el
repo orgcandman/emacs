@@ -1,9 +1,9 @@
 ;;; newcomment.el --- (un)comment regions of buffers -*- lexical-binding: t -*-
 
-;; Copyright (C) 1999-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1999-2019 Free Software Foundation, Inc.
 
 ;; Author: code extracted from Emacs-20's simple.el
-;; Maintainer: Stefan Monnier <monnier@iro.umontreal.ca>
+;; Maintainer: Stefan Monnier <monnier@gnu.org>
 ;; Keywords: comment uncomment
 ;; Package: emacs
 
@@ -20,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -68,6 +68,9 @@
 ;;   one used on the preceding line(s).
 
 ;;; Code:
+
+(eval-when-compile
+  (require 'subr-x))
 
 ;;;###autoload
 (defalias 'indent-for-comment 'comment-indent)
@@ -142,9 +145,10 @@ Should be an empty string if comments are terminated by end-of-line.")
 ;;;###autoload
 (defvar comment-indent-function 'comment-indent-default
   "Function to compute desired indentation for a comment.
-This function is called with no args with point at the beginning of
-the comment's starting delimiter and should return either the desired
-column indentation or nil.
+This function is called with no args with point at the beginning
+of the comment's starting delimiter and should return either the
+desired column indentation, a range of acceptable
+indentation (MIN . MAX), or nil.
 If nil is returned, indentation is delegated to `indent-according-to-mode'.")
 
 ;;;###autoload
@@ -154,6 +158,14 @@ The function has no args.
 
 Applicable at least in modes for languages like fixed-format Fortran where
 comments always start in column zero.")
+
+(defvar-local comment-combine-change-calls t
+  "If non-nil (the default), use `combine-change-calls' around
+  calls of `comment-region-function' and
+  `uncomment-region-function'.  This Substitutes a single call to
+  each of the hooks `before-change-functions' and
+  `after-change-functions' in place of those hooks being called
+  for each individual buffer change.")
 
 (defvar comment-region-function 'comment-region-default
   "Function to comment a region.
@@ -309,16 +321,17 @@ customize this variable.
 It also affects \\[indent-new-comment-line].  However, if you want this
 behavior for explicit filling, you might as well use \\[newline-and-indent]."
   :type 'boolean
+  :safe #'booleanp
   :group 'comment)
 
 (defcustom comment-empty-lines nil
   "If nil, `comment-region' does not comment out empty lines.
 If t, it always comments out empty lines.
-If `eol' it only comments out empty lines if comments are
-terminated by the end of line (i.e. `comment-end' is empty)."
+If `eol', it only comments out empty lines if comments are
+terminated by the end of line (i.e., `comment-end' is empty)."
   :type '(choice (const :tag "Never" nil)
-	  (const :tag "Always" t)
-	  (const :tag "EOl-terminated" eol))
+                 (const :tag "Always" t)
+                 (const :tag "EOL-terminated" eol))
   :group 'comment)
 
 ;;;;
@@ -522,7 +535,7 @@ Ensure that `comment-normalize-vars' has been called before you use this."
   ;; comment-search-backward is only used to find the comment-column (in
   ;; comment-set-column) and to find the comment-start string (via
   ;; comment-beginning) in indent-new-comment-line, it should be harmless.
-  (if (not (re-search-backward comment-start-skip limit t))
+  (if (not (re-search-backward comment-start-skip limit 'move))
       (unless noerror (error "No comment"))
     (beginning-of-line)
     (let* ((end (match-end 0))
@@ -648,13 +661,20 @@ The criteria are (in this order):
 - prefer INDENT (or `comment-column' if nil).
 Point is expected to be at the start of the comment."
   (unless indent (setq indent comment-column))
-  ;; Avoid moving comments past the fill-column.
-  (let ((max (+ (current-column)
-                (- (or comment-fill-column fill-column)
-                   (save-excursion (end-of-line) (current-column)))))
-        (other nil)
-        (min (save-excursion (skip-chars-backward " \t")
-                             (if (bolp) 0 (+ comment-inline-offset (current-column))))))
+  (let ((other nil)
+        min max)
+    (pcase indent
+      (`(,lo . ,hi) (setq min lo) (setq max hi)
+       (setq indent comment-column))
+      (_ ;; Avoid moving comments past the fill-column.
+       (setq max (+ (current-column)
+                    (- (or comment-fill-column fill-column)
+                       (save-excursion (end-of-line) (current-column)))))
+       (setq min (save-excursion
+                   (skip-chars-backward " \t")
+                   ;; Leave at least `comment-inline-offset' space after
+                   ;; other nonwhite text on the line.
+                   (if (bolp) 0 (+ comment-inline-offset (current-column)))))))
     ;; Fix up the range.
     (if (< max min) (setq max min))
     ;; Don't move past the fill column.
@@ -749,13 +769,6 @@ If CONTINUE is non-nil, use the `comment-continue' markers if any."
 	  ;; If the comment is at the right of code, adjust the indentation.
 	  (unless (save-excursion (skip-chars-backward " \t") (bolp))
 	    (setq indent (comment-choose-indent indent)))
-	  ;; Update INDENT to leave at least one space
-	  ;; after other nonwhite text on the line.
-	  (save-excursion
-	    (skip-chars-backward " \t")
-	    (unless (bolp)
-	      (setq indent (max indent
-                                (+ (current-column) comment-inline-offset)))))
 	  ;; If that's different from comment's current position, change it.
 	  (unless (= (current-column) indent)
 	    (delete-region (point) (progn (skip-chars-backward " \t") (point)))
@@ -812,9 +825,11 @@ If STR already contains padding, the corresponding amount is
 ignored from `comment-padding'.
 N defaults to 0.
 If N is `re', a regexp is returned instead, that would match
-the string for any N."
+the string for any N.
+
+Ensure that `comment-normalize-vars' has been called before you use this."
   (setq n (or n 0))
-  (when (and (stringp str) (not (string= "" str)))
+  (when (and (stringp str) (string-match "\\S-" str))
     ;; Separate the actual string from any leading/trailing padding
     (string-match "\\`\\s-*\\(.*?\\)\\s-*\\'" str)
     (let ((s (match-string 1 str))	;actual string
@@ -847,8 +862,10 @@ It also adds N copies of the first non-whitespace chars of STR.
 If STR already contains padding, the corresponding amount is
 ignored from `comment-padding'.
 N defaults to 0.
-If N is `re', a regexp is returned instead, that would match
-  the string for any N."
+If N is `re', a regexp is returned instead, that would match the
+string for any N.
+
+Ensure that `comment-normalize-vars' has been called before you use this."
   (setq n (or n 0))
   (when (and (stringp str) (not (string= "" str)))
     ;; Only separate the left pad because we assume there is no right pad.
@@ -882,7 +899,7 @@ If N is `re', a regexp is returned instead, that would match
 (defun uncomment-region (beg end &optional arg)
   "Uncomment each line in the BEG .. END region.
 The numeric prefix ARG can specify a number of chars to remove from the
-comment markers."
+comment delimiters."
   (interactive "*r\nP")
   (comment-normalize-vars)
   (when (> beg end) (setq beg (prog1 end (setq end beg))))
@@ -893,10 +910,11 @@ comment markers."
     (save-excursion
       (funcall uncomment-region-function beg end arg))))
 
-(defun uncomment-region-default (beg end &optional arg)
+(defun uncomment-region-default-1 (beg end &optional arg)
   "Uncomment each line in the BEG .. END region.
 The numeric prefix ARG can specify a number of chars to remove from the
-comment markers."
+comment delimiters.
+This function is the default value of `uncomment-region-function'."
   (goto-char beg)
   (setq end (copy-marker end))
   (let* ((numarg (prefix-numeric-value arg))
@@ -987,8 +1005,25 @@ comment markers."
 		       (re-search-forward sre (line-end-position) t))
 		(replace-match "" t t nil (if (match-end 2) 2 1)))))
 	  ;; Go to the end for the next comment.
-	  (goto-char (point-max))))))
+	  (goto-char (point-max)))
+        ;; Remove any obtrusive spaces left preceding a tab at `spt'.
+        (when (and (eq (char-after spt) ?\t) (eq (char-before spt) ? )
+                   (> tab-width 0))
+          (save-excursion
+            (goto-char spt)
+            (let* ((fcol (current-column))
+                   (slim (- (point) (mod fcol tab-width))))
+              (delete-char (- (skip-chars-backward " " slim)))))))))
   (set-marker end nil))
+
+(defun uncomment-region-default (beg end &optional arg)
+  "Uncomment each line in the BEG .. END region.
+The numeric prefix ARG can specify a number of chars to remove from the
+comment markers."
+  (if comment-combine-change-calls
+      (combine-change-calls beg end (uncomment-region-default-1 beg end arg))
+    (uncomment-region-default-1 beg end arg)))
+
 
 (defun comment-make-bol-ws (len)
   "Make a white-space string of width LEN for use at BOL.
@@ -1139,6 +1174,9 @@ the region rather than at left margin."
 
 	  ;; make the leading and trailing lines if requested
 	  (when lines
+            ;; Trim trailing whitespace from cs if there's some.
+            (setq cs (string-trim-right cs))
+
 	    (let ((csce
 		   (comment-make-extra-lines
 		    cs ce ccs cce min-indent max-indent block)))
@@ -1183,7 +1221,7 @@ changed with `comment-style'."
     ;; FIXME: maybe we should call uncomment depending on ARG.
     (funcall comment-region-function beg end arg)))
 
-(defun comment-region-default (beg end &optional arg)
+(defun comment-region-default-1 (beg end &optional arg)
   (let* ((numarg (prefix-numeric-value arg))
 	 (style (cdr (assoc comment-style comment-styles)))
 	 (lines (nth 2 style))
@@ -1209,7 +1247,7 @@ changed with `comment-style'."
 	   (progn (goto-char end) (end-of-line) (skip-syntax-backward " ")
 		  (<= (point) end))
 	   (or block (not (string= "" comment-end)))
-	   (or block (progn (goto-char beg) (search-forward "\n" end t)))))
+           (or block (progn (goto-char beg) (re-search-forward "$" end t)))))
 
     ;; don't add end-markers just because the user asked for `block'
     (unless (or lines (string= "" comment-end)) (setq block nil))
@@ -1251,6 +1289,11 @@ changed with `comment-style'."
 	 block
 	 lines
 	 indent))))))
+
+(defun comment-region-default (beg end &optional arg)
+  (if comment-combine-change-calls
+      (combine-change-calls beg end (comment-region-default-1 beg end arg))
+    (comment-region-default-1 beg end arg)))
 
 ;;;###autoload
 (defun comment-box (beg end &optional arg)

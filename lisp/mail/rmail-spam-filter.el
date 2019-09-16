@@ -1,6 +1,6 @@
 ;;; rmail-spam-filter.el --- spam filter for Rmail, the Emacs mail reader
 
-;; Copyright (C) 2002-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2002-2019 Free Software Foundation, Inc.
 ;; Keywords: email, spam, filter, rmail
 ;; Author: Eli Tziperman <eli AT deas.harvard.edu>
 ;; Package: rmail
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;; -----------
@@ -251,7 +251,7 @@ it from rmail file.  Called for each new message retrieved by
         (setq message-subject (mail-fetch-field "Subject"))
         (setq message-content-type (mail-fetch-field "Content-Type"))
         (setq message-spam-status (mail-fetch-field "X-Spam-Status")))
-      ;; Check for blind CC condition.  Set vars such that while
+      ;; Check for blind cc condition.  Set vars such that while
       ;; loop will be bypassed and spam condition will trigger.
       (and rsf-no-blind-cc
            (null message-recipients)

@@ -1,6 +1,6 @@
 ;;; gv.el --- generalized variables  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2012-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2012-2019 Free Software Foundation, Inc.
 
 ;; Author: Stefan Monnier <monnier@iro.umontreal.ca>
 ;; Keywords: extensions
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -146,12 +146,7 @@ NAME is a symbol: the name of a function, macro, or special form.
 HANDLER is a function which takes an argument DO followed by the same
 arguments as NAME.  DO is a function as defined in `gv-get'."
   (declare (indent 1) (debug (sexp form)))
-  ;; Use eval-and-compile so the method can be used in the same file as it
-  ;; is defined.
-  ;; FIXME: Just like byte-compile-macro-environment, we should have something
-  ;; like byte-compile-symbolprop-environment so as to handle these things
-  ;; cleanly without affecting the running Emacs.
-  `(eval-and-compile (put ',name 'gv-expander ,handler)))
+  `(function-put ',name 'gv-expander ,handler))
 
 ;;;###autoload
 (defun gv--defun-declaration (symbol name args handler &optional fix)
@@ -219,9 +214,11 @@ The first arg in ARGLIST (the one that receives VAL) receives an expression
 which can do arbitrary things, whereas the other arguments are all guaranteed
 to be pure and copyable.  Example use:
   (gv-define-setter aref (v a i) \\=`(aset ,a ,i ,v))"
-  (declare (indent 2) (debug (&define name sexp body)))
+  (declare (indent 2) (debug (&define name sexp def-body)))
   `(gv-define-expander ,name
      (lambda (do &rest args)
+       (declare-function
+        gv--defsetter "gv" (name setter do args &optional vars))
        (gv--defsetter ',name (lambda ,arglist ,@body) do args))))
 
 ;;;###autoload
@@ -308,11 +305,14 @@ The return value is the last VAL in the list.
      (lambda (do before index place)
        (gv-letplace (getter setter) place
          (funcall do `(edebug-after ,before ,index ,getter)
-                  setter))))
+                  (lambda (store)
+                    `(progn (edebug-after ,before ,index ,getter)
+                            ,(funcall setter store)))))))
 
 ;;; The common generalized variables.
 
 (gv-define-simple-setter aref aset)
+(gv-define-simple-setter char-table-range set-char-table-range)
 (gv-define-simple-setter car setcar)
 (gv-define-simple-setter cdr setcdr)
 ;; FIXME: add compiler-macros for `cXXr' instead!
@@ -377,10 +377,12 @@ The return value is the last VAL in the list.
     `(with-current-buffer ,buf (set (make-local-variable ,var) ,v))))
 
 (gv-define-expander alist-get
-  (lambda (do key alist &optional default remove)
+  (lambda (do key alist &optional default remove testfn)
     (macroexp-let2 macroexp-copyable-p k key
       (gv-letplace (getter setter) alist
-        (macroexp-let2 nil p `(assq ,k ,getter)
+        (macroexp-let2 nil p `(if (and ,testfn (not (eq ,testfn 'eq)))
+                                  (assoc ,k ,getter ,testfn)
+                                (assq ,k ,getter))
           (funcall do (if (null default) `(cdr ,p)
                         `(if ,p (cdr ,p) ,default))
                    (lambda (v)
@@ -390,18 +392,20 @@ The return value is the last VAL in the list.
                                  ,(funcall setter
                                            `(cons (setq ,p (cons ,k ,v))
                                                   ,getter)))))
-                         (cond
-                          ((null remove) set-exp)
-                          ((or (eql v default)
-                               (and (eq (car-safe v) 'quote)
-                                    (eq (car-safe default) 'quote)
-                                    (eql (cadr v) (cadr default))))
-                           `(if ,p ,(funcall setter `(delq ,p ,getter))))
-                          (t
-                           `(cond
-                             ((not (eql ,default ,v)) ,set-exp)
-                             (,p ,(funcall setter
-                                           `(delq ,p ,getter)))))))))))))))
+                         `(progn
+                            ,(cond
+                             ((null remove) set-exp)
+                             ((or (eql v default)
+                                  (and (eq (car-safe v) 'quote)
+                                       (eq (car-safe default) 'quote)
+                                       (eql (cadr v) (cadr default))))
+                              `(if ,p ,(funcall setter `(delq ,p ,getter))))
+                             (t
+                              `(cond
+                                ((not (eql ,default ,v)) ,set-exp)
+                                (,p ,(funcall setter
+                                              `(delq ,p ,getter))))))
+                            ,v))))))))))
 
 
 ;;; Some occasionally handy extensions.
@@ -434,7 +438,7 @@ The return value is the last VAL in the list.
            ;; code is large, but otherwise results in more efficient code.
            `(if ,test ,(gv-get then do)
               ,@(macroexp-unprogn (gv-get (macroexp-progn else) do)))
-         (let ((v (make-symbol "v")))
+         (let ((v (gensym "v")))
            (macroexp-let2 nil
                gv `(if ,test ,(gv-letplace (getter setter) then
                                 `(cons (lambda () ,getter)
@@ -459,7 +463,7 @@ The return value is the last VAL in the list.
                                     (gv-get (macroexp-progn (cdr branch)) do)))
                            (gv-get (car branch) do)))
                        branches))
-         (let ((v (make-symbol "v")))
+         (let ((v (gensym "v")))
            (macroexp-let2 nil
                gv `(cond
                     ,@(mapcar

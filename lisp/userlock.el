@@ -1,6 +1,6 @@
 ;;; userlock.el --- handle file access contention between multiple users
 
-;; Copyright (C) 1985-1986, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1985-1986, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Richard King
 ;; (according to authors.el)
@@ -21,7 +21,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -31,6 +31,8 @@
 ;; `ask-user-about-supersession-threat'.
 
 ;;; Code:
+
+(eval-when-compile (require 'cl-lib))
 
 (define-error 'file-locked "File is locked" 'file-error)
 
@@ -61,6 +63,7 @@ in any way you like."
       (while (null answer)
 	(message "%s locked by %s: (s, q, p, ?)? "
 		 short-file short-opponent)
+	(if noninteractive (error "Cannot resolve lock conflict in batch mode"))
 	(let ((tem (let ((inhibit-quit t)
 			 (cursor-in-echo-area t))
 		     (prog1 (downcase (read-char))
@@ -149,6 +152,9 @@ really edit the buffer? (y, n, r or C-h) "
 		   (file-name-nondirectory fn)))
 	  (choices '(?y ?n ?r ?? ?\C-h))
 	  answer)
+      (when noninteractive
+	(message "%s" prompt)
+	(error "Cannot resolve conflict in batch mode"))
       (while (null answer)
 	(setq answer (read-char-choice prompt choices))
 	(cond ((memq answer '(?? ?\C-h))
@@ -168,7 +174,9 @@ really edit the buffer? (y, n, r or C-h) "
 
 (defun ask-user-about-supersession-help ()
   (with-output-to-temp-buffer "*Help*"
-    (princ "You want to modify a buffer whose disk file has changed
+    (princ
+     (substitute-command-keys
+      "You want to modify a buffer whose disk file has changed
 since you last read it in or saved it with this buffer.
 
 If you say `y' to go ahead and modify this buffer,
@@ -178,7 +186,7 @@ from the file on disk.
 If you say `n', the change you started to make will be aborted.
 
 Usually, you should type `n' and then `\\[revert-buffer]',
-to get the latest version of the file, then make the change again.")
+to get the latest version of the file, then make the change again."))
     (with-current-buffer standard-output
       (help-mode))))
 

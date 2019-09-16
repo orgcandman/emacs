@@ -1,6 +1,6 @@
 ;;; semantic/bovine/make.el --- Makefile parsing rules.
 
-;; Copyright (C) 2000-2004, 2008-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2000-2004, 2008-2019 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 
@@ -17,7 +17,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -181,10 +181,10 @@ Uses default implementation, and also gets a list of filenames."
   (require 'semantic/analyze/complete)
   (with-current-buffer (oref context buffer)
     (let* ((normal (semantic-analyze-possible-completions-default context))
-	   (classes (oref context :prefixclass))
+	   (classes (oref context prefixclass))
 	   (filetags nil))
       (when (memq 'filename classes)
-	(let* ((prefix (car (oref context :prefix)))
+	(let* ((prefix (car (oref context prefix)))
 	       (completetext (cond ((semantic-tag-p prefix)
 				    (semantic-tag-name prefix))
 				   ((stringp prefix)

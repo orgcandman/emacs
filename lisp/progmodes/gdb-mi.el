@@ -1,6 +1,6 @@
 ;;; gdb-mi.el --- User Interface for running GDB  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2007-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2019 Free Software Foundation, Inc.
 
 ;; Author: Nick Roberts <nickrob@gnu.org>
 ;; Maintainer: emacs-devel@gnu.org
@@ -21,7 +21,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Credits:
 
@@ -400,14 +400,22 @@ valid signal handlers.")
           (const   :tag "Unlimited" nil))
   :version "22.1")
 
-(defcustom gdb-non-stop-setting t
-  "When in non-stop mode, stopped threads can be examined while
+(defcustom gdb-non-stop-setting (not (eq system-type 'windows-nt))
+  "If non-nil, GDB sessions are expected to support the non-stop mode.
+When in the non-stop mode, stopped threads can be examined while
 other threads continue to execute.
+
+If this is non-nil, GDB will be sent the \"set non-stop 1\" command,
+and if that results in an error, the non-stop setting will be
+turned off automatically.
+
+On MS-Windows, this is off by default, because MS-Windows targets
+don't support the non-stop mode.
 
 GDB session needs to be restarted for this setting to take effect."
   :type 'boolean
   :group 'gdb-non-stop
-  :version "23.2")
+  :version "26.1")
 
 ;; TODO Some commands can't be called with --all (give a notice about
 ;; it in setting doc)
@@ -784,7 +792,7 @@ detailed description of this mode.
   (gud-def gud-tbreak "tbreak %f:%l" "\C-t"
 	   "Set temporary breakpoint at current line.")
   (gud-def gud-jump
-	   (progn (gud-call "tbreak %f:%l") (gud-call "jump %f:%l"))
+	   (progn (gud-call "tbreak %f:%l" arg) (gud-call "jump %f:%l"))
 	   "\C-j" "Set execution address to current line.")
 
   (gud-def gud-up     "up %p"     "<" "Up N stack frames (numeric arg).")
@@ -1112,13 +1120,15 @@ line, and no execution takes place."
 (defcustom gdb-show-changed-values t
   "If non-nil change the face of out of scope variables and changed values.
 Out of scope variables are suppressed with `shadow' face.
-Changed values are highlighted with the face `font-lock-warning-face'."
+Changed values are highlighted with the face `font-lock-warning-face'.
+Used by Speedbar."
   :type 'boolean
   :group 'gdb
   :version "22.1")
 
 (defcustom gdb-max-children 40
-  "Maximum number of children before expansion requires confirmation."
+  "Maximum number of children before expansion requires confirmation.
+Used by Speedbar."
   :type 'integer
   :group 'gdb
   :version "22.1")
@@ -1130,9 +1140,7 @@ Changed values are highlighted with the face `font-lock-warning-face'."
   :version "22.2")
 
 (define-minor-mode gdb-speedbar-auto-raise
-  "Minor mode to automatically raise the speedbar for watch expressions.
-With prefix argument ARG, automatically raise speedbar if ARG is
-positive, otherwise don't automatically raise it."
+  "Minor mode to automatically raise the speedbar for watch expressions."
   :global t
   :group 'gdb
   :version "22.1")
@@ -1365,7 +1373,7 @@ With arg, enter name of variable to be watched in the minibuffer."
 TEXT is the text of the button we clicked on, a + or - item.
 TOKEN is data related to this node.
 INDENT is the current indentation depth."
-  (cond ((string-match "+" text)        ;expand this node
+  (cond ((string-match "\\+" text)        ;expand this node
 	 (let* ((var (assoc token gdb-var-list))
 		(expr (nth 1 var)) (children (nth 2 var)))
 	   (if (or (<= (string-to-number children) gdb-max-children)
@@ -1735,16 +1743,12 @@ static char *magick[] = {
 (defvar breakpoint-disabled-icon nil
   "Icon for disabled breakpoint in display margin.")
 
-(declare-function define-fringe-bitmap "fringe.c"
-		  (bitmap bits &optional height width align))
-
-(and (display-images-p)
-     ;; Bitmap for breakpoint in fringe
-     (define-fringe-bitmap 'breakpoint
-       "\x3c\x7e\xff\xff\xff\xff\x7e\x3c")
-     ;; Bitmap for gud-overlay-arrow in fringe
-     (define-fringe-bitmap 'hollow-right-triangle
-       "\xe0\x90\x88\x84\x84\x88\x90\xe0"))
+;; Bitmap for breakpoint in fringe
+(define-fringe-bitmap 'breakpoint
+  "\x3c\x7e\xff\xff\xff\xff\x7e\x3c")
+;; Bitmap for gud-overlay-arrow in fringe
+(define-fringe-bitmap 'hollow-right-triangle
+  "\xe0\x90\x88\x84\x84\x88\x90\xe0")
 
 (defface breakpoint-enabled
   '((t
@@ -1767,13 +1771,18 @@ static char *magick[] = {
   :group 'gdb)
 
 
+(defvar gdb-python-guile-commands-regexp
+  "python\\|python-interactive\\|pi\\|guile\\|guile-repl\\|gr"
+  "Regexp that matches Python and Guile commands supported by GDB.")
+
 (defvar gdb-control-commands-regexp
   (concat
    "^\\("
-   "commands\\|if\\|while\\|define\\|document\\|"
-   "python\\|python-interactive\\|pi\\|guile\\|guile-repl\\|gr\\|"
-   "while-stepping\\|stepping\\|ws\\|actions"
-   "\\)\\([[:blank:]]+.*\\)?$")
+   "comm\\(a\\(n\\(ds?\\)?\\)?\\)?\\|if\\|while"
+   "\\|def\\(i\\(ne?\\)?\\)?\\|doc\\(u\\(m\\(e\\(nt?\\)?\\)?\\)?\\)?\\|"
+   gdb-python-guile-commands-regexp
+   "\\|while-stepping\\|stepp\\(i\\(ng?\\)?\\)?\\|ws\\|actions"
+   "\\)\\([[:blank:]]+\\([^[:blank:]]*\\)\\)?$")
   "Regexp matching GDB commands that enter a recursive reading loop.
 As long as GDB is in the recursive reading loop, it does not expect
 commands to be prefixed by \"-interpreter-exec console\".")
@@ -1785,7 +1794,7 @@ commands to be prefixed by \"-interpreter-exec console\".")
   "A comint send filter for gdb."
   (with-current-buffer gud-comint-buffer
     (let ((inhibit-read-only t))
-      (remove-text-properties (point-min) (point-max) '(face))))
+      (remove-text-properties (point-min) (point-max) '(face nil))))
   ;; mimic <RET> key to repeat previous command in GDB
   (when (= gdb-control-level 0)
     (if (not (string= "" string))
@@ -1831,8 +1840,17 @@ commands to be prefixed by \"-interpreter-exec console\".")
 	       (> gdb-control-level 0))
 	  (setq gdb-control-level (1- gdb-control-level)))
       (setq gdb-continuation nil)))
-  (if (string-match gdb-control-commands-regexp string)
-      (setq gdb-control-level (1+ gdb-control-level))))
+  ;; Python and Guile commands that have an argument don't enter the
+  ;; recursive reading loop.
+  (let* ((control-command-p (string-match gdb-control-commands-regexp string))
+         (command-arg (and control-command-p (match-string 3 string)))
+         (python-or-guile-p (string-match gdb-python-guile-commands-regexp
+                                          string)))
+    (if (and control-command-p
+             (or (not python-or-guile-p)
+                 (null command-arg)
+                 (zerop (length command-arg))))
+        (setq gdb-control-level (1+ gdb-control-level)))))
 
 (defun gdb-mi-quote (string)
   "Return STRING quoted properly as an MI argument.
@@ -1915,10 +1933,10 @@ If NO-PROC is non-nil, do not try to contact the GDB process."
   ;; gdb-break-list is maintained in breakpoints handler
   (gdb-get-buffer-create 'gdb-breakpoints-buffer)
 
+  (gdb-get-changed-registers)
   (unless no-proc
     (gdb-emit-signal gdb-buf-publisher 'update))
 
-  (gdb-get-changed-registers)
   (when (and (boundp 'speedbar-frame) (frame-live-p speedbar-frame))
     (dolist (var gdb-var-list)
       (setcar (nthcdr 5 var) nil))
@@ -2175,7 +2193,10 @@ a GDB/MI reply message."
 
 (defun gdbmi-bnf-console-stream-output (c-string)
   "Handler for the console-stream-output GDB/MI output grammar rule."
-  (gdb-console c-string))
+  (gdb-console c-string)
+  ;; We've written to the GUD console, so we should print the prompt
+  ;; after the next result-class or async-class.
+  (setq gdb-first-done-or-error t))
 
 (defun gdbmi-bnf-target-stream-output (_c-string)
   "Handler for the target-stream-output GDB/MI output grammar rule."
@@ -2361,7 +2382,7 @@ file names include non-ASCII characters."
 ;; sequences are not split between chunks of output of the GDB process
 ;; due to buffering, and arrive together.  Finally, if some string
 ;; included literal \nnn strings (as opposed to non-ASCII characters
-;; converted by by GDB/MI to octal escapes), this decoding will mangle
+;; converted by GDB/MI to octal escapes), this decoding will mangle
 ;; those strings.  When/if GDB acquires the ability to not
 ;; escape-protect non-ASCII characters in its MI output, this kludge
 ;; should be removed.
@@ -2693,10 +2714,10 @@ If `default-directory' is remote, full file names are adapted accordingly."
               (insert "]"))))))
     (goto-char (point-min))
     (insert "{")
-    (let ((re (concat "\\([[:alnum:]-_]+\\)=\\({\\|\\[\\|\"\"\\|"
-                      gdb--string-regexp "\\)")))
+    (let ((re (concat "\\([[:alnum:]_-]+\\)=")))
       (while (re-search-forward re nil t)
-        (replace-match "\"\\1\":\\2" nil nil)))
+        (replace-match "\"\\1\":" nil nil)
+        (if (eq (char-after) ?\") (forward-sexp) (forward-char))))
     (goto-char (point-max))
     (insert "}")))
 
@@ -3484,7 +3505,7 @@ in `gdb-memory-format'."
 (defvar gdb-memory-mode-map
   (let ((map (make-sparse-keymap)))
     (suppress-keymap map t)
-    (define-key map "q" 'kill-this-buffer)
+    (define-key map "q" 'kill-current-buffer)
     (define-key map "n" 'gdb-memory-show-next-page)
     (define-key map "p" 'gdb-memory-show-previous-page)
     (define-key map "a" 'gdb-memory-set-address)
@@ -3838,7 +3859,7 @@ DOC is an optional documentation string."
   ;; TODO
   (let ((map (make-sparse-keymap)))
     (suppress-keymap map)
-    (define-key map "q" 'kill-this-buffer)
+    (define-key map "q" 'kill-current-buffer)
     map))
 
 (define-derived-mode gdb-disassembly-mode gdb-parent-mode "Disassembly"
@@ -4042,7 +4063,7 @@ member."
 (defvar gdb-frames-mode-map
   (let ((map (make-sparse-keymap)))
     (suppress-keymap map)
-    (define-key map "q" 'kill-this-buffer)
+    (define-key map "q" 'kill-current-buffer)
     (define-key map "\r" 'gdb-select-frame)
     (define-key map [mouse-2] 'gdb-select-frame)
     (define-key map [follow-link] 'mouse-face)
@@ -4132,7 +4153,7 @@ member."
         (when (not value)
           (setq value "<complex data type>"))
         (if (or (not value)
-                (string-match "\\0x" value))
+                (string-match "0x" value))
             (add-text-properties 0 (length name)
                                  `(mouse-face highlight
                                               help-echo "mouse-2: create watch expression"
@@ -4168,7 +4189,7 @@ member."
 (defvar gdb-locals-mode-map
   (let ((map (make-sparse-keymap)))
     (suppress-keymap map)
-    (define-key map "q" 'kill-this-buffer)
+    (define-key map "q" 'kill-current-buffer)
     (define-key map "\t" (lambda ()
                            (interactive)
                            (gdb-set-window-buffer
@@ -4259,7 +4280,7 @@ member."
     (suppress-keymap map)
     (define-key map "\r" 'gdb-edit-register-value)
     (define-key map [mouse-2] 'gdb-edit-register-value)
-    (define-key map "q" 'kill-this-buffer)
+    (define-key map "q" 'kill-current-buffer)
     (define-key map "\t" (lambda ()
                            (interactive)
                            (gdb-set-window-buffer

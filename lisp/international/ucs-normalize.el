@@ -1,6 +1,6 @@
 ;;; ucs-normalize.el --- Unicode normalization NFC/NFD/NFKD/NFKC
 
-;; Copyright (C) 2009-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2009-2019 Free Software Foundation, Inc.
 
 ;; Author: Taichi Kawabata <kawabata.taichi@gmail.com>
 ;; Keywords: unicode, normalization
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -30,7 +30,7 @@
 ;;
 ;; HFS-Normalization:
 ;; Reference:
-;; http://developer.apple.com/technotes/tn/tn1150.html
+;; https://developer.apple.com/library/archive/technotes/tn/tn1150.html
 ;;
 ;; HFS Normalization excludes following area for decomposition.
 ;;
@@ -109,7 +109,9 @@
 
 (defconst ucs-normalize-version "1.2")
 
-(eval-when-compile (require 'cl-lib))
+(eval-when-compile
+  (require 'cl-lib)
+  (require 'regexp-opt))
 
 (declare-function nfd "ucs-normalize" (char))
 

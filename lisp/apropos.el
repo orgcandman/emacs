@@ -1,6 +1,6 @@
 ;;; apropos.el --- apropos commands for users and programmers
 
-;; Copyright (C) 1989, 1994-1995, 2001-2017 Free Software Foundation,
+;; Copyright (C) 1989, 1994-1995, 2001-2019 Free Software Foundation,
 ;; Inc.
 
 ;; Author: Joe Wells <jbw@bigbird.bu.edu>
@@ -21,7 +21,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -211,6 +211,12 @@ docstring.  Each docstring is either nil or a string.")
   "List of synonyms known by apropos.
 Each element is a list of words where the first word is the standard Emacs
 term, and the rest of the words are alternative terms.")
+
+(defvar apropos--current nil
+  "List of current Apropos function followed by its arguments.
+Used by `apropos--revert-buffer' to regenerate the current
+Apropos buffer.  Each Apropos command should ensure it is set
+before `apropos-mode' makes it buffer-local.")
 
 
 ;;; Button types used by apropos
@@ -472,10 +478,18 @@ This requires at least two keywords (unless only one was given)."
   "Return t if DOC is really matched by the current keywords."
   (apropos-true-hit doc apropos-all-words))
 
+(defun apropos--revert-buffer (_ignore-auto noconfirm)
+  "Regenerate current Apropos buffer using `apropos--current'.
+Intended as a value for `revert-buffer-function'."
+  (when (or noconfirm (yes-or-no-p "Revert apropos buffer? "))
+    (apply #'funcall apropos--current)))
+
 (define-derived-mode apropos-mode special-mode "Apropos"
   "Major mode for following hyperlinks in output of apropos commands.
 
-\\{apropos-mode-map}")
+\\{apropos-mode-map}"
+  (make-local-variable 'apropos--current)
+  (setq-local revert-buffer-function #'apropos--revert-buffer))
 
 (defvar apropos-multi-type t
   "If non-nil, this apropos query concerns multiple types.
@@ -514,6 +528,19 @@ options only, i.e. behave like `apropos-user-option'."
   (let ((apropos-do-all (if do-not-all nil t)))
     (apropos-user-option pattern)))
 
+;;;###autoload
+(defun apropos-local-variable (pattern &optional buffer)
+  "Show buffer-local variables that match PATTERN.
+Optional arg BUFFER (default: current buffer) is the buffer to check.
+
+The output includes variables that are not yet set in BUFFER, but that
+will be buffer-local when set."
+  (interactive (list (apropos-read-pattern "buffer-local variable")))
+  (unless buffer (setq buffer  (current-buffer)))
+  (apropos-command pattern nil (lambda (symbol)
+                                 (and (local-variable-if-set-p symbol)
+                                      (get symbol 'variable-documentation)))))
+
 ;; For auld lang syne:
 ;;;###autoload
 (defalias 'command-apropos 'apropos-command)
@@ -537,6 +564,7 @@ while a list of strings is used as a word list."
 		      (if (or current-prefix-arg apropos-do-all)
 			  "command or function" "command"))
 		     current-prefix-arg))
+  (setq apropos--current (list #'apropos-command pattern do-all var-predicate))
   (apropos-parse-pattern pattern)
   (let ((message
 	 (let ((standard-output (get-buffer-create "*Apropos*")))
@@ -615,6 +643,7 @@ consider all symbols (if they match PATTERN).
 Returns list of symbols and documentation found."
   (interactive (list (apropos-read-pattern "symbol")
 		     current-prefix-arg))
+  (setq apropos--current (list #'apropos pattern do-all))
   (apropos-parse-pattern pattern)
   (apropos-symbols-internal
    (apropos-internal apropos-regexp
@@ -657,6 +686,7 @@ the output includes key-bindings of commands."
                          libs))
                   libs)))
      (list (completing-read "Describe library: " libs nil t))))
+  (setq apropos--current (list #'apropos-library file))
   (let ((symbols nil)
 	;; (autoloads nil)
 	(provides nil)
@@ -668,19 +698,19 @@ the output includes key-bindings of commands."
             (re (concat "\\(?:\\`\\|[\\/]\\)" (regexp-quote file)
                         "\\(\\.\\|\\'\\)")))
         (while (and lh (null lh-entry))
-          (if (and (caar lh) (string-match re (caar lh)))
+          (if (and (stringp (caar lh)) (string-match re (caar lh)))
               (setq lh-entry (car lh))
             (setq lh (cdr lh)))))
       (unless lh-entry (error "Unknown library `%s'" file)))
     (dolist (x (cdr lh-entry))
       (pcase (car-safe x)
 	;; (autoload (push (cdr x) autoloads))
-	(`require (push (cdr x) requires))
-	(`provide (push (cdr x) provides))
-        (`t nil) ; Skip "was an autoload" entries.
+	('require (push (cdr x) requires))
+	('provide (push (cdr x) provides))
+        ('t nil) ; Skip "was an autoload" entries.
         ;; FIXME: Print information about each individual method: both
         ;; its docstring and specializers (bug#21422).
-        (`cl-defmethod (push (cadr x) provides))
+        ('cl-defmethod (push (cadr x) provides))
 	(_ (push (or (cdr-safe x) x) symbols))))
     (let ((apropos-pattern "")) ;Dummy binding for apropos-symbols-internal.
       (apropos-symbols-internal
@@ -763,6 +793,7 @@ names and values of properties.
 Returns list of symbols and values found."
   (interactive (list (apropos-read-pattern "value")
 		     current-prefix-arg))
+  (setq apropos--current (list #'apropos-value pattern do-all))
   (apropos-parse-pattern pattern)
   (or do-all (setq do-all apropos-do-all))
   (setq apropos-accumulator ())
@@ -795,6 +826,36 @@ Returns list of symbols and values found."
    (let ((apropos-multi-type do-all))
      (apropos-print nil "\n----------------\n")))
 
+;;;###autoload
+(defun apropos-local-value (pattern &optional buffer)
+  "Show buffer-local variables whose values match PATTERN.
+This is like `apropos-value', but only for buffer-local variables.
+Optional arg BUFFER (default: current buffer) is the buffer to check."
+  (interactive (list (apropos-read-pattern "value of buffer-local variable")))
+  (unless buffer (setq buffer  (current-buffer)))
+  (setq apropos--current (list #'apropos-local-value pattern buffer))
+  (apropos-parse-pattern pattern)
+  (setq apropos-accumulator  ())
+  (let ((var             nil))
+    (mapatoms
+     (lambda (symb)
+       (unless (memq symb '(apropos-regexp apropos-pattern apropos-all-words-regexp
+                            apropos-words apropos-all-words apropos-accumulator symb var))
+         (setq var  (apropos-value-internal 'local-variable-if-set-p symb 'symbol-value)))
+       (when (and (fboundp 'apropos-false-hit-str)  (apropos-false-hit-str var))
+         (setq var nil))
+       (when var
+         (setq apropos-accumulator (cons (list symb (apropos-score-str var) nil var)
+                                         apropos-accumulator))))))
+  (let ((apropos-multi-type  nil))
+    (if (> emacs-major-version 20)
+        (apropos-print
+         nil "\n----------------\n"
+         (format "Buffer `%s' has the following local variables\nmatching %s`%s':"
+                 (buffer-name buffer)
+                 (if (consp pattern) "keywords " "")
+                 pattern))
+      (apropos-print nil "\n----------------\n"))))
 
 ;;;###autoload
 (defun apropos-documentation (pattern &optional do-all)
@@ -814,6 +875,7 @@ Returns list of symbols and documentation found."
   ;; output, but I cannot see that that is true.
   (interactive (list (apropos-read-pattern "documentation")
 		     current-prefix-arg))
+  (setq apropos--current (list #'apropos-documentation pattern do-all))
   (apropos-parse-pattern pattern)
   (or do-all (setq do-all apropos-do-all))
   (setq apropos-accumulator () apropos-files-scanned ())

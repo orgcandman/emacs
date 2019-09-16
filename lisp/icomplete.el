@@ -1,10 +1,9 @@
-;;; icomplete.el --- minibuffer completion incremental feedback
+;;; icomplete.el --- minibuffer completion incremental feedback -*- lexical-binding: t -*-
 
-;; Copyright (C) 1992-1994, 1997, 1999, 2001-2017 Free Software
+;; Copyright (C) 1992-1994, 1997, 1999, 2001-2019 Free Software
 ;; Foundation, Inc.
 
-;; Author: Ken Manheimer <klm@i.am>
-;; Maintainer: Ken Manheimer <klm@i.am>
+;; Author: Ken Manheimer <ken dot manheimer at gmail...>
 ;; Created: Mar 1993 Ken Manheimer, klm@nist.gov - first release to usenet
 ;; Keywords: help, abbrev
 
@@ -21,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -56,10 +55,6 @@
   :link '(info-link "(emacs)Icomplete")
   :group 'minibuffer)
 
-(defvar icomplete-prospects-length 80)
-(make-obsolete-variable
- 'icomplete-prospects-length 'icomplete-prospects-height "23.1")
-
 (defcustom icomplete-separator " | "
   "String used by Icomplete to separate alternatives in the minibuffer."
   :type 'string
@@ -91,13 +86,14 @@ Otherwise this should be a list of the completion tables (e.g.,
   :version "24.4")
 
 ;;;_* User Customization variables
-(defcustom icomplete-prospects-height
-  ;; 20 is an estimated common size for the prompt + minibuffer content, to
-  ;; try to guess the number of lines used up by icomplete-prospects-length.
-  (+ 1 (/ (+ icomplete-prospects-length 20) (window-width)))
+(defcustom icomplete-prospects-height 2
+  ;; We used to compute how many lines 100 characters would take in
+  ;; the current window width, but the return value of `window-width'
+  ;; is unreliable on startup (e.g., if we're in daemon mode), so now
+  ;; we simply base the default value on an 80 column window.
   "Maximum number of lines to use in the minibuffer."
   :type 'integer
-  :version "23.1")
+  :version "26.1")
 
 (defcustom icomplete-compute-delay .3
   "Completions-computation stall, used only with large-number completions.
@@ -148,7 +144,7 @@ icompletion is occurring."
 
 (defvar icomplete-minibuffer-map
   (let ((map (make-sparse-keymap)))
-    (define-key map [?\M-\t] 'minibuffer-force-complete)
+    (define-key map [?\M-\t] 'icomplete-force-complete)
     (define-key map [?\C-j]  'icomplete-force-complete-and-exit)
     (define-key map [?\C-.]  'icomplete-forward-completions)
     (define-key map [?\C-,]  'icomplete-backward-completions)
@@ -164,6 +160,12 @@ the default otherwise."
           (> (icomplete--field-end) (icomplete--field-beg)))
       (minibuffer-force-complete-and-exit)
     (minibuffer-complete-and-exit)))
+
+(defun icomplete-force-complete ()
+  "Complete the icomplete minibuffer."
+  (interactive)
+  ;; We're not at all interested in cycling here (bug#34077).
+  (minibuffer-force-complete nil nil 'dont-cycle))
 
 (defun icomplete-forward-completions ()
   "Step forward completions by one entry.
@@ -197,9 +199,6 @@ Last entry becomes the first and can be selected with
 ;;;###autoload
 (define-minor-mode icomplete-mode
   "Toggle incremental minibuffer completion (Icomplete mode).
-With a prefix argument ARG, enable Icomplete mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-the mode if ARG is omitted or nil.
 
 When this global minor mode is enabled, typing in the minibuffer
 continuously displays a list of possible completions that match
@@ -374,8 +373,21 @@ If there are multiple possibilities, `icomplete-separator' separates them.
 The displays for unambiguous matches have ` [Matched]' appended
 \(whether complete or not), or ` [No matches]', if no eligible
 matches exist."
-  (let* ((minibuffer-completion-table candidates)
-	 (minibuffer-completion-predicate predicate)
+  (let* ((ignored-extension-re
+          (and minibuffer-completing-file-name
+               icomplete-with-completion-tables
+               completion-ignored-extensions
+               (concat "\\(?:\\`\\.\\./\\|"
+                       (regexp-opt completion-ignored-extensions)
+                       "\\)\\'")))
+         (minibuffer-completion-table candidates)
+	 (minibuffer-completion-predicate
+          (if ignored-extension-re
+              (lambda (cand)
+                (and (not (string-match ignored-extension-re cand))
+                     (or (null predicate)
+                         (funcall predicate cand))))
+            predicate))
 	 (md (completion--field-metadata (icomplete--field-beg)))
 	 (comps (completion-all-sorted-completions
                  (icomplete--field-beg) (icomplete--field-end)))
@@ -386,11 +398,8 @@ matches exist."
     ;; `concat'/`mapconcat' is the slow part.
     (if (not (consp comps))
 	(progn ;;(debug (format "Candidates=%S field=%S" candidates name))
-	       (format " %sNo matches%s" open-bracket close-bracket))
+	  (format " %sNo matches%s" open-bracket close-bracket))
       (if last (setcdr last nil))
-      (when (and minibuffer-completing-file-name
-                 icomplete-with-completion-tables)
-        (setq comps (completion-pcm--filename-try-filter comps)))
       (let* ((most-try
               (if (and base-size (> base-size 0))
                   (completion-try-completion
@@ -476,11 +485,11 @@ matches exist."
 		  (if prefix-len (substring (car comps) prefix-len) (car comps))
 		  comps (cdr comps))
 	    (setq prospects-len
-                           (+ (string-width comp)
-			      (string-width icomplete-separator)
-			      prospects-len))
-		     (if (< prospects-len prospects-max)
-			 (push comp prospects)
+                  (+ (string-width comp)
+		     (string-width icomplete-separator)
+		     prospects-len))
+	    (if (< prospects-len prospects-max)
+		(push comp prospects)
 	      (setq limit t))))
 	(setq prospects (nreverse prospects))
 	;; Decorate first of the prospects.

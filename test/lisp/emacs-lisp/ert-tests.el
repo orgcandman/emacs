@@ -1,6 +1,6 @@
 ;;; ert-tests.el --- ERT's self-tests  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2007-2008, 2010-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2008, 2010-2019 Free Software Foundation, Inc.
 
 ;; Author: Christian Ohler <ohler@gnu.org>
 
@@ -17,7 +17,7 @@
 ;; General Public License for more details.
 ;;
 ;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see `http://www.gnu.org/licenses/'.
+;; along with this program.  If not, see `https://www.gnu.org/licenses/'.
 
 ;;; Commentary:
 
@@ -188,7 +188,7 @@ failed or if there was a problem."
 
 (ert-deftest ert-test-should-with-macrolet ()
   (let ((test (make-ert-test :body (lambda ()
-                                     (cl-macrolet ((foo () `(progn t nil)))
+                                     (cl-macrolet ((foo () '(progn t nil)))
                                        (should (foo)))))))
     (let ((result (let ((ert-debug-on-error nil))
                     (ert-run-test test))))
@@ -294,6 +294,15 @@ failed or if there was a problem."
                   "the error signaled was a subtype of the expected type")))))
     ))
 
+(ert-deftest ert-test-should-error-argument ()
+  "Errors due to evaluating arguments should not break tests."
+  (should-error (identity (/ 1 0))))
+
+(ert-deftest ert-test-should-error-macroexpansion ()
+  "Errors due to expanding macros should not break tests."
+  (cl-macrolet ((test () (error "Foo")))
+    (should-error (test))))
+
 (ert-deftest ert-test-skip-unless ()
   ;; Don't skip.
   (let ((test (make-ert-test :body (lambda () (skip-unless t)))))
@@ -352,7 +361,7 @@ This macro is used to test if macroexpansion in `should' works."
   (let ((abc (ert-get-test 'ert-test-abc)))
     (should (equal (ert-test-tags abc) '(bar)))
     (should (equal (ert-test-documentation abc) "foo")))
-  (should (equal (symbol-file 'ert-test-deftest 'ert-deftest)
+  (should (equal (symbol-file 'ert-test-deftest 'ert--test)
                  (symbol-file 'ert-test--which-file 'defun)))
 
   (ert-deftest ert-test-def () :expected-result ':passed)
@@ -367,12 +376,8 @@ This macro is used to test if macroexpansion in `should' works."
          (test (make-ert-test :body test-body))
          (result (ert-run-test test)))
     (should (ert-test-failed-p result))
-    (with-temp-buffer
-      (ert--print-backtrace (ert-test-failed-backtrace result))
-      (goto-char (point-min))
-      (end-of-line)
-      (let ((first-line (buffer-substring-no-properties (point-min) (point))))
-        (should (equal first-line (format "  %S()" test-body)))))))
+    (should (eq (backtrace-frame-fun (car (ert-test-failed-backtrace result)))
+                'signal))))
 
 (ert-deftest ert-test-messages ()
   :tags '(:causes-redisplay)
@@ -485,54 +490,12 @@ This macro is used to test if macroexpansion in `should' works."
                :name nil
                :body nil
                :tags '(a b))))
-    (should (equal (ert-select-tests `(tag a) (list test)) (list test)))
-    (should (equal (ert-select-tests `(tag b) (list test)) (list test)))
-    (should (equal (ert-select-tests `(tag c) (list test)) '()))))
+    (should (equal (ert-select-tests '(tag a) (list test)) (list test)))
+    (should (equal (ert-select-tests '(tag b) (list test)) (list test)))
+    (should (equal (ert-select-tests '(tag c) (list test)) '()))))
 
 
 ;;; Tests for utility functions.
-(ert-deftest ert-test-proper-list-p ()
-  (should (ert--proper-list-p '()))
-  (should (ert--proper-list-p '(1)))
-  (should (ert--proper-list-p '(1 2)))
-  (should (ert--proper-list-p '(1 2 3)))
-  (should (ert--proper-list-p '(1 2 3 4)))
-  (should (not (ert--proper-list-p 'a)))
-  (should (not (ert--proper-list-p '(1 . a))))
-  (should (not (ert--proper-list-p '(1 2 . a))))
-  (should (not (ert--proper-list-p '(1 2 3 . a))))
-  (should (not (ert--proper-list-p '(1 2 3 4 . a))))
-  (let ((a (list 1)))
-    (setf (cdr (last a)) a)
-    (should (not (ert--proper-list-p a))))
-  (let ((a (list 1 2)))
-    (setf (cdr (last a)) a)
-    (should (not (ert--proper-list-p a))))
-  (let ((a (list 1 2 3)))
-    (setf (cdr (last a)) a)
-    (should (not (ert--proper-list-p a))))
-  (let ((a (list 1 2 3 4)))
-    (setf (cdr (last a)) a)
-    (should (not (ert--proper-list-p a))))
-  (let ((a (list 1 2)))
-    (setf (cdr (last a)) (cdr a))
-    (should (not (ert--proper-list-p a))))
-  (let ((a (list 1 2 3)))
-    (setf (cdr (last a)) (cdr a))
-    (should (not (ert--proper-list-p a))))
-  (let ((a (list 1 2 3 4)))
-    (setf (cdr (last a)) (cdr a))
-    (should (not (ert--proper-list-p a))))
-  (let ((a (list 1 2 3)))
-    (setf (cdr (last a)) (cddr a))
-    (should (not (ert--proper-list-p a))))
-  (let ((a (list 1 2 3 4)))
-    (setf (cdr (last a)) (cddr a))
-    (should (not (ert--proper-list-p a))))
-  (let ((a (list 1 2 3 4)))
-    (setf (cdr (last a)) (cl-cdddr a))
-    (should (not (ert--proper-list-p a)))))
-
 (ert-deftest ert-test-parse-keys-and-body ()
   (should (equal (ert--parse-keys-and-body '(foo)) '(nil (foo))))
   (should (equal (ert--parse-keys-and-body '(:bar foo)) '((:bar foo) nil)))

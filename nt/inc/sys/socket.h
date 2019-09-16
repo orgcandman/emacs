@@ -1,4 +1,4 @@
-/* Copyright (C) 1995, 2001-2017 Free Software Foundation, Inc.
+/* Copyright (C) 1995, 2001-2019 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -13,7 +13,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 
 /* Workable version of <sys/socket.h> based on winsock.h */
@@ -49,6 +49,11 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #define timeval ws_timeval
 #endif
 
+#if defined __MINGW32_VERSION && __MINGW32_VERSION >= 5000002L
+/* Need winerror.h before winsock2.h with mingw.org's MinGW 5.x,
+   otherwise some error codes are not defined.  */
+# include <winerror.h>
+#endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
 /* process.c uses uint16_t (from C99) for IPv6, but

@@ -1,6 +1,6 @@
 ;;; calc-comb.el --- combinatoric functions for Calc
 
-;; Copyright (C) 1990-1993, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1990-1993, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: David Gillespie <daveg@synaptics.com>
 
@@ -17,7 +17,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -211,8 +211,8 @@
   (calc-invert-func)
   (calc-next-prime iters))
 
-(defun calc-prime-factors (iters)
-  (interactive "p")
+(defun calc-prime-factors (&optional _iters)
+  (interactive)
   (calc-slow-wrapper
    (let ((res (calcFunc-prfac (calc-top-n 1))))
      (if (not math-prime-factors-finished)
@@ -260,7 +260,7 @@
 (defun calcFunc-lcm (a b)
   (let ((g (calcFunc-gcd a b)))
     (if (Math-numberp g)
-	(math-div (math-mul a b) g)
+	(math-div (math-abs (math-mul a b)) g)
       (list 'calcFunc-lcm a b))))
 
 (defun calcFunc-egcd (a b)   ; Knuth section 4.5.2
@@ -362,11 +362,13 @@
     (math-gammap1-raw '(float -25 -2))))
 
 (defun math-factorial-iter (count n f)
-  (if (= (% n 5) 1)
-      (math-working (format "factorial(%d)" (1- n)) f))
-  (if (> count 0)
-      (math-factorial-iter (1- count) (1+ n) (math-mul n f))
-    f))
+  (while (> count 0)
+    (if (= (% n 5) 1)
+	(math-working (format "factorial(%d)" (1- n)) f))
+    (setq count (1- count)
+	  f (math-mul n f)
+	  n (1+ n)))
+  f)
 
 (defun calcFunc-dfact (n)   ; [I I] [F F] [Public]
   (cond ((Math-integer-negp n)
@@ -578,7 +580,7 @@
     ;; deduce a better value for RAND_MAX.
     (let ((i 0))
       (while (< (setq i (1+ i)) 30)
-        (if (> (lsh (math-abs (random)) math-random-shift) 4095)
+        (if (> (ash (math-abs (random)) math-random-shift) 4095)
             (setq math-random-shift (1- math-random-shift))))))
   (setq math-last-RandSeed var-RandSeed
 	math-gaussian-cache nil))
@@ -590,11 +592,11 @@
 				   (cdr math-random-table))
 	      math-random-ptr2 (or (cdr math-random-ptr2)
 				   (cdr math-random-table)))
-	(logand (lsh (setcar math-random-ptr1
+	(logand (ash (setcar math-random-ptr1
 			     (logand (- (car math-random-ptr1)
 					(car math-random-ptr2)) 524287))
 		     -6) 1023))
-    (logand (lsh (random) math-random-shift) 1023)))
+    (logand (ash (random) math-random-shift) 1023)))
 
 
 ;;; Produce a random digit in the range 0..999.
@@ -804,7 +806,6 @@
 		  ((Math-integer-negp n)
 		   '(nil))
 		  ((Math-natnum-lessp n 8000000)
-		   (setq n (math-fixnum n))
 		   (let ((i -1) v)
 		     (while (and (> (% n (setq v (aref math-primes-table
 						       (setq i (1+ i)))))

@@ -1,6 +1,6 @@
 ;;; tool-bar.el --- setting up the tool bar
 
-;; Copyright (C) 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2000-2019 Free Software Foundation, Inc.
 
 ;; Author: Dave Love <fx@gnu.org>
 ;; Keywords: mouse frames
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -44,9 +44,6 @@
 ;; when you are on a tty.  I hope that won't cause too much trouble -- rms.
 (define-minor-mode tool-bar-mode
   "Toggle the tool bar in all graphical frames (Tool Bar mode).
-With a prefix argument ARG, enable Tool Bar mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-Tool Bar mode if ARG is omitted or nil.
 
 See `tool-bar-add-item' and `tool-bar-add-item-from-menu' for
 conveniently adding tool bar items."

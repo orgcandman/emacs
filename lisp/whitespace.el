@@ -1,9 +1,8 @@
-;;; whitespace.el --- minor mode to visualize TAB, (HARD) SPACE, NEWLINE
+;;; whitespace.el --- minor mode to visualize TAB, (HARD) SPACE, NEWLINE -*- lexical-binding: t -*-
 
-;; Copyright (C) 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2000-2019 Free Software Foundation, Inc.
 
-;; Author: Vinicius Jose Latorre <viniciusjl@ig.com.br>
-;; Maintainer: Vinicius Jose Latorre <viniciusjl@ig.com.br>
+;; Author: Vinicius Jose Latorre <viniciusjl.gnu@gmail.com>
 ;; Keywords: data, wp
 ;; Version: 13.2.2
 ;; X-URL: http://www.emacswiki.org/cgi-bin/wiki/ViniciusJoseLatorre
@@ -21,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -495,7 +494,8 @@ Used when `whitespace-style' includes the value `spaces'.")
 (defvar whitespace-tab 'whitespace-tab
   "Symbol face used to visualize TAB.
 Used when `whitespace-style' includes the value `tabs'.")
-(make-obsolete-variable 'whitespace-tab "use the face instead." "24.4")
+(make-obsolete-variable 'whitespace-tab
+                        "customize the face `whitespace-tab' instead." "24.4")
 
 (defface whitespace-tab
   '((((class color) (background dark))
@@ -923,11 +923,6 @@ Any other value is treated as nil."
 ;;;###autoload
 (define-minor-mode whitespace-mode
   "Toggle whitespace visualization (Whitespace mode).
-With a prefix argument ARG, enable Whitespace mode if ARG is
-positive, and disable it otherwise.
-
-If called from Lisp, also enables the mode if ARG is omitted or nil,
-and toggles it if ARG is `toggle'.
 
 See also `whitespace-style', `whitespace-newline' and
 `whitespace-display-mappings'."
@@ -948,11 +943,6 @@ See also `whitespace-style', `whitespace-newline' and
 ;;;###autoload
 (define-minor-mode whitespace-newline-mode
   "Toggle newline visualization (Whitespace Newline mode).
-With a prefix argument ARG, enable Whitespace Newline mode if ARG
-is positive, and disable it otherwise.
-
-If called from Lisp, also enables the mode if ARG is omitted or nil,
-and toggles it if ARG is `toggle'.
 
 Use `whitespace-newline-mode' only for NEWLINE visualization
 exclusively.  For other visualizations, including NEWLINE
@@ -978,11 +968,6 @@ See also `whitespace-newline' and `whitespace-display-mappings'."
 ;;;###autoload
 (define-minor-mode global-whitespace-mode
   "Toggle whitespace visualization globally (Global Whitespace mode).
-With a prefix argument ARG, enable Global Whitespace mode if ARG
-is positive, and disable it otherwise.
-
-If called from Lisp, also enables the mode if ARG is omitted or nil,
-and toggles it if ARG is `toggle'.
 
 See also `whitespace-style', `whitespace-newline' and
 `whitespace-display-mappings'."
@@ -1039,11 +1024,6 @@ This variable is normally modified via `add-function'.")
 ;;;###autoload
 (define-minor-mode global-whitespace-newline-mode
   "Toggle global newline visualization (Global Whitespace Newline mode).
-With a prefix argument ARG, enable Global Whitespace Newline mode
-if ARG is positive, and disable it otherwise.
-
-If called from Lisp, also enables the mode if ARG is omitted or nil,
-and toggles it if ARG is `toggle'.
 
 Use `global-whitespace-newline-mode' only for NEWLINE
 visualization exclusively.  For other visualizations, including
@@ -1133,12 +1113,6 @@ SYMBOL	is a valid symbol associated with CHAR.
 
 (defvar whitespace-active-style nil
   "Used to save locally `whitespace-style' value.")
-
-(defvar whitespace-indent-tabs-mode indent-tabs-mode
-  "Used to save locally `indent-tabs-mode' value.")
-
-(defvar whitespace-tab-width tab-width
-  "Used to save locally `tab-width' value.")
 
 (defvar whitespace-point (point)
   "Used to save locally current point value.
@@ -1415,12 +1389,6 @@ documentation."
     ;; PROBLEM 6: `tab-width' or more SPACEs after TAB
     (whitespace-cleanup-region (point-min) (point-max)))))
 
-(defun whitespace-ensure-local-variables ()
-  "Set `whitespace-indent-tabs-mode' and `whitespace-tab-width' locally."
-  (set (make-local-variable 'whitespace-indent-tabs-mode)
-       indent-tabs-mode)
-  (set (make-local-variable 'whitespace-tab-width)
-       tab-width))
 
 ;;;###autoload
 (defun whitespace-cleanup-region (start end)
@@ -1467,11 +1435,8 @@ documentation."
       ;; read-only buffer
       (whitespace-warn-read-only "cleanup region")
     ;; non-read-only buffer
-    (whitespace-ensure-local-variables)
     (let ((rstart           (min start end))
 	  (rend             (copy-marker (max start end)))
-	  (indent-tabs-mode whitespace-indent-tabs-mode)
-	  (tab-width        whitespace-tab-width)
 	  overwrite-mode		; enforce no overwrite
 	  tmp)
       (save-excursion
@@ -1512,7 +1477,7 @@ documentation."
          ;; by SPACEs.
          ((memq 'space-after-tab whitespace-style)
           (whitespace-replace-action
-           (if whitespace-indent-tabs-mode 'tabify 'untabify)
+           (if indent-tabs-mode 'tabify 'untabify)
            rstart rend (whitespace-space-after-tab-regexp) 1))
          ;; ACTION: replace `tab-width' or more SPACEs by TABs.
          ((memq 'space-after-tab::tab whitespace-style)
@@ -1531,9 +1496,9 @@ documentation."
          ;; by SPACEs.
          ((memq 'space-before-tab whitespace-style)
           (whitespace-replace-action
-           (if whitespace-indent-tabs-mode 'tabify 'untabify)
+           (if indent-tabs-mode 'tabify 'untabify)
            rstart rend whitespace-space-before-tab-regexp
-           (if whitespace-indent-tabs-mode 0 2)))
+           (if indent-tabs-mode 0 2)))
          ;; ACTION: replace SPACEs before TAB by TABs.
          ((memq 'space-before-tab::tab whitespace-style)
           (whitespace-replace-action
@@ -1564,25 +1529,25 @@ See also `tab-width'."
 
 
 (defun whitespace-regexp (regexp &optional kind)
-  "Return REGEXP depending on `whitespace-indent-tabs-mode'."
+  "Return REGEXP depending on `indent-tabs-mode'."
   (format
    (cond
     ((or (eq kind 'tab)
-         whitespace-indent-tabs-mode)
+         indent-tabs-mode)
      (car regexp))
     ((or (eq kind 'space)
-         (not whitespace-indent-tabs-mode))
+         (not indent-tabs-mode))
      (cdr regexp)))
-   whitespace-tab-width))
+   tab-width))
 
 
 (defun whitespace-indentation-regexp (&optional kind)
-  "Return the indentation regexp depending on `whitespace-indent-tabs-mode'."
+  "Return the indentation regexp depending on `indent-tabs-mode'."
   (whitespace-regexp whitespace-indentation-regexp kind))
 
 
 (defun whitespace-space-after-tab-regexp (&optional kind)
-  "Return the space-after-tab regexp depending on `whitespace-indent-tabs-mode'."
+  "Return the space-after-tab regexp depending on `indent-tabs-mode'."
   (whitespace-regexp whitespace-space-after-tab-regexp kind))
 
 
@@ -1742,12 +1707,12 @@ cleaning up these problems."
                        (setq has-bogus (memq (car option) style)))
                      t)))
              whitespace-report-list)))
-      (when (pcase report-if-bogus (`nil t) (`never nil) (_ has-bogus))
+      (when (pcase report-if-bogus ('nil t) ('never nil) (_ has-bogus))
         (whitespace-kill-buffer whitespace-report-buffer-name)
-        ;; `whitespace-indent-tabs-mode' is local to current buffer
-        ;; `whitespace-tab-width' is local to current buffer
-        (let ((ws-indent-tabs-mode whitespace-indent-tabs-mode)
-              (ws-tab-width whitespace-tab-width))
+        ;; `indent-tabs-mode' may be local to current buffer
+        ;; `tab-width' may be local to current buffer
+        (let ((ws-indent-tabs-mode indent-tabs-mode)
+              (ws-tab-width tab-width))
           (with-current-buffer (get-buffer-create
                                 whitespace-report-buffer-name)
             (erase-buffer)
@@ -2027,7 +1992,6 @@ resultant list will be returned."
        (if (listp whitespace-style)
 	   whitespace-style
 	 (list whitespace-style)))
-  (whitespace-ensure-local-variables)
   ;; turn on whitespace
   (when whitespace-active-style
     (whitespace-color-on)
@@ -2105,10 +2069,10 @@ resultant list will be returned."
            `((,(let ((line-column (or whitespace-line-column fill-column)))
                  (format
                   "^\\([^\t\n]\\{%s\\}\\|[^\t\n]\\{0,%s\\}\t\\)\\{%d\\}%s\\(.+\\)$"
-                  whitespace-tab-width
-                  (1- whitespace-tab-width)
-                  (/ line-column whitespace-tab-width)
-                  (let ((rem (% line-column whitespace-tab-width)))
+                  tab-width
+                  (1- tab-width)
+                  (/ line-column tab-width)
+                  (let ((rem (% line-column tab-width)))
                     (if (zerop rem)
                         ""
                       (format ".\\{%d\\}" rem)))))
@@ -2123,7 +2087,7 @@ resultant list will be returned."
               ,(cond
                 ((memq 'space-before-tab whitespace-active-style)
                  ;; Show SPACEs before TAB (indent-tabs-mode).
-                 (if whitespace-indent-tabs-mode 1 2))
+                 (if indent-tabs-mode 1 2))
                 ((memq 'space-before-tab::tab whitespace-active-style)
                  1)
                 ((memq 'space-before-tab::space whitespace-active-style)
@@ -2389,9 +2353,10 @@ Also refontify when necessary."
     (let (vecs vec)
       ;; Remember whether a buffer has a local display table.
       (unless whitespace-display-table-was-local
-	(setq whitespace-display-table-was-local t
-	      whitespace-display-table
-	      (copy-sequence buffer-display-table))
+	(setq whitespace-display-table-was-local t)
+        (unless (or whitespace-mode global-whitespace-mode)
+	      (setq whitespace-display-table
+	      (copy-sequence buffer-display-table)))
 	;; Assure `buffer-display-table' is unique
 	;; when two or more windows are visible.
 	(setq buffer-display-table

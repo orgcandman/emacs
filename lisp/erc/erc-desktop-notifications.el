@@ -1,6 +1,6 @@
-;; erc-desktop-notifications.el -- Send notification on PRIVMSG or mentions
+;; erc-desktop-notifications.el -- Send notification on PRIVMSG or mentions -*- lexical-binding:t -*-
 
-;; Copyright (C) 2012-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2012-2019 Free Software Foundation, Inc.
 
 ;; Author: Julien Danjou <julien@danjou.info>
 ;; Keywords: comm
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -59,13 +59,19 @@
 This will replace the last notification sent with this function."
   (dbus-ignore-errors
     (setq erc-notifications-last-notification
-          (notifications-notify :bus erc-notifications-bus
-				:title (xml-escape-string nick)
-                                :body (xml-escape-string msg)
-                                :replaces-id erc-notifications-last-notification
-                                :app-icon erc-notifications-icon))))
+          (let ((channel (current-buffer)))
+            (notifications-notify :bus erc-notifications-bus
+                                  :title (format "%s in %s"
+                                                 (xml-escape-string nick)
+                                                 channel)
+                                  :body (xml-escape-string msg)
+                                  :replaces-id erc-notifications-last-notification
+                                  :app-icon erc-notifications-icon
+                                  :actions '("default" "Switch to buffer")
+                                  :on-action (lambda (&rest _)
+                                               (pop-to-buffer channel)))))))
 
-(defun erc-notifications-PRIVMSG (proc parsed)
+(defun erc-notifications-PRIVMSG (_proc parsed)
   (let ((nick (car (erc-parse-user (erc-response.sender parsed))))
         (target (car (erc-response.command-args parsed)))
         (msg (erc-response.contents parsed)))
@@ -98,3 +104,7 @@ This will replace the last notification sent with this function."
 (provide 'erc-desktop-notifications)
 
 ;;; erc-desktop-notifications.el ends here
+
+;; Local Variables:
+;; generated-autoload-file: "erc-loaddefs.el"
+;; End:

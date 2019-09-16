@@ -1,10 +1,10 @@
 ;;; idlw-help.el --- HTML Help code for IDLWAVE
 
-;; Copyright (C) 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2000-2019 Free Software Foundation, Inc.
 ;;
-;; Authors: J.D. Smith <jdsmith@as.arizona.edu>
+;; Authors: JD Smith <jd.smith@utoledo.edu>
 ;;          Carsten Dominik <dominik@science.uva.nl>
-;; Maintainer: J.D. Smith <jdsmith@as.arizona.edu>
+;; Maintainer: emacs-devel@gnu.org
 ;; Package: idlwave
 
 ;; This file is part of GNU Emacs.
@@ -20,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -1181,9 +1181,10 @@ Useful when source code is displayed as help.  See the option
 	(with-syntax-table idlwave-mode-syntax-table
           (set (make-local-variable 'font-lock-defaults)
                idlwave-font-lock-defaults)
-          (if (fboundp 'font-lock-ensure)
+          (if (fboundp 'font-lock-ensure) ; Emacs >= 25.1
               (font-lock-ensure)
-            (font-lock-fontify-buffer))))))
+            ;; Silence "interactive use only" warning on Emacs >= 25.1.
+            (with-no-warnings (font-lock-fontify-buffer)))))))
 
 
 (defun idlwave-help-error (name type class keyword)

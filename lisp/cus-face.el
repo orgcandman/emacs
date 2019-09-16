@@ -1,6 +1,6 @@
 ;;; cus-face.el --- customization support for faces
 ;;
-;; Copyright (C) 1996-1997, 1999-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-1997, 1999-2019 Free Software Foundation, Inc.
 ;;
 ;; Author: Per Abrahamsen <abraham@dina.kvl.dk>
 ;; Keywords: help, faces
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -84,22 +84,22 @@
      (choice :tag "Weight"
 	     :help-echo "Font weight."
 	     :value normal		; default
-	     (const :tag "black" ultra-bold)
-	     (const :tag "bold" bold)
-	     (const :tag "book" semi-light)
-	     (const :tag "demibold" semi-bold)
+	     (const :tag "ultralight" ultra-light)
 	     (const :tag "extralight" extra-light)
-	     (const :tag "extrabold" extra-bold)
-	     (const :tag "heavy" extra-bold)
 	     (const :tag "light" light)
-	     (const :tag "medium" normal)
+	     (const :tag "thin" thin)
+	     (const :tag "semilight" semi-light)
+	     (const :tag "book" semi-light)
 	     (const :tag "normal" normal)
 	     (const :tag "regular" normal)
+	     (const :tag "medium" normal)
 	     (const :tag "semibold" semi-bold)
-	     (const :tag "semilight" semi-light)
-	     (const :tag "ultralight" ultra-light)
+	     (const :tag "demibold" semi-bold)
+	     (const :tag "bold" bold)
+	     (const :tag "extrabold" extra-bold)
+	     (const :tag "heavy" extra-bold)
 	     (const :tag "ultrabold" ultra-bold)
-	     (const :tag "thin" thin)))
+	     (const :tag "black" ultra-bold)))
 
     (:slant
      (choice :tag "Slant"
@@ -342,7 +342,7 @@ argument list."
 	;; is aliased to.
 	(if (get face 'face-alias)
 	    (setq face (get face 'face-alias)))
-	(if custom--inhibit-theme-enable
+	(if (not (custom--should-apply-setting theme))
 	    ;; Just update theme settings.
 	    (custom-push-theme 'theme-face face theme 'set spec)
 	  ;; Update theme settings and set the face spec.

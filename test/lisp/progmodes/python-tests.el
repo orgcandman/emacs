@@ -1,6 +1,6 @@
 ;;; python-tests.el --- Test suite for python.el
 
-;; Copyright (C) 2013-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2013-2019 Free Software Foundation, Inc.
 
 ;; This file is part of GNU Emacs.
 
@@ -15,7 +15,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -133,6 +133,16 @@ default to `point-min' and `point-max' respectively."
             (delete-region (overlay-start overlay)
                            (overlay-end overlay))))
       (buffer-substring-no-properties (point-min) (point-max)))))
+
+(defun python-virt-bin (&optional virt-root)
+  "Return the virtualenv bin dir, starting from VIRT-ROOT.
+If nil, VIRT-ROOT defaults to `python-shell-virtualenv-root'.
+The name of this directory depends on `system-type'."
+  (expand-file-name
+   (concat
+    (file-name-as-directory (or virt-root
+                                python-shell-virtualenv-root))
+    (if (eq system-type 'windows-nt) "Scripts" "bin"))))
 
 
 ;;; Tests for your tests, so you can test while you test.
@@ -259,6 +269,19 @@ foo = long_function_name(
    (python-tests-look-at "var_three, var_four)")
    (should (eq (car (python-indent-context)) :inside-paren-newline-start))
    (should (= (python-indent-calculate-indentation) 4))))
+
+(ert-deftest python-indent-hanging-close-paren ()
+  "Like first pep8 case, but with hanging close paren." ;; See Bug#20742.
+  (python-tests-with-temp-buffer
+   "\
+foo = long_function_name(var_one, var_two,
+                         var_three, var_four
+                         )
+"
+   (should (= (python-indent-calculate-indentation) 0))
+   (python-tests-look-at ")")
+   (should (eq (car (python-indent-context)) :inside-paren-at-closing-paren))
+   (should (= (python-indent-calculate-indentation) 25))))
 
 (ert-deftest python-indent-base-case ()
   "Check base case does not trigger errors."
@@ -654,8 +677,8 @@ async for a in sequencer():
   "The most common case."
   (python-tests-with-temp-buffer
    "
-from foo.bar.baz import something, something_1 \\\\
-    something_2 something_3, \\\\
+from foo.bar.baz import something, something_1 \\
+    something_2 something_3, \\
     something_4, something_5
 "
    (python-tests-look-at "from foo.bar.baz import something, something_1")
@@ -675,14 +698,14 @@ from foo.bar.baz import something, something_1 \\\\
   "A pretty extreme complicated case."
   (python-tests-with-temp-buffer
    "
-objects = Thing.objects.all() \\\\
+objects = Thing.objects.all() \\
                        .filter(
                            type='toy',
                            status='bought'
-                       ) \\\\
+                       ) \\
                        .aggregate(
                            Sum('amount')
-                       ) \\\\
+                       ) \\
                        .values_list()
 "
    (python-tests-look-at "objects = Thing.objects.all()")
@@ -698,7 +721,7 @@ objects = Thing.objects.all() \\\\
    (python-tests-look-at "status='bought'")
    (should (eq (car (python-indent-context)) :inside-paren-newline-start))
    (should (= (python-indent-calculate-indentation) 27))
-   (python-tests-look-at ") \\\\")
+   (python-tests-look-at ") \\")
    (should (eq (car (python-indent-context)) :inside-paren-at-closing-paren))
    (should (= (python-indent-calculate-indentation) 23))
    (python-tests-look-at ".aggregate(")
@@ -708,7 +731,7 @@ objects = Thing.objects.all() \\\\
    (python-tests-look-at "Sum('amount')")
    (should (eq (car (python-indent-context)) :inside-paren-newline-start))
    (should (= (python-indent-calculate-indentation) 27))
-   (python-tests-look-at ") \\\\")
+   (python-tests-look-at ") \\")
    (should (eq (car (python-indent-context)) :inside-paren-at-closing-paren))
    (should (= (python-indent-calculate-indentation) 23))
    (python-tests-look-at ".values_list()")
@@ -723,12 +746,12 @@ objects = Thing.objects.all() \\\\
   "Backslash continuation from block start."
   (python-tests-with-temp-buffer
    "
-with open('/path/to/some/file/you/want/to/read') as file_1, \\\\
+with open('/path/to/some/file/you/want/to/read') as file_1, \\
      open('/path/to/some/file/being/written', 'w') as file_2:
     file_2.write(file_1.read())
 "
    (python-tests-look-at
-    "with open('/path/to/some/file/you/want/to/read') as file_1, \\\\")
+    "with open('/path/to/some/file/you/want/to/read') as file_1, \\")
    (should (eq (car (python-indent-context)) :no-indent))
    (should (= (python-indent-calculate-indentation) 0))
    (python-tests-look-at
@@ -744,35 +767,35 @@ with open('/path/to/some/file/you/want/to/read') as file_1, \\\\
   "Backslash continuation from assignment."
   (python-tests-with-temp-buffer
    "
-super_awful_assignment = some_calculation() and \\\\
-                         another_calculation() and \\\\
-                         some_final_calculation()
+super_awful_assignment = some_calculation() and \\
+    another_calculation() and \\
+    some_final_calculation()
 "
    (python-tests-look-at
-    "super_awful_assignment = some_calculation() and \\\\")
+    "super_awful_assignment = some_calculation() and \\")
    (should (eq (car (python-indent-context)) :no-indent))
    (should (= (python-indent-calculate-indentation) 0))
-   (python-tests-look-at "another_calculation() and \\\\")
+   (python-tests-look-at "another_calculation() and \\")
    (should (eq (car (python-indent-context))
                :after-backslash-assignment-continuation))
-   (should (= (python-indent-calculate-indentation) 25))
+   (should (= (python-indent-calculate-indentation) python-indent-offset))
    (python-tests-look-at "some_final_calculation()")
    (should (eq (car (python-indent-context)) :after-backslash))
-   (should (= (python-indent-calculate-indentation) 25))))
+   (should (= (python-indent-calculate-indentation) python-indent-offset))))
 
 (ert-deftest python-indent-after-backslash-5 ()
   "Dotted continuation bizarre example."
   (python-tests-with-temp-buffer
    "
 def delete_all_things():
-    Thing \\\\
-        .objects.all() \\\\
+    Thing \\
+        .objects.all() \\
                 .delete()
 "
-   (python-tests-look-at "Thing \\\\")
+   (python-tests-look-at "Thing \\")
    (should (eq (car (python-indent-context)) :after-block-start))
    (should (= (python-indent-calculate-indentation) 4))
-   (python-tests-look-at ".objects.all() \\\\")
+   (python-tests-look-at ".objects.all() \\")
    (should (eq (car (python-indent-context)) :after-backslash-first-line))
    (should (= (python-indent-calculate-indentation) 8))
    (python-tests-look-at ".delete()")
@@ -1109,6 +1132,37 @@ def fn(a, b, c=True):
    (should (eq (car (python-indent-context)) :inside-string))
    (should (= (python-indent-calculate-indentation) 4))))
 
+(ert-deftest python-indent-electric-comma-inside-multiline-string ()
+  "Test indentation ...."
+  (python-tests-with-temp-buffer
+   "
+a = (
+    '''\
+- foo,
+- bar
+'''
+"
+   (python-tests-look-at "- bar")
+   (should (eq (car (python-indent-context)) :inside-string))
+   (goto-char (line-end-position))
+   (python-tests-self-insert ",")
+   (should (= (current-indentation) 0))))
+
+(ert-deftest python-indent-electric-comma-after-multiline-string ()
+  "Test indentation ...."
+  (python-tests-with-temp-buffer
+   "
+a = (
+    '''\
+- foo,
+- bar'''
+"
+   (python-tests-look-at "- bar'''")
+   (should (eq (car (python-indent-context)) :inside-string))
+   (goto-char (line-end-position))
+   (python-tests-self-insert ",")
+   (should (= (current-indentation) 0))))
+
 (ert-deftest python-indent-electric-colon-1 ()
   "Test indentation case from Bug#18228."
   (python-tests-with-temp-buffer
@@ -1130,10 +1184,13 @@ def b()
 if do:
     something()
     else
+outside
 "
    (python-tests-look-at "else")
    (goto-char (line-end-position))
    (python-tests-self-insert ":")
+   (should (= (current-indentation) 0))
+   (python-tests-look-at "outside")
    (should (= (current-indentation) 0))))
 
 (ert-deftest python-indent-electric-colon-3 ()
@@ -1294,6 +1351,35 @@ this is an arbitrarily
                       expected)))))
 
 
+;;; Filling
+
+(ert-deftest python-auto-fill-docstring ()
+  (python-tests-with-temp-buffer
+   "\
+def some_function(arg1,
+                  arg2):
+    \"\"\"
+    Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua."
+   (auto-fill-mode +1)
+   (goto-char (point-max))
+   (newline)
+   (search-backward "Lorem")
+   (let ((docindent (current-indentation)))
+     (forward-line 1)
+     (should (= docindent (current-indentation))))))
+
+(ert-deftest python-fill-docstring ()
+  (python-tests-with-temp-buffer
+   "\
+r'''aaa
+
+this is a test this is a test this is a test this is a test this is a test this is a test.
+'''"
+   (search-forward "test.")
+   (fill-paragraph)
+   (should (= (current-indentation) 0))))
+
+
 ;;; Mark
 
 (ert-deftest python-mark-defun-1 ()
@@ -1317,7 +1403,8 @@ class B:
 class C:
    '''docstring'''
 "
-   (let ((expected-mark-beginning-position
+   (let ((transient-mark-mode t)
+         (expected-mark-beginning-position
           (progn
             (python-tests-look-at "class A:")
             (1- (point))))
@@ -1373,7 +1460,8 @@ class B:
 class C:
    '''docstring'''
 "
-   (let ((expected-mark-beginning-position
+   (let ((transient-mark-mode t)
+         (expected-mark-beginning-position
           (progn
             (python-tests-look-at "def __init__(self):")
             (1- (line-beginning-position))))
@@ -1872,8 +1960,8 @@ class A(object):
 (ert-deftest python-nav-beginning-of-statement-1 ()
   (python-tests-with-temp-buffer
    "
-v1 = 123 + \
-     456 + \
+v1 = 123 + \\
+     456 + \\
      789
 v2 = (value1,
       value2,
@@ -1920,8 +2008,8 @@ string
 (ert-deftest python-nav-end-of-statement-1 ()
   (python-tests-with-temp-buffer
    "
-v1 = 123 + \
-     456 + \
+v1 = 123 + \\
+     456 + \\
      789
 v2 = (value1,
       value2,
@@ -1971,11 +2059,17 @@ string
                 (python-util-forward-comment -1)
                 (point))))))
 
+(ert-deftest python-nav-end-of-statement-2 ()
+  "Test the string overlap assertion (Bug#30964)."
+  (python-tests-with-temp-buffer
+   "'\n''\n"
+   (python-nav-end-of-statement)))
+
 (ert-deftest python-nav-forward-statement-1 ()
   (python-tests-with-temp-buffer
    "
-v1 = 123 + \
-     456 + \
+v1 = 123 + \\
+     456 + \\
      789
 v2 = (value1,
       value2,
@@ -2015,8 +2109,8 @@ string
 (ert-deftest python-nav-backward-statement-1 ()
   (python-tests-with-temp-buffer
    "
-v1 = 123 + \
-     456 + \
+v1 = 123 + \\
+     456 + \\
      789
 v2 = (value1,
       value2,
@@ -2057,8 +2151,8 @@ string
   :expected-result :failed
   (python-tests-with-temp-buffer
    "
-v1 = 123 + \
-     456 + \
+v1 = 123 + \\
+     456 + \\
      789
 v2 = (value1,
       value2,
@@ -2520,20 +2614,6 @@ if x:
    (should (string= (python-shell-internal-get-process-name)
                     (format "%s[%s]" python-shell-internal-buffer-name (buffer-name))))))
 
-(ert-deftest python-shell-calculate-command-1 ()
-  "Check the command to execute is calculated correctly.
-Using `python-shell-interpreter' and
-`python-shell-interpreter-args'."
-  (skip-unless (executable-find python-tests-shell-interpreter))
-  (let ((python-shell-interpreter (executable-find
-                                   python-tests-shell-interpreter))
-        (python-shell-interpreter-args "-B"))
-    (should (string=
-             (format "%s %s"
-                     (shell-quote-argument python-shell-interpreter)
-                     python-shell-interpreter-args)
-             (python-shell-calculate-command)))))
-
 (ert-deftest python-shell-calculate-pythonpath-1 ()
   "Test PYTHONPATH calculation."
   (let ((process-environment '("PYTHONPATH=/path0"))
@@ -2573,7 +2653,7 @@ Using `python-shell-interpreter' and
   "Test `python-shell-virtualenv-root' modification."
   (let* ((python-shell-virtualenv-root "/env")
          (process-environment
-          (let (process-environment process-environment)
+          (let ((process-environment process-environment))
             (setenv "PYTHONHOME" "/home")
             (setenv "VIRTUAL_ENV")
             (python-shell-calculate-process-environment))))
@@ -2612,7 +2692,7 @@ Using `python-shell-interpreter' and
   "Test no side-effects on `process-environment'."
   (let* ((python-shell-process-environment
           '("TESTVAR1=value1" "TESTVAR2=value2"))
-         (python-shell-virtualenv-root "/env")
+         (python-shell-virtualenv-root (or (getenv "VIRTUAL_ENV") "/env"))
          (python-shell-unbuffered t)
          (python-shell-extra-pythonpaths'("/path1" "/path2"))
          (original-process-environment (copy-sequence process-environment)))
@@ -2645,7 +2725,7 @@ Using `python-shell-interpreter' and
          (python-shell-virtualenv-root "/env")
          (new-exec-path (python-shell-calculate-exec-path)))
     (should (equal new-exec-path
-                   (list (expand-file-name "/env/bin") "/path0")))))
+                   (list (python-virt-bin) "/path0")))))
 
 (ert-deftest python-shell-calculate-exec-path-3 ()
   "Test complete `python-shell-virtualenv-root' modification."
@@ -2654,7 +2734,7 @@ Using `python-shell-interpreter' and
          (python-shell-virtualenv-root "/env")
          (new-exec-path (python-shell-calculate-exec-path)))
     (should (equal new-exec-path
-                   (list (expand-file-name "/env/bin")
+                   (list (python-virt-bin)
                          "/path1" "/path2" "/path0")))))
 
 (ert-deftest python-shell-calculate-exec-path-4 ()
@@ -2665,7 +2745,7 @@ Using `python-shell-interpreter' and
          (python-shell-virtualenv-root "/env")
          (new-exec-path (python-shell-calculate-exec-path)))
     (should (equal new-exec-path
-                   (list (expand-file-name "/env/bin")
+                   (list (python-virt-bin)
                          "/path1" "/path2" "/path0")))))
 
 (ert-deftest python-shell-calculate-exec-path-5 ()
@@ -2695,7 +2775,7 @@ Using `python-shell-interpreter' and
          (python-shell-virtualenv-root "/env"))
     (python-shell-with-environment
      (should (equal exec-path
-                    (list (expand-file-name "/env/bin")
+                    (list (python-virt-bin)
                           "/path1" "/path2" "/path0")))
       (should (not (getenv "PYTHONHOME")))
       (should (string= (getenv "VIRTUAL_ENV") "/env")))
@@ -2711,7 +2791,7 @@ Using `python-shell-interpreter' and
          (python-shell-virtualenv-root "/env"))
     (python-shell-with-environment
       (should (equal (python-shell-calculate-exec-path)
-                     (list (expand-file-name "/env/bin")
+                     (list (python-virt-bin)
                            "/path1" "/path2" "/remote1" "/remote2")))
       (let ((process-environment (python-shell-calculate-process-environment)))
         (should (not (getenv "PYTHONHOME")))
@@ -3952,8 +4032,8 @@ def long_function_name(
 (ert-deftest python-info-statement-starts-block-p-2 ()
   (python-tests-with-temp-buffer
    "
-if width == 0 and height == 0 and \\\\
-   color == 'red' and emphasis == 'strong' or \\\\
+if width == 0 and height == 0 and \\
+   color == 'red' and emphasis == 'strong' or \\
    highlight > 100:
     raise ValueError('sorry, you lose')
 "
@@ -3977,8 +4057,8 @@ def long_function_name(
 (ert-deftest python-info-statement-ends-block-p-2 ()
   (python-tests-with-temp-buffer
    "
-if width == 0 and height == 0 and \\\\
-   color == 'red' and emphasis == 'strong' or \\\\
+if width == 0 and height == 0 and \\
+   color == 'red' and emphasis == 'strong' or \\
    highlight > 100:
     raise ValueError(
 'sorry, you lose'
@@ -4008,8 +4088,8 @@ def long_function_name(
 (ert-deftest python-info-beginning-of-statement-p-2 ()
   (python-tests-with-temp-buffer
    "
-if width == 0 and height == 0 and \\\\
-   color == 'red' and emphasis == 'strong' or \\\\
+if width == 0 and height == 0 and \\
+   color == 'red' and emphasis == 'strong' or \\
    highlight > 100:
     raise ValueError(
 'sorry, you lose'
@@ -4048,8 +4128,8 @@ def long_function_name(
 (ert-deftest python-info-end-of-statement-p-2 ()
   (python-tests-with-temp-buffer
    "
-if width == 0 and height == 0 and \\\\
-   color == 'red' and emphasis == 'strong' or \\\\
+if width == 0 and height == 0 and \\
+   color == 'red' and emphasis == 'strong' or \\
    highlight > 100:
     raise ValueError(
 'sorry, you lose'
@@ -4089,8 +4169,8 @@ def long_function_name(
 (ert-deftest python-info-beginning-of-block-p-2 ()
   (python-tests-with-temp-buffer
    "
-if width == 0 and height == 0 and \\\\
-   color == 'red' and emphasis == 'strong' or \\\\
+if width == 0 and height == 0 and \\
+   color == 'red' and emphasis == 'strong' or \\
    highlight > 100:
     raise ValueError(
 'sorry, you lose'
@@ -4127,8 +4207,8 @@ def long_function_name(
 (ert-deftest python-info-end-of-block-p-2 ()
   (python-tests-with-temp-buffer
    "
-if width == 0 and height == 0 and \\\\
-   color == 'red' and emphasis == 'strong' or \\\\
+if width == 0 and height == 0 and \\
+   color == 'red' and emphasis == 'strong' or \\
    highlight > 100:
     raise ValueError(
 'sorry, you lose'
@@ -4635,14 +4715,14 @@ elif b:
 (ert-deftest python-info-line-ends-backslash-p-1 ()
   (python-tests-with-temp-buffer
    "
-objects = Thing.objects.all() \\\\
+objects = Thing.objects.all() \\
                        .filter(
                            type='toy',
                            status='bought'
-                       ) \\\\
+                       ) \\
                        .aggregate(
                            Sum('amount')
-                       ) \\\\
+                       ) \\
                        .values_list()
 "
    (should (python-info-line-ends-backslash-p 2)) ; .filter(...
@@ -4658,14 +4738,14 @@ objects = Thing.objects.all() \\\\
 (ert-deftest python-info-beginning-of-backslash-1 ()
   (python-tests-with-temp-buffer
    "
-objects = Thing.objects.all() \\\\
+objects = Thing.objects.all() \\
                        .filter(
                            type='toy',
                            status='bought'
-                       ) \\\\
+                       ) \\
                        .aggregate(
                            Sum('amount')
-                       ) \\\\
+                       ) \\
                        .values_list()
 "
    (let ((first 2)
@@ -4684,8 +4764,8 @@ objects = Thing.objects.all() \\\\
 (ert-deftest python-info-continuation-line-p-1 ()
   (python-tests-with-temp-buffer
    "
-if width == 0 and height == 0 and \\\\
-   color == 'red' and emphasis == 'strong' or \\\\
+if width == 0 and height == 0 and \\
+   color == 'red' and emphasis == 'strong' or \\
    highlight > 100:
     raise ValueError(
 'sorry, you lose'
@@ -4712,8 +4792,8 @@ if width == 0 and height == 0 and \\\\
 (ert-deftest python-info-block-continuation-line-p-1 ()
   (python-tests-with-temp-buffer
    "
-if width == 0 and height == 0 and \\\\
-   color == 'red' and emphasis == 'strong' or \\\\
+if width == 0 and height == 0 and \\
+   color == 'red' and emphasis == 'strong' or \\
    highlight > 100:
     raise ValueError(
 'sorry, you lose'
@@ -4747,8 +4827,8 @@ def foo(a,
 (ert-deftest python-info-assignment-statement-p-1 ()
   (python-tests-with-temp-buffer
    "
-data = foo(), bar() \\\\
-       baz(), 4 \\\\
+data = foo(), bar() \\
+       baz(), 4 \\
        5, 6
 "
    (python-tests-look-at "data = foo(), bar()")
@@ -4790,8 +4870,8 @@ data '=' 42
 (ert-deftest python-info-assignment-continuation-line-p-1 ()
   (python-tests-with-temp-buffer
    "
-data = foo(), bar() \\\\
-       baz(), 4 \\\\
+data = foo(), bar() \\
+       baz(), 4 \\
        5, 6
 "
    (python-tests-look-at "data = foo(), bar()")
@@ -5314,6 +5394,44 @@ class SomeClass:
       (or enabled (hs-minor-mode -1)))))
 
 
+(ert-deftest python-tests--python-nav-end-of-statement--infloop ()
+  "Checks that `python-nav-end-of-statement' doesn't infloop in a
+buffer with overlapping strings."
+  ;; FIXME: The treatment of strings has changed in the mean time, and the
+  ;; test below now neither signals an error nor inf-loops.
+  ;; The description of the problem it's trying to catch is not clear enough
+  ;; to be able to see if the underlying problem is really fixed, sadly.
+  ;; E.g. I don't know what is meant by "overlap", really.
+  :tags '(:unstable)
+  (python-tests-with-temp-buffer "''' '\n''' ' '\n"
+    (syntax-propertize (point-max))
+    ;; Create a situation where strings nominally overlap.  This
+    ;; shouldn't happen in practice, but apparently it can happen when
+    ;; a package calls `syntax-ppss' in a narrowed buffer during JIT
+    ;; lock.
+    ;; FIXME: 4-5 is the SPC right after the opening triple quotes: why
+    ;; put a string-fence syntax on it?
+    (put-text-property 4 5 'syntax-table (string-to-syntax "|"))
+    ;; FIXME: 8-9 is the middle quote in the closing triple quotes:
+    ;; it shouldn't have any syntax-table property to remove anyway!
+    (remove-text-properties 8 9 '(syntax-table nil))
+    (goto-char 4)
+    (setq-local syntax-propertize-function nil)
+    ;; The next form should not infloop.  We have to disable
+    ;; ‘debug-on-error’ so that ‘cl-assert’ doesn’t call the debugger.
+    (should-error (let ((debug-on-error nil))
+                    (python-nav-end-of-statement)))
+    (should (eolp))))
+
+;; After call `run-python' the buffer running the python process is current.
+(ert-deftest python-tests--bug31398 ()
+  "Test for https://debbugs.gnu.org/31398 ."
+  (skip-unless (executable-find python-tests-shell-interpreter))
+  (let ((buffer (process-buffer (run-python nil nil 'show))))
+    (should (eq buffer (current-buffer)))
+    (pop-to-buffer (other-buffer))
+    (run-python nil nil 'show)
+    (should (eq buffer (current-buffer)))))
 
 (provide 'python-tests)
 

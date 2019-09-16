@@ -1,6 +1,6 @@
 /* Utility and Unix shadow routines for GNU Emacs support programs on NT.
 
-Copyright (C) 1994, 2001-2017 Free Software Foundation, Inc.
+Copyright (C) 1994, 2001-2019 Free Software Foundation, Inc.
 
 Author: Geoff Voelker (voelker@cs.washington.edu)
 Created: 10-8-94
@@ -18,7 +18,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <windows.h>
 #include <stdlib.h>
@@ -31,14 +31,20 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <ctype.h>
 #include <sys/timeb.h>
 #include <mbstring.h>
+#include <locale.h>
+
+#include <nl_types.h>
+#include <langinfo.h>
 
 #include "ntlib.h"
 
 char *sys_ctime (const time_t *);
 FILE *sys_fopen (const char *, const char *);
+int sys_mkdir (const char *, mode_t);
 int sys_chdir (const char *);
 int mkostemp (char *, int);
 int sys_rename (const char *, const char *);
+int sys_open (const char *, int, int);
 
 /* MinGW64 defines _TIMEZONE_DEFINED and defines 'struct timespec' in
    its system headers.  */
@@ -49,8 +55,6 @@ struct timezone
   int		tz_dsttime;	/* type of dst correction */
 };
 #endif
-
-void gettimeofday (struct timeval *, struct timezone *);
 
 #define MAXPATHLEN _MAX_PATH
 
@@ -229,29 +233,6 @@ getpass (const char * prompt)
   return NULL;
 }
 
-/* This is needed because lib/gettime.c calls gettimeofday, which MSVC
-   doesn't have.  Copied from w32.c.  */
-void
-gettimeofday (struct timeval *tv, struct timezone *tz)
-{
-  struct _timeb tb;
-  _ftime (&tb);
-
-  tv->tv_sec = tb.time;
-  tv->tv_usec = tb.millitm * 1000L;
-  /* Implementation note: _ftime sometimes doesn't update the dstflag
-     according to the new timezone when the system timezone is
-     changed.  We could fix that by using GetSystemTime and
-     GetTimeZoneInformation, but that doesn't seem necessary, since
-     Emacs always calls gettimeofday with the 2nd argument NULL (see
-     current_emacs_time).  */
-  if (tz)
-    {
-      tz->tz_minuteswest = tb.timezone;	/* minutes west of Greenwich  */
-      tz->tz_dsttime = tb.dstflag;	/* type of dst correction  */
-    }
-}
-
 int
 fchown (int fd, unsigned uid, unsigned gid)
 {
@@ -268,6 +249,12 @@ int
 sys_chdir (const char * path)
 {
   return _chdir (path);
+}
+
+int
+sys_mkdir (const char * path, mode_t mode)
+{
+  return _mkdir (path);
 }
 
 static FILETIME utc_base_ft;
@@ -303,8 +290,8 @@ is_exec (const char * name)
 /* FIXME?  This is in configure.ac now - is this still needed?  */
 #define IS_DIRECTORY_SEP(x) ((x) == '/' || (x) == '\\')
 
-/* We need this because nt/inc/sys/stat.h defines struct stat that is
-   incompatible with the MS run-time libraries.  */
+/* We need stat/fsfat below because nt/inc/sys/stat.h defines struct
+   stat that is incompatible with the MS run-time libraries.  */
 int
 stat (const char * path, struct stat * buf)
 {
@@ -390,7 +377,9 @@ stat (const char * path, struct stat * buf)
     buf->st_dev = _getdrive ();
   buf->st_rdev = buf->st_dev;
 
-  buf->st_size = wfd.nFileSizeLow;
+  buf->st_size = wfd.nFileSizeHigh;
+  buf->st_size <<= 32;
+  buf->st_size += wfd.nFileSizeLow;
 
   /* Convert timestamps to Unix format. */
   buf->st_mtime = convert_time (wfd.ftLastWriteTime);
@@ -421,59 +410,96 @@ lstat (const char * path, struct stat * buf)
   return stat (path, buf);
 }
 
-/* Implementation of mkostemp for MS-Windows, to avoid race conditions
-   when using mktemp.  Copied from w32.c.
-
-   This is used only in update-game-score.c.  It is overkill for that
-   use case, since update-game-score renames the temporary file into
-   the game score file, which isn't atomic on MS-Windows anyway, when
-   the game score already existed before running the program, which it
-   almost always does.  But using a simpler implementation just to
-   make a point is uneconomical...  */
-
 int
-mkostemp (char * template, int flags)
+fstat (int desc, struct stat * buf)
 {
-  char * p;
-  int i, fd = -1;
-  unsigned uid = GetCurrentThreadId ();
-  int save_errno = errno;
-  static char first_char[] = "abcdefghijklmnopqrstuvwyz0123456789!%-_@#";
+  HANDLE fh = (HANDLE) _get_osfhandle (desc);
+  BY_HANDLE_FILE_INFORMATION info;
+  unsigned __int64 fake_inode;
+  int permission;
 
-  errno = EINVAL;
-  if (template == NULL)
-    return -1;
-
-  p = template + strlen (template);
-  i = 5;
-  /* replace up to the last 5 X's with uid in decimal */
-  while (--p >= template && p[0] == 'X' && --i >= 0)
+  if (!init)
     {
-      p[0] = '0' + uid % 10;
-      uid /= 10;
+      /* Determine the delta between 1-Jan-1601 and 1-Jan-1970. */
+      SYSTEMTIME st;
+
+      st.wYear = 1970;
+      st.wMonth = 1;
+      st.wDay = 1;
+      st.wHour = 0;
+      st.wMinute = 0;
+      st.wSecond = 0;
+      st.wMilliseconds = 0;
+
+      SystemTimeToFileTime (&st, &utc_base_ft);
+      utc_base = (long double) utc_base_ft.dwHighDateTime
+	* 4096.0L * 1024.0L * 1024.0L + utc_base_ft.dwLowDateTime;
+      init = 1;
     }
 
-  if (i < 0 && p[0] == 'X')
+  switch (GetFileType (fh) & ~FILE_TYPE_REMOTE)
     {
-      i = 0;
-      do
+    case FILE_TYPE_DISK:
+      buf->st_mode = S_IFREG;
+      if (!GetFileInformationByHandle (fh, &info))
 	{
-	  p[0] = first_char[i];
-	  if ((fd = open (template,
-			  flags | _O_CREAT | _O_EXCL | _O_RDWR,
-			  S_IRUSR | S_IWUSR)) >= 0
-	      || errno != EEXIST)
-	    {
-	      if (fd >= 0)
-		errno = save_errno;
-	      return fd;
-	    }
+	  errno = EACCES;
+	  return -1;
 	}
-      while (++i < sizeof (first_char));
+      break;
+    case FILE_TYPE_PIPE:
+      buf->st_mode = S_IFIFO;
+      goto non_disk;
+    case FILE_TYPE_CHAR:
+    case FILE_TYPE_UNKNOWN:
+    default:
+      buf->st_mode = S_IFCHR;
+    non_disk:
+      memset (&info, 0, sizeof (info));
+      info.dwFileAttributes = 0;
+      info.ftCreationTime = utc_base_ft;
+      info.ftLastAccessTime = utc_base_ft;
+      info.ftLastWriteTime = utc_base_ft;
     }
 
-  /* Template is badly formed or else we can't generate a unique name.  */
-  return -1;
+  if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+      buf->st_mode = S_IFDIR;
+
+  buf->st_nlink = info.nNumberOfLinks;
+  /* Might as well use file index to fake inode values, but this
+     is not guaranteed to be unique unless we keep a handle open
+     all the time. */
+  fake_inode = info.nFileIndexHigh;
+  fake_inode <<= 32;
+  fake_inode += info.nFileIndexLow;
+  buf->st_ino = fake_inode;
+
+  buf->st_dev = info.dwVolumeSerialNumber;
+  buf->st_rdev = info.dwVolumeSerialNumber;
+
+  buf->st_size = info.nFileSizeHigh;
+  buf->st_size <<= 32;
+  buf->st_size += info.nFileSizeLow;
+
+  /* Convert timestamps to Unix format. */
+  buf->st_mtime = convert_time (info.ftLastWriteTime);
+  buf->st_atime = convert_time (info.ftLastAccessTime);
+  if (buf->st_atime == 0) buf->st_atime = buf->st_mtime;
+  buf->st_ctime = convert_time (info.ftCreationTime);
+  if (buf->st_ctime == 0) buf->st_ctime = buf->st_mtime;
+
+  /* determine rwx permissions */
+  if (info.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
+    permission = S_IREAD;
+  else
+    permission = S_IREAD | S_IWRITE;
+
+  if (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+    permission |= S_IEXEC;
+
+  buf->st_mode |= permission | (permission >> 3) | (permission >> 6);
+
+  return 0;
 }
 
 /* On Windows, you cannot rename into an existing file.  */
@@ -488,4 +514,73 @@ sys_rename (const char *from, const char *to)
 	retval = rename (from, to);
     }
   return retval;
+}
+
+int
+sys_open (const char * path, int oflag, int mode)
+{
+  return _open (path, oflag, mode);
+}
+
+/* Emulation of nl_langinfo that supports only CODESET.
+   Used in Gnulib regex.c.  */
+char *
+nl_langinfo (nl_item item)
+{
+  switch (item)
+    {
+      case CODESET:
+	{
+	  /* Shamelessly stolen from Gnulib's nl_langinfo.c, modulo
+	     CPP directives.  */
+	  static char buf[2 + 10 + 1];
+	  char const *locale = setlocale (LC_CTYPE, NULL);
+	  char *codeset = buf;
+	  size_t codesetlen;
+	  codeset[0] = '\0';
+
+	  if (locale && locale[0])
+	    {
+	      /* If the locale name contains an encoding after the
+		 dot, return it.  */
+	      char *dot = strchr (locale, '.');
+
+	      if (dot)
+		{
+		  /* Look for the possible @... trailer and remove it,
+		     if any.  */
+		  char *codeset_start = dot + 1;
+		  char const *modifier = strchr (codeset_start, '@');
+
+		  if (! modifier)
+		    codeset = codeset_start;
+		  else
+		    {
+		      codesetlen = modifier - codeset_start;
+		      if (codesetlen < sizeof buf)
+			{
+			  codeset = memcpy (buf, codeset_start, codesetlen);
+			  codeset[codesetlen] = '\0';
+			}
+		    }
+		}
+	    }
+	  /* If setlocale is successful, it returns the number of the
+	     codepage, as a string.  Otherwise, fall back on Windows
+	     API GetACP, which returns the locale's codepage as a
+	     number (although this doesn't change according to what
+	     the 'setlocale' call specified).  Either way, prepend
+	     "CP" to make it a valid codeset name.  */
+	  codesetlen = strlen (codeset);
+	  if (0 < codesetlen && codesetlen < sizeof buf - 2)
+	    memmove (buf + 2, codeset, codesetlen + 1);
+	  else
+	    sprintf (buf + 2, "%u", GetACP ());
+	  codeset = memcpy (buf, "CP", 2);
+
+	  return codeset;
+	}
+      default:
+	return (char *) "";
+    }
 }

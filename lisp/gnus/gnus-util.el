@@ -1,6 +1,6 @@
 ;;; gnus-util.el --- utility functions for Gnus
 
-;; Copyright (C) 1996-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: news
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -32,16 +32,17 @@
 
 ;;; Code:
 
-(eval-when-compile
-  (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
+(require 'seq)
 (require 'time-date)
+(require 'text-property-search)
 
 (defcustom gnus-completing-read-function 'gnus-emacs-completing-read
   "Function use to do completing read."
   :version "24.1"
   :group 'gnus-meta
-  :type `(radio (function-item
+  :type '(radio (function-item
                  :doc "Use Emacs standard `completing-read' function."
                  gnus-emacs-completing-read)
 		(function-item
@@ -84,11 +85,6 @@ This is a compatibility function for different Emacsen."
   (declare (obsolete replace-regexp-in-string "26.1"))
   (replace-regexp-in-string regexp newtext string nil literal))
 
-(defun gnus-boundp (variable)
-  "Return non-nil if VARIABLE is bound and non-nil."
-  (and (boundp variable)
-       (symbol-value variable)))
-
 (defmacro gnus-eval-in-buffer-window (buffer &rest forms)
   "Pop to BUFFER, evaluate FORMS, and then return to the original window."
   (let ((tempvar (make-symbol "GnusStartBufferWindow"))
@@ -110,21 +106,8 @@ This is a compatibility function for different Emacsen."
 (put 'gnus-eval-in-buffer-window 'lisp-indent-function 1)
 (put 'gnus-eval-in-buffer-window 'edebug-form-spec '(form body))
 
-(defmacro gnus-intern-safe (string hashtable)
-  "Get hash value.  Arguments are STRING and HASHTABLE."
-  `(let ((symbol (intern ,string ,hashtable)))
-     (or (boundp symbol)
-	 (set symbol nil))
-     symbol))
-
 (defsubst gnus-goto-char (point)
   (and point (goto-char point)))
-
-(defmacro gnus-buffer-exists-p (buffer)
-  `(let ((buffer ,buffer))
-     (when buffer
-       (funcall (if (stringp buffer) 'get-buffer 'buffer-name)
-		buffer))))
 
 (defun gnus-delete-first (elt list)
   "Delete by side effect the first occurrence of ELT as a member of LIST."
@@ -145,9 +128,9 @@ This is a compatibility function for different Emacsen."
 
 (defun gnus-extract-address-components (from)
   "Extract address components from a From header.
-Given an RFC-822 address FROM, extract full name and canonical address.
+Given an RFC-822 (or later) address FROM, extract name and address.
 Returns a list of the form (FULL-NAME CANONICAL-ADDRESS).  Much more simple
-solution than `mail-extract-address-components', which works much better, but
+solution than `mail-header-parse-address', which works much better, but
 is slower."
   (let (name address)
     ;; First find the address - the thing with the @ in it.  This may
@@ -204,6 +187,36 @@ is slower."
     (goto-char (or (text-property-any (point) eol 'gnus-position t)
 		   (search-forward ":" eol t)
 		   (point)))))
+
+(defun gnus-text-property-search (prop value &optional forward-only goto end)
+  "Search current buffer for text property PROP with VALUE.
+Behaves like a combination of `text-property-any' and
+`text-property-search-forward'.  Searches for the beginning of a
+text property `equal' to VALUE.  Returns the value of point at
+the beginning of the matching text property span.
+
+If FORWARD-ONLY is non-nil, only search forward from point.
+
+If GOTO is non-nil, move point to the beginning of that span
+instead.
+
+If END is non-nil, use the end of the span instead."
+  (let* ((start (point))
+	 (found (progn
+		  (unless forward-only
+		    (goto-char (point-min)))
+		  (text-property-search-forward
+		   prop value #'equal)))
+	 (target (when found
+		   (if end
+		       (prop-match-end found)
+		     (prop-match-beginning found)))))
+    (when target
+      (if goto
+	  (goto-char target)
+	(prog1
+	    target
+	  (goto-char start))))))
 
 (declare-function gnus-find-method-for-group "gnus" (group &optional info))
 (declare-function gnus-group-name-decode "gnus-group" (string charset))
@@ -283,10 +296,7 @@ Symbols are also allowed; their print names are used instead."
 ;;; Time functions.
 
 (defun gnus-file-newer-than (file date)
-  (let ((fdate (nth 5 (file-attributes file))))
-    (or (> (car fdate) (car date))
-	(and (= (car fdate) (car date))
-	     (> (nth 1 fdate) (nth 1 date))))))
+  (time-less-p date (file-attribute-modification-time (file-attributes file))))
 
 ;;; Keymap macros.
 
@@ -347,22 +357,28 @@ Symbols are also allowed; their print names are used instead."
 ;; the full date if it's older)
 
 (defun gnus-seconds-today ()
-  "Return the number of seconds passed today."
-  (let ((now (decode-time)))
-    (+ (car now) (* (car (cdr now)) 60) (* (car (nthcdr 2 now)) 3600))))
+  "Return the integer number of seconds passed today."
+  (let ((now (decode-time nil nil 'integer)))
+    (+ (decoded-time-second now)
+       (* (decoded-time-minute now) 60)
+       (* (decoded-time-hour now) 3600))))
 
 (defun gnus-seconds-month ()
-  "Return the number of seconds passed this month."
-  (let ((now (decode-time)))
-    (+ (car now) (* (car (cdr now)) 60) (* (car (nthcdr 2 now)) 3600)
-       (* (- (car (nthcdr 3 now)) 1) 3600 24))))
+  "Return the integer number of seconds passed this month."
+  (let ((now (decode-time nil nil 'integer)))
+    (+ (decoded-time-second now)
+       (* (decoded-time-minute now) 60)
+       (* (decoded-time-hour now) 3600)
+       (* (- (decoded-time-day now) 1) 3600 24))))
 
 (defun gnus-seconds-year ()
-  "Return the number of seconds passed this year."
+  "Return the integer number of seconds passed this year."
   (let* ((current (current-time))
-	 (now (decode-time current))
+	 (now (decode-time current nil 'integer))
 	 (days (format-time-string "%j" current)))
-    (+ (car now) (* (car (cdr now)) 60) (* (car (nthcdr 2 now)) 3600)
+    (+ (decoded-time-second now)
+       (* (decoded-time-minute now) 60)
+       (* (decoded-time-hour now) 3600)
        (* (- (string-to-number days) 1) 3600 24))))
 
 (defmacro gnus-date-get-time (date)
@@ -399,22 +415,9 @@ Cache the result as a text property stored in DATE."
   "Quote all \"%\"'s in STRING."
   (replace-regexp-in-string "%" "%%" string))
 
-;; Make a hash table (default and minimum size is 256).
-;; Optional argument HASHSIZE specifies the table size.
-(defun gnus-make-hashtable (&optional hashsize)
-  (make-vector (if hashsize (max (gnus-create-hash-size hashsize) 256) 256) 0))
-
-;; Make a number that is suitable for hashing; bigger than MIN and
-;; equal to some 2^x.  Many machines (such as sparcs) do not have a
-;; hardware modulo operation, so they implement it in software.  On
-;; many sparcs over 50% of the time to intern is spent in the modulo.
-;; Yes, it's slower than actually computing the hash from the string!
-;; So we use powers of 2 so people can optimize the modulo to a mask.
-(defun gnus-create-hash-size (min)
-  (let ((i 1))
-    (while (< i min)
-      (setq i (* 2 i)))
-    i))
+(defsubst gnus-make-hashtable (&optional size)
+  "Make a hash table of SIZE, testing on `equal'."
+  (make-hash-table :size (or size 300) :test #'equal))
 
 (defcustom gnus-verbose 6
   "Integer that says how verbose Gnus should be.
@@ -559,8 +562,12 @@ If N, return the Nth ancestor instead."
 	  (match-string 1 references))))))
 
 (defsubst gnus-buffer-live-p (buffer)
-  "Say whether BUFFER is alive or not."
-  (and buffer (buffer-live-p (get-buffer buffer))))
+  "If BUFFER names a live buffer, return its object; else nil."
+  (and buffer (buffer-live-p (setq buffer (get-buffer buffer)))
+       buffer))
+
+(define-obsolete-function-alias 'gnus-buffer-exists-p
+  'gnus-buffer-live-p "27.1")
 
 (defun gnus-horizontal-recenter ()
   "Recenter the current buffer horizontally."
@@ -599,9 +606,6 @@ If N, return the Nth ancestor instead."
 	 (read-file-name "Copy file to: " default-directory)))
   (unless to
     (setq to (read-file-name "Copy file to: " default-directory)))
-  (when (file-directory-p to)
-    (setq to (concat (file-name-as-directory to)
-		     (file-name-nondirectory file))))
   (copy-file file to))
 
 (defvar gnus-work-buffer " *gnus work*")
@@ -1125,41 +1129,9 @@ ARG is passed to the first function."
        (with-current-buffer gnus-group-buffer
 	 (eq major-mode 'gnus-group-mode))))
 
-(defun gnus-remove-if (predicate sequence &optional hash-table-p)
-  "Return a copy of SEQUENCE with all items satisfying PREDICATE removed.
-SEQUENCE should be a list, a vector, or a string.  Returns always a list.
-If HASH-TABLE-P is non-nil, regards SEQUENCE as a hash table."
-  (let (out)
-    (if hash-table-p
-	(mapatoms (lambda (symbol)
-		    (unless (funcall predicate symbol)
-		      (push symbol out)))
-		  sequence)
-      (unless (listp sequence)
-	(setq sequence (append sequence nil)))
-      (while sequence
-	(unless (funcall predicate (car sequence))
-	  (push (car sequence) out))
-	(setq sequence (cdr sequence))))
-    (nreverse out)))
+(define-obsolete-function-alias 'gnus-remove-if 'seq-remove "27.1")
 
-(defun gnus-remove-if-not (predicate sequence &optional hash-table-p)
-  "Return a copy of SEQUENCE with all items not satisfying PREDICATE removed.
-SEQUENCE should be a list, a vector, or a string.  Returns always a list.
-If HASH-TABLE-P is non-nil, regards SEQUENCE as a hash table."
-  (let (out)
-    (if hash-table-p
-	(mapatoms (lambda (symbol)
-		    (when (funcall predicate symbol)
-		      (push symbol out)))
-		  sequence)
-      (unless (listp sequence)
-	(setq sequence (append sequence nil)))
-      (while sequence
-	(when (funcall predicate (car sequence))
-	  (push (car sequence) out))
-	(setq sequence (cdr sequence))))
-    (nreverse out)))
+(define-obsolete-function-alias 'gnus-remove-if-not 'seq-filter "27.1")
 
 (defun gnus-grep-in-list (word list)
   "Find if a WORD matches any regular expression in the given LIST."
@@ -1193,43 +1165,27 @@ If HASH-TABLE-P is non-nil, regards SEQUENCE as a hash table."
       (eq (cadr (memq 'gnus-undeletable (text-properties-at b))) t)
     (text-property-any b e 'gnus-undeletable t)))
 
-(defun gnus-or (&rest elems)
-  "Return non-nil if any of the elements are non-nil."
-  (catch 'found
-    (while elems
-      (when (pop elems)
-	(throw 'found t)))))
+(defun gnus-or (&rest elements)
+  "Return non-nil if any one of ELEMENTS is non-nil."
+  (seq-drop-while #'null elements))
 
-(defun gnus-and (&rest elems)
-  "Return non-nil if all of the elements are non-nil."
-  (catch 'found
-    (while elems
-      (unless (pop elems)
-	(throw 'found nil)))
-    t))
-
-;; gnus.el requires mm-util.
-(declare-function mm-disable-multibyte "mm-util")
+(defun gnus-and (&rest elements)
+  "Return non-nil if all ELEMENTS are non-nil."
+  (not (memq nil elements)))
 
 (defun gnus-write-active-file (file hashtb &optional full-names)
-  ;; `coding-system-for-write' should be `raw-text' or equivalent.
   (let ((coding-system-for-write nnmail-active-file-coding-system))
     (with-temp-file file
-      ;; The buffer should be in the unibyte mode because group names
-      ;; are ASCII text or encoded non-ASCII text (i.e., unibyte).
-      (mm-disable-multibyte)
-      (mapatoms
-       (lambda (sym)
-	 (when (and sym
-		    (boundp sym)
-		    (symbol-value sym))
-	   (insert (format "%S %d %d y\n"
+      (maphash
+       (lambda (group active)
+	 (when active
+	   (insert (format "%s %d %d y\n"
 			   (if full-names
-			       sym
-			     (intern (gnus-group-real-name (symbol-name sym))))
-			   (or (cdr (symbol-value sym))
-			       (car (symbol-value sym)))
-			   (car (symbol-value sym))))))
+			       group
+			     (gnus-group-real-name group))
+			   (or (cdr active)
+			       (car active))
+			   (car active)))))
        hashtb)
       (goto-char (point-max))
       (while (search-backward "\\." nil t)
@@ -1448,7 +1404,7 @@ SPEC is a predicate specifier that contains stuff like `or', `and',
                                  (symbol-value history) collection))
                        filtered-choices)
                    (dolist (x choices)
-                     (setq filtered-choices (adjoin x filtered-choices)))
+                     (setq filtered-choices (cl-adjoin x filtered-choices)))
                    (nreverse filtered-choices))))))
     (unwind-protect
         (progn
@@ -1475,7 +1431,7 @@ SPEC is a predicate specifier that contains stuff like `or', `and',
 
 (defun gnus-cache-file-contents (file variable function)
   "Cache the contents of FILE in VARIABLE.  The contents come from FUNCTION."
-  (let ((time (nth 5 (file-attributes file)))
+  (let ((time (file-attribute-modification-time (file-attributes file)))
 	contents value)
     (if (or (null (setq value (symbol-value variable)))
 	    (not (equal (car value) file))
@@ -1618,7 +1574,7 @@ sequence, this is like `mapcar'.  With several, it is like the Common Lisp
      ((not (memq 'emacs lst))
       nil)
      ((string-match "^\\(\\([.0-9]+\\)*\\)\\.[0-9]+$" emacs-version)
-      (concat "Emacs/" (match-string 1 emacs-version)
+      (concat "Emacs/" emacs-version
 	      (if system-v
 		  (concat " (" system-v ")")
 		"")))
@@ -1656,8 +1612,7 @@ empty directories from OLD-PATH."
   "Rescale IMAGE to SIZE if possible.
 SIZE is in format (WIDTH . HEIGHT). Return a new image.
 Sizes are in pixels."
-  (if (or (not (fboundp 'imagemagick-types))
-	  (not (get-buffer-window (current-buffer))))
+  (if (not (fboundp 'imagemagick-types))
       image
     (let ((new-width (car size))
           (new-height (cdr size)))

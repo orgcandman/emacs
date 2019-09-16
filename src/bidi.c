@@ -1,6 +1,8 @@
 /* Low-level bidirectional buffer/string-scanning functions for GNU Emacs.
-   Copyright (C) 2000-2001, 2004-2005, 2009-2017 Free Software
-   Foundation, Inc.
+
+Copyright (C) 2000-2001, 2004-2005, 2009-2019 Free Software Foundation, Inc.
+
+Author: Eli Zaretskii <eliz@gnu.org>
 
 This file is part of GNU Emacs.
 
@@ -15,11 +17,9 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
-/* Written by Eli Zaretskii <eliz@gnu.org>.
-
-   A sequential implementation of the Unicode Bidirectional algorithm,
+/* A sequential implementation of the Unicode Bidirectional algorithm,
    (UBA) as per UAX#9, a part of the Unicode Standard.
 
    Unlike the Reference Implementation and most other implementations,
@@ -238,13 +238,13 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
    necessary.  */
 
 #include <config.h>
-#include <stdio.h>
 
 #include "lisp.h"
 #include "character.h"
 #include "buffer.h"
 #include "dispextern.h"
 #include "region-cache.h"
+#include "sysstdio.h"
 
 static bool bidi_initialized = 0;
 
@@ -280,7 +280,7 @@ bidi_get_type (int ch, bidi_dir_t override)
   if (ch < 0 || ch > MAX_CHAR)
     emacs_abort ();
 
-  default_type = (bidi_type_t) XINT (CHAR_TABLE_REF (bidi_type_table, ch));
+  default_type = (bidi_type_t) XFIXNUM (CHAR_TABLE_REF (bidi_type_table, ch));
   /* Every valid character code, even those that are unassigned by the
      UCD, have some bidi-class property, according to
      DerivedBidiClass.txt file.  Therefore, if we ever get UNKNOWN_BT
@@ -379,15 +379,15 @@ bidi_mirror_char (int c)
     emacs_abort ();
 
   val = CHAR_TABLE_REF (bidi_mirror_table, c);
-  if (INTEGERP (val))
+  if (FIXNUMP (val))
     {
       int v;
 
       /* When debugging, check before assigning to V, so that the check
 	 isn't broken by undefined behavior due to int overflow.  */
-      eassert (CHAR_VALID_P (XINT (val)));
+      eassert (CHAR_VALID_P (XFIXNUM (val)));
 
-      v = XINT (val);
+      v = XFIXNUM (val);
 
       /* Minimal test we must do in optimized builds, to prevent weird
 	 crashes further down the road.  */
@@ -409,7 +409,7 @@ bidi_paired_bracket_type (int c)
   if (c < 0 || c > MAX_CHAR)
     emacs_abort ();
 
-  return (bidi_bracket_type_t) XINT (CHAR_TABLE_REF (bidi_brackets_table, c));
+  return (bidi_bracket_type_t) XFIXNUM (CHAR_TABLE_REF (bidi_brackets_table, c));
 }
 
 /* Determine the start-of-sequence (sos) directional type given the two
@@ -565,9 +565,7 @@ bidi_copy_it (struct bidi_it *to, struct bidi_it *from)
    RTL characters in the offending line of text.  */
 /* Do we need to allow customization of this limit?  */
 #define BIDI_CACHE_MAX_ELTS_PER_SLOT 50000
-#if BIDI_CACHE_CHUNK >= BIDI_CACHE_MAX_ELTS_PER_SLOT
-# error BIDI_CACHE_CHUNK must be less than BIDI_CACHE_MAX_ELTS_PER_SLOT
-#endif
+verify (BIDI_CACHE_CHUNK < BIDI_CACHE_MAX_ELTS_PER_SLOT);
 static ptrdiff_t bidi_cache_max_elts = BIDI_CACHE_MAX_ELTS_PER_SLOT;
 static struct bidi_it *bidi_cache;
 static ptrdiff_t bidi_cache_size = 0;
@@ -1450,8 +1448,14 @@ bidi_at_paragraph_end (ptrdiff_t charpos, ptrdiff_t bytepos)
   Lisp_Object start_re;
   ptrdiff_t val;
 
-  sep_re = paragraph_separate_re;
-  start_re = paragraph_start_re;
+  if (STRINGP (BVAR (current_buffer, bidi_paragraph_separate_re)))
+    sep_re = BVAR (current_buffer, bidi_paragraph_separate_re);
+  else
+    sep_re = paragraph_separate_re;
+  if (STRINGP (BVAR (current_buffer, bidi_paragraph_start_re)))
+    start_re = BVAR (current_buffer, bidi_paragraph_start_re);
+  else
+    start_re = paragraph_start_re;
 
   val = fast_looking_at (sep_re, charpos, bytepos, ZV, ZV_BYTE, Qnil);
   if (val < 0)
@@ -1525,7 +1529,10 @@ bidi_paragraph_cache_on_off (void)
 static ptrdiff_t
 bidi_find_paragraph_start (ptrdiff_t pos, ptrdiff_t pos_byte)
 {
-  Lisp_Object re = paragraph_start_re;
+  Lisp_Object re =
+    STRINGP (BVAR (current_buffer, bidi_paragraph_start_re))
+    ? BVAR (current_buffer, bidi_paragraph_start_re)
+    : paragraph_start_re;
   ptrdiff_t limit = ZV, limit_byte = ZV_BYTE;
   struct region_cache *bpc = bidi_paragraph_cache_on_off ();
   ptrdiff_t n = 0, oldpos = pos, next;
@@ -1798,7 +1805,7 @@ bidi_explicit_dir_char (int ch)
       eassert (ch == BIDI_EOB);
       return false;
     }
-  ch_type = (bidi_type_t) XINT (CHAR_TABLE_REF (bidi_type_table, ch));
+  ch_type = (bidi_type_t) XFIXNUM (CHAR_TABLE_REF (bidi_type_table, ch));
   return (ch_type == LRE || ch_type == LRO
 	  || ch_type == RLE || ch_type == RLO
 	  || ch_type == PDF);
@@ -2092,7 +2099,7 @@ bidi_resolve_explicit (struct bidi_it *bidi_it)
 	  type = RLI;
 	  bidi_it->orig_type = type;
 	}
-      /* FALLTHROUGH */
+      FALLTHROUGH;
     case RLI:	/* X5a */
       if (override == NEUTRAL_DIR)
 	bidi_it->type_after_wn = type;
@@ -2328,7 +2335,7 @@ bidi_resolve_weak (struct bidi_it *bidi_it)
 		      and make it L right away, to avoid the
 		      potentially costly loop below.  This is
 		      important when the buffer has a long series of
-		      control characters, like binary nulls, and no
+		      control characters, like binary NULs, and no
 		      R2L characters at all.  */
 		   && new_level == 0
 		   && !bidi_explicit_dir_char (bidi_it->ch)
@@ -2468,9 +2475,11 @@ typedef struct bpa_stack_entry {
   unsigned flags : 2;
 } bpa_stack_entry;
 
-/* With MAX_ALLOCA of 16KB, this should allow at least 1K slots in the
+/* Allow for the two struct bidi_it objects too, since they can be big.
+   With MAX_ALLOCA of 16 KiB, this should allow at least 900 slots in the
    BPA stack, which should be more than enough for actual bidi text.  */
-#define MAX_BPA_STACK ((int)max (MAX_ALLOCA / sizeof (bpa_stack_entry), 1))
+enum { MAX_BPA_STACK = max (1, ((MAX_ALLOCA - 2 * sizeof (struct bidi_it))
+				/ sizeof (bpa_stack_entry))) };
 
 /* UAX#9 says to match opening brackets with the matching closing
    brackets or their canonical equivalents.  As of Unicode 8.0, there
@@ -2517,7 +2526,7 @@ typedef struct bpa_stack_entry {
 #define PUSH_BPA_STACK							\
   do {									\
     int ch;								\
-    if (bpa_sp < MAX_BPA_STACK - 1)					\
+    if (bpa_sp < MAX_BPA_STACK - 1 && bidi_cache_last_idx <= INT_MAX)	\
       {									\
 	bpa_sp++;							\
 	ch = CANONICAL_EQU (bidi_it->ch);				\
@@ -2563,7 +2572,7 @@ bidi_find_bracket_pairs (struct bidi_it *bidi_it)
       ptrdiff_t pairing_pos;
       int idx_at_entry = bidi_cache_idx;
 
-      eassert (MAX_BPA_STACK >= 100);
+      verify (MAX_BPA_STACK >= 100);
       bidi_copy_it (&saved_it, bidi_it);
       /* bidi_cache_iterator_state refuses to cache on backward scans,
 	 and bidi_cache_fetch_state doesn't bring scan_dir from the
@@ -2984,7 +2993,7 @@ bidi_resolve_neutral (struct bidi_it *bidi_it)
 	}
       /* The next two "else if" clauses are shortcuts for the
 	 important special case when we have a long sequence of
-	 neutral or WEAK_BN characters, such as whitespace or nulls or
+	 neutral or WEAK_BN characters, such as whitespace or NULs or
 	 other control characters, on the base embedding level of the
 	 paragraph, and that sequence goes all the way to the end of
 	 the paragraph and follows a character whose resolved
@@ -3498,10 +3507,16 @@ bidi_move_to_visually_next (struct bidi_it *bidi_it)
 	  if (sep_len >= 0)
 	    {
 	      bidi_it->new_paragraph = 1;
-	      /* Record the buffer position of the last character of the
-		 paragraph separator.  */
-	      bidi_it->separator_limit
-		= bidi_it->charpos + bidi_it->nchars + sep_len;
+	      /* Record the buffer position of the last character of
+		 the paragraph separator.  If the paragraph separator
+		 is an empty string (e.g., the regex is "^"), the
+		 newline that precedes the end of the paragraph is
+		 that last character.  */
+	      if (sep_len > 0)
+		bidi_it->separator_limit
+		  = bidi_it->charpos + bidi_it->nchars + sep_len;
+	      else
+		bidi_it->separator_limit = bidi_it->charpos;
 	    }
 	}
     }
@@ -3571,7 +3586,7 @@ bidi_dump_cached_states (void)
 
   if (bidi_cache_idx == 0)
     {
-      fprintf (stderr, "The cache is empty.\n");
+      fputs ("The cache is empty.\n", stderr);
       return;
     }
   fprintf (stderr, "Total of  %"pD"d state%s in cache:\n",
@@ -3582,13 +3597,11 @@ bidi_dump_cached_states (void)
   fputs ("ch  ", stderr);
   for (i = 0; i < bidi_cache_idx; i++)
     fprintf (stderr, "%*c", ndigits, bidi_cache[i].ch);
-  fputs ("\n", stderr);
-  fputs ("lvl ", stderr);
+  fputs ("\nlvl ", stderr);
   for (i = 0; i < bidi_cache_idx; i++)
     fprintf (stderr, "%*d", ndigits, bidi_cache[i].resolved_level);
-  fputs ("\n", stderr);
-  fputs ("pos ", stderr);
+  fputs ("\npos ", stderr);
   for (i = 0; i < bidi_cache_idx; i++)
     fprintf (stderr, "%*"pD"d", ndigits, bidi_cache[i].charpos);
-  fputs ("\n", stderr);
+  putc ('\n', stderr);
 }

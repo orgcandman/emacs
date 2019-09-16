@@ -1,6 +1,6 @@
 ;;; loadup.el --- load up standardly loaded Lisp files for Emacs
 
-;; Copyright (C) 1985-1986, 1992, 1994, 2001-2017 Free Software
+;; Copyright (C) 1985-1986, 1992, 1994, 2001-2019 Free Software
 ;; Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
@@ -20,11 +20,14 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
 ;; This is loaded into a bare Emacs to make a dumpable one.
+
+;; Emacs injects the variable `dump-mode' to tell us how to dump.
+;; We unintern it before allowing user code to run.
 
 ;; If you add a file to be loaded here, keep the following points in mind:
 
@@ -54,29 +57,58 @@
 ;; bidi.c needs for its job.
 (setq redisplay--inhibit-bidi t)
 
+(message "dump mode: %s" dump-mode)
+
 ;; Add subdirectories to the load-path for files that might get
-;; autoloaded when bootstrapping.
+;; autoloaded when bootstrapping or running Emacs normally.
 ;; This is because PATH_DUMPLOADSEARCH is just "../lisp".
-(if (or (equal (member "bootstrap" command-line-args) '("bootstrap"))
+(if (or (member dump-mode '("bootstrap" "pbootstrap"))
 	;; FIXME this is irritatingly fragile.
-	(equal (nth 4 command-line-args) "unidata-gen.el")
-	(equal (nth 7 command-line-args) "unidata-gen-files")
-	(if (fboundp 'dump-emacs)
-	    (string-match "src/bootstrap-emacs" (nth 0 command-line-args))
-	  t))
-    (let ((dir (car load-path)))
+        (and (stringp (nth 4 command-line-args))
+             (string-match "^unidata-gen\\(\\.elc?\\)?$"
+                           (nth 4 command-line-args)))
+        (member (nth 7 command-line-args) '("unidata-gen-file"
+                                            "unidata-gen-charprop"))
+        (null dump-mode))
+    (progn
+      ;; Find the entry in load-path that contains Emacs elisp and
+      ;; splice some additional directories in there for the benefit
+      ;; of autoload and regular Emacs use.
+      (let ((subdirs '("emacs-lisp"
+                       "progmodes"
+                       "language"
+                       "international"
+                       "textmodes"
+                       "vc"))
+            (iter load-path))
+        (while iter
+          (let ((dir (car iter))
+                (subdirs subdirs)
+                esubdirs esubdir)
+            (while subdirs
+              (setq esubdir (expand-file-name (car subdirs) dir))
+              (setq subdirs (cdr subdirs))
+              (if (file-directory-p esubdir)
+                  (setq esubdirs (cons esubdir esubdirs))
+                (setq subdirs nil esubdirs nil)))
+            (if esubdirs
+                (progn
+                  (setcdr iter (nconc (nreverse esubdirs) (cdr iter)))
+                  (setq iter nil))
+              (setq iter (cdr iter))
+              (if (null iter)
+                  (signal
+                   'error (list
+                           (format-message
+                            "Could not find elisp load-path: searched %S"
+                            load-path))))))))
       ;; We'll probably overflow the pure space.
       (setq purify-flag nil)
       ;; Value of max-lisp-eval-depth when compiling initially.
-      ;; During bootstrapping the byte-compiler is run interpreted when
-      ;; compiling itself, which uses a lot more stack than usual.
-      (setq max-lisp-eval-depth 2200)
-      (setq load-path (list (expand-file-name "." dir)
-			    (expand-file-name "emacs-lisp" dir)
-			    (expand-file-name "language" dir)
-			    (expand-file-name "international" dir)
-			    (expand-file-name "textmodes" dir)
-			    (expand-file-name "vc" dir)))))
+      ;; During bootstrapping the byte-compiler is run interpreted
+      ;; when compiling itself, which uses a lot more stack
+      ;; than usual.
+      (setq max-lisp-eval-depth 2200)))
 
 (if (eq t purify-flag)
     ;; Hash consing saved around 11% of pure space in my tests.
@@ -84,9 +116,7 @@
 
 (message "Using load-path %s" load-path)
 
-;; This is a poor man's `last', since we haven't loaded subr.el yet.
-(if (or (equal (member "bootstrap" command-line-args) '("bootstrap"))
-	(equal (member "dump" command-line-args) '("dump")))
+(if dump-mode
     (progn
       ;; To reduce the size of dumped Emacs, we avoid making huge char-tables.
       (setq inhibit-load-charset-map t)
@@ -143,21 +173,19 @@
 (load "button")
 
 ;; We don't want to store loaddefs.el in the repository because it is
-;; a generated file; but it is required in order to compile the lisp
-;; files.  When bootstrapping, we cannot generate loaddefs.el until an
-;; emacs binary has been built.  We therefore support the build with
-;; two files, ldefs-boot-manual.el and ldefs-boot-auto.el, which
-;; contain the autoloads that are actually called during bootstrap.
-;; These do not need to be updated as often as the real loaddefs.el
-;; would.  Bootstrap should always work with ldefs-boot-manual.el.
-;; Therefore, Whenever a new autoload cookie gets added that is
-;; necessary during bootstrapping, ldefs-boot-auto.el should be
-;; updated using the "generate-ldefs-boot" make target.
-;; autogen/update_autogen can be used to periodically update
-;; ldefs-boot.
+;; a generated file; but it is required in order to compile the lisp files.
+;; When bootstrapping, we cannot generate loaddefs.el until an
+;; emacs binary has been built.  We therefore compromise and keep
+;; ldefs-boot.el in the repository.  This does not need to be updated
+;; as often as the real loaddefs.el would.  Bootstrap should always
+;; work with ldefs-boot.el.  Therefore, whenever a new autoload cookie
+;; gets added that is necessary during bootstrapping, ldefs-boot.el
+;; should be updated by overwriting it with an up-to-date copy of
+;; loaddefs.el that is not corrupted by local changes.
+;; admin/update_autogen can be used to update ldefs-boot.el periodically.
 (condition-case nil (load "loaddefs.el")
   ;; In case loaddefs hasn't been generated yet.
-  (file-error (load "ldefs-boot-manual.el")))
+  (file-error (load "ldefs-boot.el")))
 
 (let ((new (make-hash-table :test 'equal)))
   ;; Now that loaddefs has populated definition-prefixes, purify its contents.
@@ -182,7 +210,8 @@
 (load "case-table")
 ;; This file doesn't exist when building a development version of Emacs
 ;; from the repository.  It is generated just after temacs is built.
-(if (load "international/charprop.el" t)
+(load "international/charprop.el" t)
+(if (featurep 'charprop)
     (setq redisplay--inhibit-bidi nil))
 (load "international/characters")
 (load "composite")
@@ -300,7 +329,7 @@
       ;; Don't load ucs-normalize.el unless uni-*.el files were
       ;; already produced, because it needs uni-*.el files that might
       ;; not be built early enough during bootstrap.
-      (when (load-history-filename-element "charprop\\.el")
+      (when (featurep 'charprop)
         (load "international/mule-util")
         (load "international/ucs-normalize")
         (load "term/ns-win"))))
@@ -334,7 +363,7 @@
   ;; We reset load-path after dumping.
   ;; For a permanent change in load-path, use configure's
   ;; --enable-locallisppath option.
-  ;; See http://debbugs.gnu.org/16107 for more details.
+  ;; See https://debbugs.gnu.org/16107 for more details.
   (or (equal lp load-path)
       (message "Warning: Change in load-path due to site-load will be \
 lost after dumping")))
@@ -346,13 +375,16 @@ lost after dumping")))
 ;; file primitive.  So the only workable solution to support building
 ;; in non-ASCII directories is to manipulate unibyte strings in the
 ;; current locale's encoding.
-(if (and (member (car (last command-line-args)) '("dump" "bootstrap"))
-	 (multibyte-string-p default-directory))
+(if (and dump-mode (multibyte-string-p default-directory))
     (error "default-directory must be unibyte when dumping Emacs!"))
 
-;; Determine which last version number to use
+;; Determine which build number to use
 ;; based on the executables that now exist.
-(if (and (equal (last command-line-args) '("dump"))
+(if (and (or
+          (and (equal dump-mode "dump")
+               (fboundp 'dump-emacs))
+          (and (equal dump-mode "pdump")
+               (fboundp 'dump-emacs-portable)))
 	 (not (eq system-type 'ms-dos)))
     (let* ((base (concat "emacs-" emacs-version "."))
 	   (exelen (if (eq system-type 'windows-nt) -4))
@@ -362,16 +394,18 @@ lost after dumping")))
 				(string-to-number
 				 (substring name (length base) exelen))))
 			     files)))
-      (setq emacs-repository-version (condition-case nil (emacs-repository-get-version)
-                              (error nil)))
-      ;; `emacs-version' is a constant, so we shouldn't change it with `setq'.
-      (defconst emacs-version
-	(format "%s.%d"
-		emacs-version (if versions (1+ (apply 'max versions)) 1)))))
+      (setq emacs-repository-version (ignore-errors (emacs-repository-get-version))
+            emacs-repository-branch (ignore-errors (emacs-repository-get-branch)))
+      ;; A constant, so we shouldn't change it with `setq'.
+      (defconst emacs-build-number
+	(if versions (1+ (apply 'max versions)) 1))))
 
 
 (message "Finding pointers to doc strings...")
-(if (equal (last command-line-args) '("dump"))
+(if (and (or (and (fboundp 'dump-emacs)
+                  (equal dump-mode "dump"))
+             (and (fboundp 'dump-emacs-portable)
+                  (equal dump-mode "pdump"))))
     (Snarf-documentation "DOC")
   (condition-case nil
       (Snarf-documentation "DOC")
@@ -430,12 +464,6 @@ lost after dumping")))
     (message "Pure-hashed: %d strings, %d vectors, %d conses, %d bytecodes, %d others"
              strings vectors conses bytecodes others)))
 
-;; Prevent build-time PATH getting stored in the binary.
-;; Mainly cosmetic, but helpful for Guix.  (Bug#20330)
-;; Do this here, rather than earlier, so that the above code
-;; can invoke Git commands and the like.
-(setq exec-path nil)
-
 ;; Avoid error if user loads some more libraries now and make sure the
 ;; hash-consing hash table is GC'd.
 (setq purify-flag nil)
@@ -446,47 +474,69 @@ lost after dumping")))
 ;; Make sure we will attempt bidi reordering henceforth.
 (setq redisplay--inhibit-bidi nil)
 
-(if (member (car (last command-line-args)) '("dump" "bootstrap"))
-    (progn
-      (message "Dumping under the name emacs")
+(if dump-mode
+    (let ((output (cond ((equal dump-mode "pdump") "emacs.pdmp")
+                        ((equal dump-mode "dump") "emacs")
+                        ((equal dump-mode "bootstrap") "emacs")
+                        ((equal dump-mode "pbootstrap") "bootstrap-emacs.pdmp")
+                        (t (error "unrecognized dump mode %s" dump-mode)))))
+      (message "Dumping under the name %s" output)
       (condition-case ()
-	  (delete-file "emacs")
-	(file-error nil))
-      ;; We used to dump under the name xemacs, but that occasionally
-      ;; confused people installing Emacs (they'd install the file
-      ;; under the name `xemacs'), and it's inconsistent with every
-      ;; other GNU program's build process.
-      (dump-emacs "emacs" "temacs")
-      (message "%d pure bytes used" pure-bytes-used)
+          (delete-file output)
+        (file-error nil))
+      ;; On MS-Windows, the current directory is not necessarily the
+      ;; same as invocation-directory.
+      (let (success)
+        (unwind-protect
+             (let ((tmp-dump-mode dump-mode)
+                   (dump-mode nil))
+               (if (member tmp-dump-mode '("pdump" "pbootstrap"))
+                   (dump-emacs-portable (expand-file-name output invocation-directory))
+                 (dump-emacs output "temacs")
+                 (message "%d pure bytes used" pure-bytes-used))
+               (setq success t))
+          (unless success
+            (ignore-errors
+              (delete-file output)))))
       ;; Recompute NAME now, so that it isn't set when we dump.
       (if (not (or (eq system-type 'ms-dos)
                    ;; Don't bother adding another name if we're just
                    ;; building bootstrap-emacs.
-                   (equal (last command-line-args) '("bootstrap"))))
-	  (let ((name (concat "emacs-" emacs-version))
-		(exe (if (eq system-type 'windows-nt) ".exe" "")))
-	    (while (string-match "[^-+_.a-zA-Z0-9]+" name)
-	      (setq name (concat (downcase (substring name 0 (match-beginning 0)))
-				 "-"
-				 (substring name (match-end 0)))))
-	    (setq name (concat name exe))
-            (message "Adding name %s" name)
-	    ;; When this runs on Windows, invocation-directory is not
-	    ;; necessarily the current directory.
-	    (add-name-to-file (expand-file-name (concat "emacs" exe)
-						invocation-directory)
-			      (expand-file-name name invocation-directory)
-			      t)))
+                   (member dump-mode '("pbootstrap" "bootstrap"))))
+          (let ((name (format "emacs-%s.%d" emacs-version emacs-build-number))
+                (exe (if (eq system-type 'windows-nt) ".exe" "")))
+            (while (string-match "[^-+_.a-zA-Z0-9]+" name)
+              (setq name (concat (downcase (substring name 0 (match-beginning 0)))
+                                 "-"
+                                 (substring name (match-end 0)))))
+            (message "Adding name %s" (concat name exe))
+            ;; When this runs on Windows, invocation-directory is not
+            ;; necessarily the current directory.
+            (add-name-to-file (expand-file-name (concat "emacs" exe)
+                                                invocation-directory)
+                              (expand-file-name (concat name exe)
+                                                invocation-directory)
+                              t)
+            (when (equal dump-mode "pdump")
+              (message "Adding name %s" (concat name ".pdmp"))
+              (add-name-to-file (expand-file-name "emacs.pdmp"
+                                                  invocation-directory)
+                                (expand-file-name (concat name ".pdmp")
+                                                  invocation-directory)
+                                t))))
       (kill-emacs)))
 
-;; For machines with CANNOT_DUMP defined in config.h,
-;; this file must be loaded each time Emacs is run.
+;; This file must be loaded each time Emacs is run from scratch, e.g., temacs.
 ;; So run the startup code now.  First, remove `-l loadup' from args.
 
 (if (and (member (nth 1 command-line-args) '("-l" "--load"))
 	 (equal (nth 2 command-line-args) "loadup"))
     (setcdr command-line-args (nthcdr 3 command-line-args)))
 
+;; Don't keep `load-file-name' set during the top-level session!
+;; Otherwise, it breaks a lot of code which does things like
+;; (or load-file-name byte-compile-current-file).
+(setq load-file-name nil)
 (eval top-level)
 
 

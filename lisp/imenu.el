@@ -1,6 +1,6 @@
 ;;; imenu.el --- framework for mode-specific buffer indexes  -*- lexical-binding: t -*-
 
-;; Copyright (C) 1994-1998, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1994-1998, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Ake Stenhoff <etxaksf@aom.ericsson.se>
 ;;         Lars Lindberg <lli@sypro.cap.se>
@@ -21,7 +21,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -59,7 +59,7 @@
 
 ;;; Code:
 
-(eval-when-compile (require 'cl-lib))
+(require 'cl-lib)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
@@ -96,20 +96,13 @@ This might not yet be honored by all index-building functions."
   :type 'boolean
   :group 'imenu)
 
-(defcustom imenu-auto-rescan-maxout 60000
-  "Imenu auto-rescan is disabled in buffers larger than this size (in bytes).
-This variable is buffer-local."
+(defcustom imenu-auto-rescan-maxout 600000
+  "Imenu auto-rescan is disabled in buffers larger than this size (in bytes)."
   :type 'integer
-  :group 'imenu)
+  :group 'imenu
+  :version "26.2")
 
-(defvar imenu-always-use-completion-buffer-p nil)
-(make-obsolete-variable 'imenu-always-use-completion-buffer-p
-			'imenu-use-popup-menu "22.1")
-
-(defcustom imenu-use-popup-menu
-  (if imenu-always-use-completion-buffer-p
-      (not (eq imenu-always-use-completion-buffer-p 'never))
-    'on-mouse)
+(defcustom imenu-use-popup-menu 'on-mouse
   "Use a popup menu rather than a minibuffer prompt.
 If nil, always use a minibuffer prompt.
 If t, always use a popup menu,
@@ -119,8 +112,7 @@ If `on-mouse' use a popup menu when `imenu' was invoked with the mouse."
 		 (other :tag "Always" t))
   :group 'imenu)
 
-(defcustom imenu-eager-completion-buffer
-  (not (eq imenu-always-use-completion-buffer-p 'never))
+(defcustom imenu-eager-completion-buffer t
   "If non-nil, eagerly popup the completion buffer."
   :type 'boolean
   :group 'imenu
@@ -187,7 +179,9 @@ with name concatenation."
 
 (defcustom imenu-generic-skip-comments-and-strings t
   "When non-nil, ignore text inside comments and strings.
-Only affects `imenu--generic-function'."
+Only affects `imenu-default-create-index-function' (and any
+alternative implementation of `imenu-create-index-function' that
+uses `imenu--generic-function')."
   :type 'boolean
   :group 'imenu
   :version "24.4")
@@ -205,9 +199,9 @@ string (which specifies the title of a submenu into which the
 matches are put).
 REGEXP is a regular expression matching a definition construct
 which is to be displayed in the menu.  REGEXP may also be a
-function, called without arguments.  It is expected to search
-backwards.  It must return true and set `match-data' if it finds
-another element.
+function of no arguments.  If REGEXP is a function, it is
+expected to search backwards, return non-nil if it finds a
+definition construct, and set `match-data' for that construct.
 INDEX is an integer specifying which subexpression of REGEXP
 matches the definition's name; this subexpression is displayed as
 the menu item.
@@ -224,8 +218,8 @@ If non-nil this pattern is passed to `imenu--generic-function' to
 create a buffer index.
 
 For example, see the value of `fortran-imenu-generic-expression'
-used by `fortran-mode' with `imenu-syntax-alist' set locally to
-give the characters which normally have \"symbol\" syntax
+used by `fortran-mode' with `imenu-syntax-alist' set locally so that
+characters which normally have \"symbol\" syntax are considered to have
 \"word\" syntax during matching.")
 ;;;###autoload(put 'imenu-generic-expression 'risky-local-variable t)
 
@@ -354,98 +348,6 @@ Don't move point."
   (signal 'imenu-unavailable
           (list (apply #'format-message format args))))
 
-(defun imenu-example--lisp-extract-index-name ()
-  ;; Example of a candidate for `imenu-extract-index-name-function'.
-  ;; This will generate a flat index of definitions in a lisp file.
-  (declare (obsolete nil "23.2"))
-  (save-match-data
-    (and (looking-at "(def")
-	 (condition-case nil
-	     (progn
-	       (down-list 1)
-	       (forward-sexp 2)
-	       (let ((beg (point))
-		     (end (progn (forward-sexp -1) (point))))
-		 (buffer-substring beg end)))
-	   (error nil)))))
-
-(defun imenu-example--create-lisp-index ()
-  ;; Example of a candidate for `imenu-create-index-function'.
-  ;; It will generate a nested index of definitions.
-  (declare (obsolete nil "23.2"))
-  (let ((index-alist '())
-	(index-var-alist '())
-	(index-type-alist '())
-	(index-unknown-alist '()))
-    (goto-char (point-max))
-    ;; Search for the function
-    (while (beginning-of-defun)
-	  (save-match-data
-	    (and (looking-at "(def")
-		 (save-excursion
-	       (down-list 1)
-		   (cond
-		((looking-at "def\\(var\\|const\\)")
-		     (forward-sexp 2)
-		     (push (imenu-example--name-and-position)
-			   index-var-alist))
-		((looking-at "def\\(un\\|subst\\|macro\\|advice\\)")
-		     (forward-sexp 2)
-		     (push (imenu-example--name-and-position)
-			   index-alist))
-		((looking-at "def\\(type\\|struct\\|class\\|ine-condition\\)")
-		     (forward-sexp 2)
- 		 (if (= (char-after (1- (point))) ?\))
-			 (progn
- 		       (forward-sexp -1)
-			   (down-list 1)
- 		       (forward-sexp 1)))
-		     (push (imenu-example--name-and-position)
-			   index-type-alist))
-		    (t
-		     (forward-sexp 2)
-		     (push (imenu-example--name-and-position)
-		       index-unknown-alist)))))))
-    (and index-var-alist
-	 (push (cons "Variables" index-var-alist)
-	       index-alist))
-    (and index-type-alist
- 	 (push (cons "Types" index-type-alist)
-  	       index-alist))
-    (and index-unknown-alist
-	 (push (cons "Syntax-unknown" index-unknown-alist)
-	       index-alist))
-    index-alist))
-
-;; Regular expression to find C functions
-(defvar imenu-example--function-name-regexp-c
-  (concat
-   "^[a-zA-Z0-9]+[ \t]?"		; Type specs; there can be no
-   "\\([a-zA-Z0-9_*]+[ \t]+\\)?"	; more than 3 tokens, right?
-   "\\([a-zA-Z0-9_*]+[ \t]+\\)?"
-   "\\([*&]+[ \t]*\\)?"			; Pointer.
-   "\\([a-zA-Z0-9_*]+\\)[ \t]*("	; Name.
-   ))
-
-(defun imenu-example--create-c-index (&optional regexp)
-  (declare (obsolete nil "23.2"))
-  (let ((index-alist '())
-	char)
-    (goto-char (point-min))
-    ;; Search for the function
-    (save-match-data
-      (while (re-search-forward
-	      (or regexp imenu-example--function-name-regexp-c)
-	      nil t)
-	(backward-up-list 1)
-	(save-excursion
-	  (goto-char (scan-sexps (point) 1))
-	  (setq char (following-char)))
-	;; Skip this function name if it is a prototype declaration.
-	(if (not (eq char ?\;))
-	    (push (imenu-example--name-and-position) index-alist))))
-    (nreverse index-alist)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;
 ;;; Internal variables
@@ -499,7 +401,12 @@ An item looks like (NAME . POSITION)."
   (string-lessp (car item1) (car item2)))
 
 (defun imenu--sort-by-position (item1 item2)
-  (< (cdr item1) (cdr item2)))
+  "Comparison function to sort items depending on their position.
+Return non-nil if and only if ITEM1's position is lower than ITEM2's
+position."
+  (if (listp (cdr item1))
+      (< (cadr item1) (cadr item2))
+    (< (cdr item1) (cdr item2))))
 
 (defun imenu--relative-position (&optional reverse)
   "Support function to calculate relative position in buffer.
@@ -733,7 +640,7 @@ for modes which use `imenu--generic-function'.  If it is not set, but
 ;; so it needs to be careful never to loop!
 (defun imenu--generic-function (patterns)
   "Return an index alist of the current buffer based on PATTERNS.
-PATTERNS should be an alist with the same form as `imenu-generic-expression'.
+PATTERNS should be an alist of the same form as `imenu-generic-expression'.
 
 If `imenu-generic-skip-comments-and-strings' is non-nil, this ignores
 text inside comments and strings.
@@ -820,7 +727,8 @@ depending on PATTERNS."
 		  ;; Insert the item unless it is already present.
 		  (unless (or (member item (cdr menu))
                               (and imenu-generic-skip-comments-and-strings
-                                   (nth 8 (syntax-ppss))))
+                                   (save-excursion
+                                     (goto-char start) (nth 8 (syntax-ppss)))))
 		    (setcdr menu
 			    (cons item (cdr menu)))))
 		;; Go to the start of the match, to make sure we
@@ -832,9 +740,14 @@ depending on PATTERNS."
     (dolist (item index-alist)
       (when (listp item)
 	(setcdr item (sort (cdr item) 'imenu--sort-by-position))))
+    ;; Remove any empty menus.  That can happen because of skipping
+    ;; things inside comments or strings.
+    (setq index-alist (cl-delete-if
+                       (lambda (it) (and (consp it) (null (cdr it))))
+                       index-alist))
     (let ((main-element (assq nil index-alist)))
       (nconc (delq main-element (delq 'dummy index-alist))
-	     (cdr main-element)))))
+             (cdr main-element)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;

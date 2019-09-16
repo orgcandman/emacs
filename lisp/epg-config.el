@@ -1,6 +1,6 @@
 ;;; epg-config.el --- configuration of the EasyPG Library
 
-;; Copyright (C) 2006-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2006-2019 Free Software Foundation, Inc.
 
 ;; Author: Daiki Ueno <ueno@unixuser.org>
 ;; Keywords: PGP, GnuPG
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Code:
 
@@ -31,8 +31,8 @@
 (defconst epg-version-number "1.0.0"
   "Version number of this package.")
 
-(defconst epg-bug-report-address "ueno@unixuser.org"
-  "Report bugs to this address.")
+(define-obsolete-variable-alias 'epg-bug-report-address
+  'report-emacs-bug-address "27.1")
 
 (defgroup epg ()
   "Interface to the GNU Privacy Guard (GnuPG)."
@@ -44,48 +44,77 @@
 (defcustom epg-gpg-program (if (executable-find "gpg2")
                                "gpg2"
                              "gpg")
-  "The `gpg' executable.
-Setting this variable directly does not take effect;
-instead use \\[customize] (see the info node `Easy Customization')."
+  "Say what gpg program to prefer (if it satisfies minimum requirements).
+
+If this variable is \"gpg2\", but the version of gpg2 installed
+is less than `epg-gpg2-minimum-version', then version 1 of
+GnuPG (i.e., \"gpg\") will be used instead.  If the version of
+version 1 is less than `epg-gpg-minimum-version', then that won't
+be used either.
+
+If you want to explicitly specify what gpg program to use, you
+have to use \\[customize] instead (see the info node `Easy
+Customization').  Setting this variable without \\[customize] has
+no effect."
   :version "25.1"
-  :group 'epg
   :type 'string)
 
 (defcustom epg-gpgsm-program "gpgsm"
   "The `gpgsm' executable.
 Setting this variable directly does not take effect;
 instead use \\[customize] (see the info node `Easy Customization')."
-  :group 'epg
   :type 'string)
 
 (defcustom epg-gpgconf-program "gpgconf"
   "The `gpgconf' executable."
   :version "25.1"
-  :group 'epg
   :type 'string)
 
 (defcustom epg-gpg-home-directory nil
   "The directory which contains the configuration files of `epg-gpg-program'."
-  :group 'epg
   :type '(choice (const :tag "Default" nil) directory))
 
 (defcustom epg-passphrase-coding-system nil
   "Coding system to use with messages from `epg-gpg-program'."
-  :group 'epg
   :type 'symbol)
+
+(define-obsolete-variable-alias
+  'epa-pinentry-mode 'epg-pinentry-mode "27.1")
+
+;; In the doc string below, we say "symbol `error'" to avoid producing
+;; a hyperlink for `error' the function.
+(defcustom epg-pinentry-mode nil
+  "The pinentry mode.
+
+GnuPG 2.1 or later has an option to control the behavior of
+Pinentry invocation.  The value should be the symbol `error',
+`ask', `cancel', or `loopback'.  See the GnuPG manual for the
+meanings.
+
+A particularly useful mode is `loopback', which redirects all
+Pinentry queries to the caller, so Emacs can query passphrase
+through the minibuffer, instead of external Pinentry program."
+  :type '(choice (const nil)
+		 (const ask)
+		 (const cancel)
+		 (const error)
+		 (const loopback))
+  :version "27.1")
 
 (defcustom epg-debug nil
   "If non-nil, debug output goes to the \" *epg-debug*\" buffer.
 Note that the buffer name starts with a space."
-  :group 'epg
   :type 'boolean)
 
 (defconst epg-gpg-minimum-version "1.4.3")
+(defconst epg-gpg2-minimum-version "2.1.6")
 
 (defconst epg-config--program-alist
-  '((OpenPGP
+  `((OpenPGP
      epg-gpg-program
-     ("gpg2" . "2.1.6") ("gpg" . "1.4.3"))
+     ("gpg2" . ,epg-gpg2-minimum-version)
+     ("gpg" . ((,epg-gpg-minimum-version . "2.0")
+               ,epg-gpg2-minimum-version)))
     (CMS
      epg-gpgsm-program
      ("gpgsm" . "2.0.4")))
@@ -119,7 +148,11 @@ Otherwise, it tries the programs listed in the entry until the
 version requirement is met."
   (unless program-alist
     (setq program-alist epg-config--program-alist))
-  (let ((entry (assq protocol program-alist)))
+  (let ((entry (assq protocol program-alist))
+        ;; In many gnupg distributions (especially on Windows), the
+        ;; version string is "gpg (GnuPG) 2.2.15-unknown" or the like.
+        (version-regexp-alist (cons '("^[-._+ ]?unknown$" . -4)
+                                    version-regexp-alist)))
     (unless entry
       (error "Unknown protocol %S" protocol))
     (cl-destructuring-bind (symbol . alist)
@@ -129,7 +162,8 @@ version requirement is met."
         (or (and (not no-cache) (alist-get protocol epg--configurations))
             ;; If the executable value is already set with M-x
             ;; customize, use it without checking.
-            (if (and symbol (get symbol 'saved-value))
+            (if (and symbol (or (get symbol 'saved-value)
+                                (get symbol 'customized-value)))
                 (let ((configuration
                        (funcall constructor (symbol-value symbol))))
                   (push (cons protocol configuration) epg--configurations)
@@ -209,34 +243,37 @@ version requirement is met."
   (declare (obsolete epg-find-configuration "25.1"))
   (epg-config--make-gpg-configuration epg-gpg-program))
 
-(defun epg-config--parse-version (string)
-  (let ((index 0)
-	version)
-    (while (eq index (string-match "\\([0-9]+\\)\\.?" string index))
-      (setq version (cons (string-to-number (match-string 1 string))
-			  version)
-	    index (match-end 0)))
-    (nreverse version)))
-
-(defun epg-config--compare-version (v1 v2)
-  (while (and v1 v2 (= (car v1) (car v2)))
-    (setq v1 (cdr v1) v2 (cdr v2)))
-  (- (or (car v1) 0) (or (car v2) 0)))
-
 ;;;###autoload
-(defun epg-check-configuration (config &optional minimum-version)
-  "Verify that a sufficient version of GnuPG is installed."
-  (let ((entry (assq 'version config))
-	version)
-    (unless (and entry
-		 (stringp (cdr entry)))
-      (error "Undetermined version: %S" entry))
-    (setq version (epg-config--parse-version (cdr entry))
-	  minimum-version (epg-config--parse-version
-			   (or minimum-version
-			       epg-gpg-minimum-version)))
-    (unless (>= (epg-config--compare-version version minimum-version) 0)
-      (error "Unsupported version: %s" (cdr entry)))))
+(defun epg-check-configuration (config &optional req-versions)
+  "Verify that a sufficient version of GnuPG is installed.
+CONFIG should be a `epg-configuration' object (a plist).
+REQ-VERSIONS should be a list with elements of the form (MIN
+. MAX) where MIN and MAX are version strings indicating a
+semi-open range of acceptable versions.  REQ-VERSIONS may also be
+a single minimum version string."
+  (let ((version (alist-get 'version config)))
+    (unless (stringp version)
+      (error "Undetermined version: %S" version))
+    (catch 'version-ok
+      (pcase-dolist ((or `(,min . ,max)
+                         (and min (let max nil)))
+                     (if (listp req-versions) req-versions
+                       (list req-versions)))
+        (when (and (version<= (or min epg-gpg-minimum-version)
+                              version)
+                   (or (null max)
+                       (version< version max)))
+          (throw 'version-ok t)))
+      (error "Unsupported version: %s" version))))
+
+(defun epg-required-version-p (protocol required-version)
+  "Verify a sufficient version of GnuPG for specific protocol.
+PROTOCOL is symbol, either `OpenPGP' or `CMS'.  REQUIRED-VERSION
+is a string containing the required version number.  Return
+non-nil if that version or higher is installed."
+  (let ((version (cdr (assq 'version (epg-find-configuration protocol)))))
+    (and (stringp version)
+         (version<= required-version version))))
 
 ;;;###autoload
 (defun epg-expand-group (config group)

@@ -1,8 +1,8 @@
 ;;; vc-dir.el --- Directory status display under VC  -*- lexical-binding: t -*-
 
-;; Copyright (C) 2007-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2007-2019 Free Software Foundation, Inc.
 
-;; Author:   Dan Nicolaescu <dann@ics.uci.edu>
+;; Author: Dan Nicolaescu <dann@ics.uci.edu>
 ;; Keywords: vc tools
 ;; Package: vc
 
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Credits:
 
@@ -41,9 +41,12 @@
 (require 'vc)
 (require 'tool-bar)
 (require 'ewoc)
+(require 'seq)
 
 ;;; Code:
 (eval-when-compile (require 'cl-lib))
+
+(declare-function fileloop-continue "fileloop")
 
 (defcustom vc-dir-mode-hook nil
   "Normal hook run by `vc-dir-mode'.
@@ -178,6 +181,9 @@ See `run-hooks'."
     (define-key map [open]
       '(menu-item "Open File" vc-dir-find-file
 		  :help "Find the file on the current line"))
+    (define-key map [delete]
+      '(menu-item "Delete" vc-dir-clean-files
+		  :help "Delete the unregistered marked files"))
     (define-key map [sepvcdet] '("--"))
     ;; FIXME: This needs a key binding.  And maybe a better name
     ;; ("Insert" like PCL-CVS uses does not sound that great either)...
@@ -255,12 +261,14 @@ See `run-hooks'."
     (define-key map "l" 'vc-print-log)	   ;; C-x v l
     (define-key map "L" 'vc-print-root-log) ;; C-x v L
     (define-key map "I" 'vc-log-incoming)   ;; C-x v I
+    (define-key map "O" 'vc-log-outgoing)   ;; C-x v O
     ;; More confusing than helpful, probably
     ;;(define-key map "R" 'vc-revert) ;; u is taken by vc-dir-unmark.
     ;;(define-key map "A" 'vc-annotate) ;; g is taken by revert-buffer
     ;;                                     bound by `special-mode'.
     ;; Marking.
     (define-key map "m" 'vc-dir-mark)
+    (define-key map "d" 'vc-dir-clean-files)
     (define-key map "M" 'vc-dir-mark-all-files)
     (define-key map "u" 'vc-dir-unmark)
     (define-key map "U" 'vc-dir-unmark-all-files)
@@ -295,6 +303,12 @@ See `run-hooks'."
     (define-key map (kbd "M-s a C-s")   'vc-dir-isearch)
     (define-key map (kbd "M-s a M-C-s") 'vc-dir-isearch-regexp)
     (define-key map "G" 'vc-dir-ignore)
+
+    (let ((branch-map (make-sparse-keymap)))
+      (define-key map "B" branch-map)
+      (define-key branch-map "c" 'vc-create-tag)
+      (define-key branch-map "l" 'vc-print-branch-log)
+      (define-key branch-map "s" 'vc-retrieve-tag))
 
     ;; Hook up the menu.
     (define-key map [menu-bar vc-dir-mode]
@@ -547,11 +561,15 @@ If a prefix argument is given, move by that many lines."
 
 (defun vc-dir-mark-unmark (mark-unmark-function)
   (if (use-region-p)
-      (let (;; (firstl (line-number-at-pos (region-beginning)))
+      (let ((processed-line nil)
 	    (lastl (line-number-at-pos (region-end))))
 	(save-excursion
 	  (goto-char (region-beginning))
-	  (while (<= (line-number-at-pos) lastl)
+	  (while (and (<= (line-number-at-pos) lastl)
+                      ;; We make sure to not get stuck processing the
+                      ;; same line in an infinite loop.
+		      (not (eq processed-line (line-number-at-pos))))
+	    (setq processed-line (line-number-at-pos))
 	    (condition-case nil
 		(funcall mark-unmark-function)
 	      ;; `vc-dir-mark-file' signals an error if we try marking
@@ -686,7 +704,7 @@ share the same state."
 (defun vc-dir-unmark ()
   "Unmark the current file or all files in the region.
 If the region is active, unmark all the files in the region.
-Otherwise mark the file on the current line and move to the next
+Otherwise unmark the file on the current line and move to the next
 line."
   (interactive)
   (vc-dir-mark-unmark 'vc-dir-unmark-file))
@@ -749,8 +767,30 @@ that share the same state."
   (interactive "e")
   (vc-dir-at-event e (vc-dir-mark-unmark 'vc-dir-toggle-mark-file)))
 
+(defun vc-dir-clean-files ()
+  "Delete the marked files, or the current file if no marks.
+The files will not be marked as deleted in the version control
+system; see `vc-dir-delete-file'."
+  (interactive)
+  (let* ((files (or (vc-dir-marked-files)
+                    (list (vc-dir-current-file))))
+         (tracked
+          (seq-filter (lambda (file)
+                        (not (eq (vc-call-backend vc-dir-backend 'state file)
+                                 'unregistered)))
+                      files)))
+    (when tracked
+      (user-error (ngettext "Trying to clean tracked file: %s"
+                            "Trying to clean tracked files: %s"
+                            (length tracked))
+                  (mapconcat #'file-name-nondirectory tracked ", ")))
+    (map-y-or-n-p "Delete %s? " #'delete-file files)
+    (revert-buffer)))
+
 (defun vc-dir-delete-file ()
-  "Delete the marked files, or the current file if no marks."
+  "Delete the marked files, or the current file if no marks.
+The files will also be marked as deleted in the version control
+system."
   (interactive)
   (mapc 'vc-delete-file (or (vc-dir-marked-files)
                             (list (vc-dir-current-file)))))
@@ -773,6 +813,11 @@ that share the same state."
   (display-buffer (find-file-noselect (vc-dir-current-file))
 		  t))
 
+(defun vc-dir-view-file ()
+  "Examine a file on the current line in view mode."
+  (interactive)
+  (view-file (vc-dir-current-file)))
+
 (defun vc-dir-isearch ()
   "Search for a string through all marked buffers using Isearch."
   (interactive)
@@ -791,7 +836,8 @@ For marked directories, use the files displayed from those directories.
 Stops when a match is found.
 To continue searching for next match, use command \\[tags-loop-continue]."
   (interactive "sSearch marked files (regexp): ")
-  (tags-search regexp '(mapcar 'car (vc-dir-marked-only-files-and-states))))
+  (tags-search regexp
+               (mapcar #'car (vc-dir-marked-only-files-and-states))))
 
 (defun vc-dir-query-replace-regexp (from to &optional delimited)
   "Do `query-replace-regexp' of FROM with TO, on all marked files.
@@ -812,13 +858,24 @@ with the command \\[tags-loop-continue]."
       (if (and buffer (with-current-buffer buffer
 			buffer-read-only))
 	  (error "File `%s' is visited read-only" file))))
-  (tags-query-replace from to delimited
-		      '(mapcar 'car (vc-dir-marked-only-files-and-states))))
+  (fileloop-initialize-replace
+   from to (mapcar 'car (vc-dir-marked-only-files-and-states))
+   (if (equal from (downcase from)) nil 'default)
+   delimited)
+  (fileloop-continue))
 
-(defun vc-dir-ignore ()
-  "Ignore the current file."
-  (interactive)
-  (vc-ignore (vc-dir-current-file)))
+(defun vc-dir-ignore (&optional arg)
+  "Ignore the current file.
+If a prefix argument is given, ignore all marked files."
+  (interactive "P")
+  (if arg
+      (ewoc-map
+       (lambda (filearg)
+	 (when (vc-dir-fileinfo->marked filearg)
+	   (vc-ignore (vc-dir-fileinfo->name filearg))
+	   t))
+       vc-ewoc)
+    (vc-ignore (vc-dir-current-file))))
 
 (defun vc-dir-current-file ()
   (let ((node (ewoc-locate vc-ewoc)))

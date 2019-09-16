@@ -1,6 +1,6 @@
 ;;; viper-ex.el --- functions implementing the Ex commands for Viper
 
-;; Copyright (C) 1994-1998, 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1994-1998, 2000-2019 Free Software Foundation, Inc.
 
 ;; Author: Michael Kifer <kifer@cs.stonybrook.edu>
 ;; Package: viper
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -326,8 +326,7 @@ Don't put `-c' here, as it is added automatically."
 	(t  'viper-glob-unix-files) ; presumably UNIX
 	)
   "Expand the file spec containing wildcard symbols.
-The default tries to set this variable to work with Unix, Windows,
-and OS/2.
+The default tries to set this variable to work with Unix or MS Windows.
 
 However, if it doesn't work right for some types of Unix shells or some OS,
 the user should supply the appropriate function and set this variable to the
@@ -402,13 +401,14 @@ reversed."
     (setq viper-ex-work-buf (get-buffer-create viper-ex-work-buf-name))
     (set-buffer viper-ex-work-buf)
     (skip-chars-forward " \t|")
-    (let ((case-fold-search t))
-      (cond ((looking-at "#")
+    (let ((case-fold-search t)
+          (char (following-char)))
+      (cond ((= char ?#)
 	     (setq ex-token-type 'command)
-	     (setq ex-token (char-to-string (following-char)))
+	     (setq ex-token (char-to-string char))
 	     (forward-char 1))
 	    ((looking-at "[a-z]") (viper-get-ex-com-subr))
-	    ((looking-at "\\.")
+	    ((= char ?.)
 	     (forward-char 1)
 	     (setq ex-token-type 'dot))
 	    ((looking-at "[0-9]")
@@ -420,25 +420,25 @@ reversed."
 			 (t 'abs-number)))
 	     (setq ex-token
 		   (string-to-number (buffer-substring (point) (mark t)))))
-	    ((looking-at "\\$")
+	    ((= char ?$)
 	     (forward-char 1)
 	     (setq ex-token-type 'end))
-	    ((looking-at "%")
+	    ((= char ?%)
 	     (forward-char 1)
 	     (setq ex-token-type 'whole))
-	    ((looking-at "+")
-	     (cond ((or (looking-at "+[-+]") (looking-at "+[\n|]"))
+	    ((= char ?+)
+	     (cond ((looking-at "\\+[-+\n|]")
 		    (forward-char 1)
 		    (insert "1")
 		    (backward-char 1)
 		  (setq ex-token-type 'plus))
-		   ((looking-at "+[0-9]")
+		   ((looking-at "\\+[0-9]")
 		    (forward-char 1)
 		    (setq ex-token-type 'plus))
 		   (t
 		    (error viper-BadAddress))))
-	    ((looking-at "-")
-	     (cond ((or (looking-at "-[-+]") (looking-at "-[\n|]"))
+	    ((= char ?-)
+	     (cond ((looking-at "-[-+\n|]")
 		    (forward-char 1)
 		    (insert "1")
 		    (backward-char 1)
@@ -448,52 +448,52 @@ reversed."
 		    (setq ex-token-type 'minus))
 		   (t
 		    (error viper-BadAddress))))
-	    ((looking-at "/")
+	    ((= char ?/)
 	     (forward-char 1)
 	     (set-mark (point))
 	     (let ((cont t))
 	       (while (and (not (eolp)) cont)
 		 ;;(re-search-forward "[^/]*/")
 		 (re-search-forward "[^/]*\\(/\\|\n\\)")
-		 (if (not (looking-back "[^\\\\]\\(\\\\\\\\\\)*\\\\/"
+		 (if (not (looking-back "[^\\]\\(\\\\\\\\\\)*\\\\/"
                                         (line-beginning-position 0)))
 		     (setq cont nil))))
 	     (backward-char 1)
 	     (setq ex-token (buffer-substring (point) (mark t)))
-	     (if (looking-at "/") (forward-char 1))
+             (when (= (following-char) ?/) (forward-char 1))
 	     (setq ex-token-type 'search-forward))
-	    ((looking-at "\\?")
+	    ((= char ??)
 	     (forward-char 1)
 	     (set-mark (point))
 	     (let ((cont t))
 	       (while (and (not (eolp)) cont)
 		 ;;(re-search-forward "[^\\?]*\\?")
 		 (re-search-forward "[^\\?]*\\(\\?\\|\n\\)")
-		 (if (not (looking-back "[^\\\\]\\(\\\\\\\\\\)*\\\\\\?"
+		 (if (not (looking-back "[^\\]\\(\\\\\\\\\\)*\\\\\\?"
                                         (line-beginning-position 0)))
 		     (setq cont nil))
 		 (backward-char 1)
-		 (if (not (looking-at "\n")) (forward-char 1))))
+                 (when (/= (following-char) ?\n) (forward-char 1))))
 	     (setq ex-token-type 'search-backward)
 	     (setq ex-token (buffer-substring (1- (point)) (mark t))))
-	    ((looking-at ",")
+	    ((= char ?,)
 	     (forward-char 1)
 	     (setq ex-token-type 'comma))
-	    ((looking-at ";")
+	    ((= char ?\;)
 	     (forward-char 1)
 	     (setq ex-token-type 'semi-colon))
 	    ((looking-at "[!=><&~]")
 	     (setq ex-token-type 'command)
-	     (setq ex-token (char-to-string (following-char)))
+	     (setq ex-token (char-to-string char))
 	     (forward-char 1))
-	    ((looking-at "'")
+	    ((= char ?\')
 	     (setq ex-token-type 'goto-mark)
 	     (forward-char 1)
-	     (cond ((looking-at "'") (setq ex-token nil))
+	     (cond ((= (following-char) ?\') (setq ex-token nil))
 		   ((looking-at "[a-z]") (setq ex-token (following-char)))
 		   (t (error "%s" "Marks are ' and a-z")))
 	     (forward-char 1))
-	    ((looking-at "\n")
+	    ((= char ?\n)
 	     (setq ex-token-type 'end-mark)
 	     (setq ex-token "goto"))
 	    (t
@@ -548,9 +548,13 @@ reversed."
       (setq viper-ex-work-buf (get-buffer-create viper-ex-work-buf-name))
       (set-buffer viper-ex-work-buf)
       (goto-char (point-max)))
-    (cond ((looking-back quit-regex1) (exit-minibuffer))
-	  ((looking-back stay-regex)  (insert " "))
-	  ((looking-back quit-regex2) (exit-minibuffer))
+    (cond ((looking-back quit-regex1 (line-beginning-position))
+	   (exit-minibuffer))
+	  ;; Almost certainly point-min should be line-beginning-position,
+	  ;; but probably the two are identical anyway, and who really cares?
+	  ((looking-back stay-regex (point-min)) (insert " "))
+	  ((looking-back quit-regex2 (line-beginning-position))
+	   (exit-minibuffer))
 	  (t (insert " ")))))
 
 (declare-function viper-tmp-insert-at-eob "viper-cmd" (msg))
@@ -561,7 +565,7 @@ reversed."
   (let (save-pos dist compl-list string-to-complete completion-result)
 
     (save-excursion
-      (setq dist (skip-chars-backward "[a-zA-Z!=>&~]")
+      (setq dist (skip-chars-backward "a-zA-Z!=>&~")
 	    save-pos (point)))
 
     (if (or (= dist 0)
@@ -674,7 +678,7 @@ reversed."
       (viper-get-ex-token)
       (cond ((memq ex-token-type '(command end-mark))
 	     (if address (setq ex-addresses (cons address ex-addresses)))
-	     (viper-deactivate-mark)
+	     (deactivate-mark)
 	     (let ((cmd (ex-cmd-assoc ex-token ex-token-alist)))
 	       (if (null cmd)
 		   (error "`%s': %s" ex-token viper-BadExCommand))
@@ -688,9 +692,9 @@ reversed."
 			   (get-buffer-create viper-ex-work-buf-name))
 		     (set-buffer viper-ex-work-buf)
 		     (skip-chars-forward " \t")
-		     (cond ((looking-at "|")
+		     (cond ((= (following-char) ?|)
 			    (forward-char 1))
-			   ((looking-at "\n")
+			   ((= (following-char) ?\n)
 			    (setq cont nil))
 			   (t (error
 			       "`%s': %s" ex-token viper-SpuriousText)))
@@ -740,7 +744,7 @@ reversed."
 	     (error
 	      "Global regexp must be inside matching non-alphanumeric chars"))
 	    ((= c ??) (error "`?' is not an allowed pattern delimiter here")))
-      (if (looking-at "[^\\\\\n]")
+      (if (looking-at "[^\\\n]")
 	  (progn
 	    (forward-char 1)
 	    (set-mark (point))
@@ -753,7 +757,7 @@ reversed."
 			(error "Missing closing delimiter for global regexp")
 		      (goto-char (point-max))))
 		(if (not (looking-back
-			  (format "[^\\\\]\\(\\\\\\\\\\)*\\\\%c" c)
+			  (format "[^\\]\\(\\\\\\\\\\)*\\\\%c" c)
                           (line-beginning-position 0)))
 		    (setq cont nil)
 		  ;; we are at an escaped delimiter: unescape it and continue
@@ -877,8 +881,7 @@ reversed."
 	     (if (null ex-token)
 		 (exchange-point-and-mark)
 	       (goto-char
-		(viper-register-to-point
-		 (viper-int-to-char (1+ (- ex-token ?a))) 'enforce-buffer)))
+		(viper-register-to-point (1+ (- ex-token ?a)) 'enforce-buffer)))
 	     (setq address (point-marker)))))
     address))
 
@@ -995,33 +998,31 @@ reversed."
       (with-current-buffer (setq viper-ex-work-buf
                                  (get-buffer-create viper-ex-work-buf-name))
 	(skip-chars-forward " \t")
-	(if (looking-at "!")
-	    (if (and (not (looking-back "[ \t]" (1- (point))))
-		     ;; read doesn't have a corresponding :r! form, so ! is
-		     ;; immediately interpreted as a shell command.
-		     (not (string= ex-token "read")))
-		(progn
-		  (setq ex-variant t)
-		  (forward-char 1)
-		  (skip-chars-forward " \t"))
-	      (setq ex-cmdfile t)
-	      (forward-char 1)
-	      (skip-chars-forward " \t")))
-	(if (looking-at ">>")
-	    (progn
-	      (setq ex-append t
-		    ex-variant t)
-	      (forward-char 2)
-	      (skip-chars-forward " \t")))
-	(if (looking-at "+")
-	    (progn
-	      (forward-char 1)
-	      (set-mark (point))
-	      (re-search-forward "[ \t\n]")
-	      (backward-char 1)
-	      (setq ex-offset (buffer-substring (point) (mark t)))
-	      (forward-char 1)
-	      (skip-chars-forward " \t")))
+        (when (= (following-char) ?!)
+          (if (and (not (memq (preceding-char) '(?\s ?\t)))
+                   ;; read doesn't have a corresponding :r! form, so ! is
+                   ;; immediately interpreted as a shell command.
+                   (not (string= ex-token "read")))
+              (progn
+                (setq ex-variant t)
+                (forward-char 1)
+                (skip-chars-forward " \t"))
+            (setq ex-cmdfile t)
+            (forward-char 1)
+            (skip-chars-forward " \t")))
+        (when (looking-at ">>")
+          (setq ex-append t
+                ex-variant t)
+          (forward-char 2)
+          (skip-chars-forward " \t"))
+        (when (= (following-char) ?+)
+          (forward-char 1)
+          (set-mark (point))
+          (re-search-forward "[ \t\n]")
+          (backward-char 1)
+          (setq ex-offset (buffer-substring (point) (mark t)))
+          (forward-char 1)
+          (skip-chars-forward " \t"))
 	;; this takes care of :r, :w, etc., when they get file names
 	;; from the history list
 	(if (member ex-token '("read" "write" "edit" "visual" "next"))
@@ -1083,7 +1084,7 @@ reversed."
 (defun viper-handle-! ()
   (interactive)
   (if (and (string=
-	    (buffer-string) (viper-abbreviate-file-name default-directory))
+	    (buffer-string) (abbreviate-file-name default-directory))
 	   (member ex-token '("read" "write")))
       (erase-buffer))
   (insert "!"))
@@ -1172,7 +1173,7 @@ reversed."
 	    (princ "\n=============\n")
 	    (princ "\nThe numbers can be given as counts to :next. ")
 	    (princ "\n\nPress any key to continue...\n\n"))
-	  (viper-read-event))))))
+	  (read-event))))))
 
 ;; Ex cd command.  Default directory of this buffer changes
 (defun ex-cd ()
@@ -1238,7 +1239,7 @@ reversed."
 		(read-string "[Hit return to confirm] ")
 	      (quit
 	       (save-excursion (kill-buffer " *delete text*"))
-	       (error "Viper bell")))
+	       (user-error viper-ViperBell)))
 	    (save-excursion (kill-buffer " *delete text*")))
 	(if ex-buffer
 	    (cond ((viper-valid-register ex-buffer '(Letter))
@@ -1261,7 +1262,7 @@ reversed."
   (if (not file)
       (viper-get-ex-file))
   (cond ((and (string= ex-file "") buffer-file-name)
-	 (setq ex-file  (viper-abbreviate-file-name (buffer-file-name))))
+	 (setq ex-file  (abbreviate-file-name (buffer-file-name))))
 	((string= ex-file "")
 	 (error viper-NoFileSpecified)))
 
@@ -1478,7 +1479,7 @@ reversed."
           (error "`%s' requires a following letter" ex-token))))
     (save-excursion
       (goto-char (car ex-addresses))
-      (point-to-register (viper-int-to-char (1+ (- char ?a)))))))
+      (point-to-register (1+ (- char ?a))))))
 
 
 
@@ -1545,7 +1546,7 @@ reversed."
     (if (not (viper-buffer-live-p buf))
 	(error "Didn't find buffer %S or file %S"
 	       file-or-buffer-name
-	       (viper-abbreviate-file-name
+	       (abbreviate-file-name
 		(expand-file-name file-or-buffer-name))))
 
     (if (equal buf (current-buffer))
@@ -1560,7 +1561,7 @@ reversed."
       ;; setup buffer
       (if (setq wind (viper-get-visible-buffer-window buf))
 	  ()
-	(setq wind (get-lru-window (if (featurep 'xemacs) nil 'visible)))
+	(setq wind (get-lru-window 'visible))
 	(set-window-buffer wind buf))
 
       (if (viper-window-display-p)
@@ -1603,7 +1604,7 @@ reversed."
   ;; skip "!", if it is q!.  In Viper q!, w!, etc., behave as q, w, etc.
   (with-current-buffer (setq viper-ex-work-buf
                              (get-buffer-create viper-ex-work-buf-name))
-    (if (looking-at "!") (forward-char 1)))
+    (when (= (following-char) ?!) (forward-char 1)))
   (if (< viper-expert-level 3)
       (save-buffers-kill-emacs)
     (kill-buffer (current-buffer))))
@@ -1684,7 +1685,7 @@ reversed."
     (message ":set  <Variable> [= <Value>]")
     (or batch (sit-for 2))
 
-    (while (string-match "^[ \\t\\n]*$"
+    (while (string-match "^[ \t\n]*$"
 			 (setq str
 			       (completing-read ":set " ex-variable-alist)))
       (message ":set <Variable> [= <Value>]")
@@ -1882,17 +1883,15 @@ reversed."
   (condition-case nil
       (progn
 	(pop-to-buffer (get-buffer-create "*info*"))
-	(info (if (featurep 'xemacs) "viper.info" "viper"))
+	(info "viper")
 	(message "Type `i' to search for a specific topic"))
     (error (beep 1)
 	   (with-output-to-temp-buffer " *viper-info*"
 	     (princ (format "
 The Info file for Viper does not seem to be installed.
 
-This file is part of the standard distribution of %sEmacs.
-Please contact your system administrator. "
-			    (if (featurep 'xemacs) "X" "")
-			    ))))))
+This file is part of the standard distribution of Emacs.
+Please contact your system administrator. "))))))
 
 ;; Ex source command.
 ;; Loads the file specified as argument or viper-custom-file-name.
@@ -2014,8 +2013,10 @@ Please contact your system administrator. "
     (condition-case conds
 	(progn
 	  (if (string= tag "")
-	      (find-tag ex-tag t)
-	    (find-tag-other-window ex-tag))
+              ;; If we have an *xref* window, `next-error' will take
+              ;; us to the next definition.
+	      (next-error)
+	    (xref-find-definitions-other-window ex-tag))
 	  (viper-change-state-to-vi))
       (error
        (viper-change-state-to-vi)
@@ -2087,9 +2088,7 @@ Please contact your system administrator. "
 	      ;; create temp buffer for the region
 	      (setq temp-buf (get-buffer-create " *ex-write*"))
 	      (set-buffer temp-buf)
-	      (if (featurep 'xemacs)
-		  (set-visited-file-name ex-file)
-		(set-visited-file-name ex-file 'noquery))
+	      (set-visited-file-name ex-file 'noquery)
 	      (erase-buffer)
 	      (if (and file-exists ex-append)
 		  (insert-file-contents ex-file))
@@ -2128,7 +2127,7 @@ Please contact your system administrator. "
 
 (defun ex-write-info (exists file-name beg end)
   (message "`%s'%s %d lines, %d characters"
-	   (viper-abbreviate-file-name file-name)
+	   (abbreviate-file-name file-name)
 	   (if exists "" " [New file]")
 	   (count-lines beg (min (1+ end) (point-max)))
 	   (- end beg)))
@@ -2224,9 +2223,9 @@ Type `mak ' (including the space) to run make with no args."
 	lines file info)
     (setq lines (count-lines (point-min) (viper-line-pos 'end))
 	  file (cond ((buffer-file-name)
-		      (concat (viper-abbreviate-file-name (buffer-file-name)) ":"))
+		      (concat (abbreviate-file-name (buffer-file-name)) ":"))
 		     ((buffer-file-name (buffer-base-buffer))
-		      (concat (viper-abbreviate-file-name (buffer-file-name (buffer-base-buffer))) " (indirect buffer):"))
+		      (concat (abbreviate-file-name (buffer-file-name (buffer-base-buffer))) " (indirect buffer):"))
 		     (t (concat (buffer-name) " [Not visiting any file]:")))
 	  info (format "line=%d/%d pos=%d/%d col=%d %s"
 		       (if (= pos1 pos2)
@@ -2243,7 +2242,7 @@ Type `mak ' (including the space) to run make with no args."
 	(with-output-to-temp-buffer " *viper-info*"
 	  (princ (concat "\n" file "\n\n\t" info "\n\n")))
 	(let ((inhibit-quit t))
-	  (viper-set-unread-command-events (viper-read-event)))
+	  (viper-set-unread-command-events (read-event)))
 	(kill-buffer " *viper-info*")))
     ))
 
@@ -2322,9 +2321,5 @@ Type `mak ' (including the space) to run make with no args."
     (save-current-buffer
       (with-output-to-temp-buffer " *viper-info*"
 	(princ lines))))))
-
-
-
-
 
 ;;; viper-ex.el ends here

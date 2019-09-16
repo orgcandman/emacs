@@ -1,6 +1,6 @@
 ;;; vc-svn.el --- non-resident support for Subversion version-control  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2003-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2003-2019 Free Software Foundation, Inc.
 
 ;; Author:      FSF (see vc.el for full credits)
 ;; Maintainer:  Stefan Monnier <monnier@gnu.org>
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -184,6 +184,7 @@ switches."
                      (?M . edited)
                      (?D . removed)
                      (?R . removed)
+                     (?! . needs-update)
                      (?? . unregistered)
                      ;; This is what vc-svn-parse-status does.
                      (?~ . edited)))
@@ -365,8 +366,9 @@ FILE is a file wildcard, relative to the root directory of DIRECTORY."
 (defun vc-svn-ignore-completion-table (directory)
   "Return the list of ignored files in DIRECTORY."
   (with-temp-buffer
-    (vc-svn-command t t nil "propget" "svn:ignore" (expand-file-name directory))
-    (split-string (buffer-string))))
+    (when (zerop (vc-svn-command
+                  t t nil "propget" "svn:ignore" (expand-file-name directory)))
+      (split-string (buffer-string) "\n"))))
 
 (defun vc-svn-find-admin-dir (file)
   "Return the administrative directory of FILE."
@@ -478,7 +480,8 @@ The changes are between FIRST-VERSION and SECOND-VERSION."
                ((string= (match-string 2) "U")
                 (vc-file-setprop file 'vc-state 'up-to-date)
                 (vc-file-setprop file 'vc-checkout-time
-                                 (nth 5 (file-attributes file)))
+                                 (file-attribute-modification-time
+				  (file-attributes file)))
                 0);; indicate success to the caller
                ;; Merge successful, but our own changes are still in the file
                ((string= (match-string 2) "G")
@@ -700,8 +703,7 @@ Set file properties accordingly.  If FILENAME is non-nil, return its status."
   (let (multifile file status propstat)
     (goto-char (point-min))
     (while (re-search-forward
-            ;; Ignore the files with status X.
-	    "^\\(?:\\?\\|[ ACDGIMR!~][ MC][ L][ +][ S]..\\([ *]\\) +\\([-0-9]+\\) +\\([0-9?]+\\) +\\([^ ]+\\)\\) +" nil t)
+            "^\\(?:\\?\\|[ ACDGIMR!~][ MC][ L][ +][ SX]..\\([ *]\\) +\\([-0-9]+\\) +\\([0-9?]+\\) +\\([^ ]+\\)\\) +" nil t)
       ;; If the username contains spaces, the output format is ambiguous,
       ;; so don't trust the output's filename unless we have to.
       (setq file (or (unless multifile filename)
@@ -729,7 +731,8 @@ Set file properties accordingly.  If FILENAME is non-nil, return its status."
 	   (if (eq (char-after (match-beginning 1)) ?*)
 	       'needs-update
              (vc-file-setprop file 'vc-checkout-time
-                              (nth 5 (file-attributes file)))
+                              (file-attribute-modification-time
+			       (file-attributes file)))
 	     'up-to-date))
 	  ((eq status ?A)
 	   ;; If the file was actually copied, (match-string 2) is "-".
@@ -757,7 +760,7 @@ Set file properties accordingly.  If FILENAME is non-nil, return its status."
   ;; an uppercase or lowercase letter and can contain uppercase and
   ;; lowercase letters, digits, `-', and `_'.
   (and (string-match "^[a-zA-Z]" tag)
-       (not (string-match "[^a-z0-9A-Z-_]" tag))))
+       (not (string-match "[^a-z0-9A-Z_-]" tag))))
 
 (defun vc-svn-valid-revision-number-p (tag)
   "Return non-nil if TAG is a valid revision number."

@@ -1,8 +1,8 @@
 // testtypedefs.cpp --- Sample with some fake bits out of std::string
 
-// Copyright (C) 2008-2017 Free Software Foundation, Inc.
+// Copyright (C) 2008-2019 Free Software Foundation, Inc.
 
-// Author: Eric M. Ludlam <eric@siege-engine.com>
+// Author: Eric M. Ludlam <zappo@gnu.org>
 
 // This file is part of GNU Emacs.
 
@@ -17,7 +17,7 @@
 // GNU General Public License for more details.
 
 // You should have received a copy of the GNU General Public License
-// along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+// along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 // Thanks Ming-Wei Chang for these examples.
 
@@ -78,4 +78,3 @@ int main()
   // #4# ("otherFunc")
   return 0;
 }
-

@@ -1,6 +1,6 @@
 ;;; eieio-speedbar.el -- Classes for managing speedbar displays.  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1999-2002, 2005, 2007-2017 Free Software Foundation,
+;; Copyright (C) 1999-2002, 2005, 2007-2019 Free Software Foundation,
 ;; Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
@@ -20,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -348,7 +348,7 @@ The object is at indentation level INDENT."
 (defun eieio-speedbar-object-expand (text token indent)
   "Expand object represented by TEXT.
 TOKEN is the object.  INDENT is the current indentation level."
-  (cond ((string-match "+" text)	;we have to expand this file
+  (cond ((string-match "\\+" text)	;we have to expand this file
 	 (speedbar-change-expand-button-char ?-)
 	 (oset token expanded t)
 	 (speedbar-with-writable

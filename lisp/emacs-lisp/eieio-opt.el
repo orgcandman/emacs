@@ -1,6 +1,6 @@
 ;;; eieio-opt.el -- eieio optional functions (debug, printing, speedbar)
 
-;; Copyright (C) 1996, 1998-2003, 2005, 2008-2017 Free Software
+;; Copyright (C) 1996, 1998-2003, 2005, 2008-2019 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
@@ -20,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -31,6 +31,10 @@
 (require 'eieio)
 (require 'find-func)
 (require 'speedbar)
+
+;; We require cl-extra here instead of cl-lib because we need the
+;; internal `cl--describe-class' function.
+(require 'cl-extra)
 
 ;;; Code:
 ;;;###autoload
@@ -142,7 +146,10 @@ are not abstract."
 	      (find-lisp-object-file-name ctr def)))
       (when location
 	(insert (substitute-command-keys " in `"))
-	(help-insert-xref-button
+	;; The `cl-type-definition' button type can't be autoloaded
+	;; due to circularity during bootstrap (Bug#28899).
+        (require 'cl-extra)
+        (help-insert-xref-button
 	 (help-fns-short-filename location)
 	 'cl-type-definition ctr location 'define-type)
 	(insert (substitute-command-keys "'")))
@@ -152,8 +159,7 @@ are not abstract."
 	  (insert "\n\n[Class description not available until class definition is loaded.]\n")
 	(save-excursion
 	  (insert (propertize "\n\nClass description:\n" 'face 'bold))
-	  (eieio-help-class ctr))
-	))))
+	  (cl--describe-class ctr))))))
 
 
 ;;; METHOD STATS
@@ -324,7 +330,7 @@ current expansion depth."
 (defun eieio-sb-expand (text class indent)
   "For button TEXT, expand CLASS at the current location.
 Argument INDENT is the depth of indentation."
-  (cond ((string-match "+" text)	;we have to expand this file
+  (cond ((string-match "\\+" text)	;we have to expand this file
 	 (speedbar-change-expand-button-char ?-)
 	 (speedbar-with-writable
 	   (save-excursion

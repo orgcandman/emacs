@@ -1,6 +1,6 @@
-;; bug-reference.el --- buttonize bug references
+;; bug-reference.el --- buttonize bug references  -*- lexical-binding: t; -*-
 
-;; Copyright (C) 2008-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2008-2019 Free Software Foundation, Inc.
 
 ;; Author: Tom Tromey <tromey@redhat.com>
 ;; Created: 21 Mar 2007
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -44,7 +44,7 @@
     map)
   "Keymap used by bug reference buttons.")
 
-;; E.g., "http://gcc.gnu.org/PR%s"
+;; E.g., "https://gcc.gnu.org/PR%s"
 (defvar bug-reference-url-format nil
   "Format used to turn a bug number into a URL.
 The bug number is supplied as a string, so this should have a single %s.
@@ -69,13 +69,15 @@ so that it is considered safe, see `enable-local-variables'.")
                 (get s 'bug-reference-url-format)))))
 
 (defcustom bug-reference-bug-regexp
-  "\\([Bb]ug ?#?\\|[Pp]atch ?#\\|RFE ?#\\|PR [a-z-+]+/\\)\\([0-9]+\\(?:#[0-9]+\\)?\\)"
+  "\\([Bb]ug ?#?\\|[Pp]atch ?#\\|RFE ?#\\|PR [a-z+-]+/\\)\\([0-9]+\\(?:#[0-9]+\\)?\\)"
   "Regular expression matching bug references.
 The second subexpression should match the bug reference (usually a number)."
   :type 'string
-  :safe 'stringp
   :version "24.3"			; previously defconst
   :group 'bug-reference)
+
+;;;###autoload
+(put 'bug-reference-bug-regexp 'safe-local-variable 'stringp)
 
 (defun bug-reference-set-overlay-properties ()
   "Set properties of bug reference overlays."
@@ -89,7 +91,7 @@ The second subexpression should match the bug reference (usually a number)."
 (bug-reference-set-overlay-properties)
 
 (defun bug-reference-unfontify (start end)
-  "Remove bug reference overlays from region."
+  "Remove bug reference overlays from the region between START and END."
   (dolist (o (overlays-in start end))
     (when (eq (overlay-get o 'category) 'bug-reference)
       (delete-overlay o))))
@@ -97,7 +99,7 @@ The second subexpression should match the bug reference (usually a number)."
 (defvar bug-reference-prog-mode)
 
 (defun bug-reference-fontify (start end)
-  "Apply bug reference overlays to region."
+  "Apply bug reference overlays to the region between START and END."
   (save-excursion
     (let ((beg-line (progn (goto-char start) (line-beginning-position)))
 	  (end-line (progn (goto-char end) (line-end-position))))
@@ -139,10 +141,7 @@ The second subexpression should match the bug reference (usually a number)."
 
 ;;;###autoload
 (define-minor-mode bug-reference-mode
-  "Toggle hyperlinking bug references in the buffer (Bug Reference mode).
-With a prefix argument ARG, enable Bug Reference mode if ARG is
-positive, and disable it otherwise.  If called from Lisp, enable
-the mode if ARG is omitted or nil."
+  "Toggle hyperlinking bug references in the buffer (Bug Reference mode)."
   nil
   ""
   nil

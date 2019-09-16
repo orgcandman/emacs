@@ -1,7 +1,7 @@
 ;;; eieio.el --- Enhanced Implementation of Emacs Interpreted Objects  -*- lexical-binding:t -*-
 ;;;              or maybe Eric's Implementation of Emacs Interpreted Objects
 
-;; Copyright (C) 1995-1996, 1998-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1995-1996, 1998-2019 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 ;; Version: 1.4
@@ -20,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -235,7 +235,7 @@ This method is obsolete."
            (let ((f (intern (format "%s-child-p" name))))
              `((defalias ',f ',testsym2)
                (make-obsolete
-                ',f ,(format "use (cl-typep ... '%s) instead" name)
+                ',f ,(format "use (cl-typep ... \\='%s) instead" name)
                 "25.1"))))
 
        ;; When using typep, (typep OBJ 'myclass) returns t for objects which
@@ -246,7 +246,7 @@ This method is obsolete."
        ;; test, so we can let typep have the CLOS documented behavior
        ;; while keeping our above predicate clean.
 
-       (put ',name 'cl-deftype-satisfies #',testsym2)
+       (define-symbol-prop ',name 'cl-deftype-satisfies #',testsym2)
 
        (eieio-defclass-internal ',name ',superclasses ',slots ',options-and-doc)
 
@@ -337,21 +337,19 @@ variable name of the same name as the slot."
 ;; hard-coded in random .elc files.
 (defun eieio-pcase-slot-index-table (obj)
   "Return some data structure from which can be extracted the slot offset."
-  (eieio--class-index-table
-   (symbol-value (eieio--object-class-tag obj))))
+  (eieio--class-index-table (eieio--object-class obj)))
 
 (defun eieio-pcase-slot-index-from-index-table (index-table slot)
   "Find the index to pass to `aref' to access SLOT."
   (let ((index (gethash slot index-table)))
-    (if index (+ (eval-when-compile
-                   (length (cl-struct-slot-info 'eieio--object)))
+    (if index (+ (eval-when-compile eieio--object-num-slots)
                  index))))
 
 (pcase-defmacro eieio (&rest fields)
-  "Pcase patterns to match EIEIO objects.
-Elements of FIELDS can be of the form (NAME PAT) in which case the contents of
-field NAME is matched against PAT, or they can be of the form NAME which
-is a shorthand for (NAME NAME)."
+  "Pcase patterns that match EIEIO object EXPVAL.
+Elements of FIELDS can be of the form (NAME PAT) in which case the
+contents of field NAME is matched against PAT, or they can be of
+ the form NAME which is a shorthand for (NAME NAME)."
   (declare (debug (&rest [&or (sexp pcase-PAT) sexp])))
   (let ((is (make-symbol "table")))
     ;; FIXME: This generates a horrendous mess of redundant let bindings.
@@ -379,37 +377,36 @@ is a shorthand for (NAME NAME)."
 (define-obsolete-function-alias
   'object-class-fast #'eieio-object-class "24.4")
 
+;; In the past, every EIEIO object had a `name' field, so we had the
+;; two methods `eieio-object-name-string' and
+;; `eieio-object-set-name-string' "for free".  Since this field is
+;; very rarely used, we got rid of it and instead we keep it in a weak
+;; hash-tables, for those very rare objects that use it.
+;; Really, those rare objects should inherit from `eieio-named' instead!
+(defconst eieio--object-names (make-hash-table :test #'eq :weakness 'key))
+
 (cl-defgeneric eieio-object-name-string (obj)
   "Return a string which is OBJ's name."
-  (declare (obsolete eieio-named "25.1")))
+  (or (gethash obj eieio--object-names)
+      (format "%s-%x" (eieio-object-class obj) (sxhash-eq obj))))
+
+(define-obsolete-function-alias
+  'object-name-string #'eieio-object-name-string "24.4")
 
 (defun eieio-object-name (obj &optional extra)
   "Return a printed representation for object OBJ.
 If EXTRA, include that in the string returned to represent the symbol."
   (cl-check-type obj eieio-object)
   (format "#<%s %s%s>" (eieio-object-class obj)
-	  (eieio-object-name-string obj) (or extra "")))
+	  (eieio-object-name-string obj)
+          (cond
+           ((null extra)
+            "")
+           ((listp extra)
+            (concat " " (mapconcat #'identity extra " ")))
+           (t
+            extra))))
 (define-obsolete-function-alias 'object-name #'eieio-object-name "24.4")
-
-(defconst eieio--object-names (make-hash-table :test #'eq :weakness 'key))
-
-;; In the past, every EIEIO object had a `name' field, so we had the two method
-;; below "for free".  Since this field is very rarely used, we got rid of it
-;; and instead we keep it in a weak hash-tables, for those very rare objects
-;; that use it.
-(cl-defmethod eieio-object-name-string (obj)
-  (or (gethash obj eieio--object-names)
-      (symbol-name (eieio-object-class obj))))
-(define-obsolete-function-alias
-  'object-name-string #'eieio-object-name-string "24.4")
-
-(cl-defmethod eieio-object-set-name-string (obj name)
-  "Set the string which is OBJ's NAME."
-  (declare (obsolete eieio-named "25.1"))
-  (cl-check-type name string)
-  (setf (gethash obj eieio--object-names) name))
-(define-obsolete-function-alias
-  'object-set-name-string 'eieio-object-set-name-string "24.4")
 
 (defun eieio-object-class (obj)
   "Return the class struct defining OBJ."
@@ -712,6 +709,9 @@ calls `initialize-instance' on that object."
     ;; Call the initialize method on the new object with the slots
     ;; that were passed down to us.
     (initialize-instance new-object slots)
+    (when eieio-backward-compatibility
+      ;; Use symbol as type descriptor, for backwards compatibility.
+      (aset new-object 0 class))
     ;; Return the created object.
     new-object))
 
@@ -825,10 +825,12 @@ first and modify the returned object.")
 It is sometimes useful to put a summary of the object into the
 default #<notation> string when using EIEIO browsing tools.
 Implement this method to customize the summary."
+  (declare (obsolete cl-print-object "26.1"))
   (format "%S" this))
 
-(cl-defmethod object-print ((this eieio-default-superclass) &rest strings)
-  "Pretty printer for object THIS.  Call function `object-name' with STRINGS.
+(with-suppressed-warnings ((obsolete object-print))
+  (cl-defmethod object-print ((this eieio-default-superclass) &rest strings)
+    "Pretty printer for object THIS.  Call function `object-name' with STRINGS.
 The default method for printing object THIS is to use the
 function `object-name'.
 
@@ -839,10 +841,28 @@ Implement this function and specify STRINGS in a call to
 `call-next-method' to provide additional summary information.
 When passing in extra strings from child classes, always remember
 to prepend a space."
-  (eieio-object-name this (apply #'concat strings)))
+    (eieio-object-name this (apply #'concat strings))))
+
+(with-suppressed-warnings ((obsolete object-print))
+  (cl-defmethod cl-print-object ((object eieio-default-superclass) stream)
+    "Default printer for EIEIO objects."
+    ;; Fallback to the old `object-print'.  There should be no
+    ;; `object-print' methods in the Emacs tree, but there may be some
+    ;; out-of-tree.
+    (princ (object-print object) stream)))
+
 
 (defvar eieio-print-depth 0
-  "When printing, keep track of the current indentation depth.")
+  "The current indentation depth while printing.
+Ignored if `eieio-print-indentation' is nil.")
+
+(defvar eieio-print-indentation t
+  "When non-nil, indent contents of printed objects.")
+
+(defvar eieio-print-object-name t
+  "When non-nil write the object name in `object-write'.
+Does not affect objects subclassing `eieio-named'.  Note that
+Emacs<26 requires that object names be present.")
 
 (cl-defgeneric object-write (this &optional comment)
   "Write out object THIS to the current stream.
@@ -854,10 +874,11 @@ This writes out the vector version of this object.  Complex and recursive
 object are discouraged from being written.
   If optional COMMENT is non-nil, include comments when outputting
 this object."
-  (when comment
+  (when (and comment eieio-print-object-name)
     (princ ";; Object ")
     (princ (eieio-object-name-string this))
-    (princ "\n")
+    (princ "\n"))
+  (when comment
     (princ comment)
     (princ "\n"))
   (let* ((cl (eieio-object-class this))
@@ -866,12 +887,14 @@ this object."
     ;; It should look like this:
     ;; (<constructor> <name> <slot> <slot> ... )
     ;; Each slot's slot is writen using its :writer.
-    (princ (make-string (* eieio-print-depth 2) ? ))
+    (when eieio-print-indentation
+      (princ (make-string (* eieio-print-depth 2) ? )))
     (princ "(")
     (princ (symbol-name (eieio--class-constructor (eieio-object-class this))))
-    (princ " ")
-    (prin1 (eieio-object-name-string this))
-    (princ "\n")
+    (when eieio-print-object-name
+      (princ " ")
+      (prin1 (eieio-object-name-string this))
+      (princ "\n"))
     ;; Loop over all the public slots
     (let ((slots (eieio--class-slots cv))
 	  (eieio-print-depth (1+ eieio-print-depth)))
@@ -884,7 +907,8 @@ this object."
               (unless (or (not i) (equal v (cl--slot-descriptor-initform slot)))
                 (unless (bolp)
                   (princ "\n"))
-                (princ (make-string (* eieio-print-depth 2) ? ))
+                (when eieio-print-indentation
+                  (princ (make-string (* eieio-print-depth 2) ? )))
                 (princ (symbol-name i))
                 (if (alist-get :printer (cl--slot-descriptor-props slot))
                     ;; Use our public printer
@@ -899,7 +923,7 @@ this object."
                              "\n" " "))
                   (eieio-override-prin1 v))))))))
     (princ ")")
-    (when (= eieio-print-depth 0)
+    (when (zerop eieio-print-depth)
       (princ "\n"))))
 
 (defun eieio-override-prin1 (thing)
@@ -908,6 +932,25 @@ this object."
 	 (object-write thing))
 	((consp thing)
 	 (eieio-list-prin1 thing))
+	((hash-table-p thing)
+         (let ((copy (copy-hash-table thing)))
+	   (maphash
+	    (lambda (key val)
+	      (setf (gethash key copy)
+		    (read
+		     (with-output-to-string
+		       (eieio-override-prin1 val)))))
+	    copy)
+	   (prin1 copy)))
+	((vectorp thing)
+         (let ((copy (copy-sequence thing)))
+	  (dotimes (i (length copy))
+	    (aset copy i
+		  (read
+		   (with-output-to-string
+		     (eieio-override-prin1
+		      (aref copy i))))))
+	  (prin1 copy)))
 	((eieio--class-p thing)
 	 (princ (eieio--class-print-name thing)))
 	(t (prin1 thing))))
@@ -918,14 +961,16 @@ this object."
       (progn
 	(princ "'")
 	(prin1 list))
-    (princ (make-string (* eieio-print-depth 2) ? ))
+    (when eieio-print-indentation
+      (princ (make-string (* eieio-print-depth 2) ? )))
     (princ "(list")
     (let ((eieio-print-depth (1+ eieio-print-depth)))
       (while list
 	(princ "\n")
 	(if (eieio-object-p (car list))
 	    (object-write (car list))
-	  (princ (make-string (* eieio-print-depth 2) ? ))
+          (when eieio-print-indentation
+	   (princ (make-string (* eieio-print-depth) ? )))
 	  (eieio-override-prin1 (car list)))
 	(setq list (cdr list))))
     (princ ")")))
@@ -944,27 +989,6 @@ of `eq'."
 ;; FIXME: This is not actually needed any more since we can click on the
 ;; hyperlink from the constructor's docstring to see the type definition.
 (add-hook 'help-fns-describe-function-functions 'eieio-help-constructor)
-
-;;; Interfacing with edebug
-;;
-(defun eieio-edebug-prin1-to-string (print-function object &optional noescape)
-  "Display EIEIO OBJECT in fancy format.
-
-Used as advice around `edebug-prin1-to-string', held in the
-variable PRINT-FUNCTION.  Optional argument NOESCAPE is passed to
-`prin1-to-string' when appropriate."
-  (cond ((eieio--class-p object) (eieio--class-print-name object))
-	((eieio-object-p object) (object-print object))
-	((and (listp object) (or (eieio--class-p (car object))
-				 (eieio-object-p (car object))))
-	 (concat "(" (mapconcat
-                      (lambda (x) (eieio-edebug-prin1-to-string print-function x))
-                      object " ")
-                 ")"))
-	(t (funcall print-function object noescape))))
-
-(advice-add 'edebug-prin1-to-string
-            :around #'eieio-edebug-prin1-to-string)
 
 (provide 'eieio)
 

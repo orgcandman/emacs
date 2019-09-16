@@ -1,9 +1,8 @@
 ;;; mode-local.el --- Support for mode local facilities
 ;;
-;; Copyright (C) 2004-2005, 2007-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2005, 2007-2019 Free Software Foundation, Inc.
 ;;
 ;; Author: David Ponce <david@dponce.com>
-;; Maintainer: David Ponce <david@dponce.com>
 ;; Created: 27 Apr 2004
 ;; Keywords: syntax
 
@@ -20,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -45,8 +44,6 @@
 ;; Add macro for defining the '-default' functionality.
 
 ;;; Code:
-
-(eval-when-compile (require 'cl))
 
 (require 'find-func)
 ;; For find-function-regexp-alist. It is tempting to replace this
@@ -299,8 +296,7 @@ Elements are (SYMBOL . PREVIOUS-VALUE), describing one variable."
   ;; Hack -
   ;; do not do this if we are inside set-auto-mode as we may be in
   ;; an initialization race condition.
-  (if (or  (and (featurep 'emacs) (boundp 'keep-mode-if-same))
-	   (and (featurep 'xemacs) (boundp 'just-from-file-name)))
+  (if (boundp 'keep-mode-if-same)
       ;; We are inside set-auto-mode, as this is an argument that is
       ;; vaguely unique.
 
@@ -579,6 +575,8 @@ ARGS are the function arguments, which should match those of the same
 named function created with `define-overload'.
 DOCSTRING is the documentation string.
 BODY is the implementation of this function."
+  ;; FIXME: Make this obsolete and use cl-defmethod with &context instead.
+  (declare (doc-string 4))
   (let ((newname (intern (format "%s-%s" name mode))))
     `(progn
        (eval-and-compile

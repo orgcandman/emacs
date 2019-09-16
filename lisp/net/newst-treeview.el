@@ -1,6 +1,6 @@
 ;;; newst-treeview.el --- Treeview frontend for newsticker.  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2008-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2008-2019 Free Software Foundation, Inc.
 
 ;; Author:      Ulf Jasper <ulf.jasper@web.de>
 ;; Filename:    newst-treeview.el
@@ -23,7 +23,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;; ======================================================================
 ;;; Commentary:
@@ -36,6 +36,7 @@
 
 ;; ======================================================================
 ;;; Code:
+(require 'cl-lib)
 (require 'newst-reader)
 (require 'widget)
 (require 'tree-widget)
@@ -258,7 +259,6 @@ their id stays constant."
 
 ;; ======================================================================
 
-(unless (fboundp 'declare-function) (defmacro declare-function (&rest _)))
 (declare-function w3m-toggle-inline-images "ext:w3m" (&optional force no-cache))
 (defvar w3m-fill-column)
 (defvar w3-maximum-line-length)

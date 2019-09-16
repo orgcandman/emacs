@@ -1,12 +1,11 @@
 ;;; ffap.el --- find file (or url) at point
 
-;; Copyright (C) 1995-1997, 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1995-1997, 2000-2019 Free Software Foundation, Inc.
 
 ;; Author: Michelangelo Grigni <mic@mathcs.emory.edu>
 ;; Maintainer: emacs-devel@gnu.org
 ;; Created: 29 Mar 1993
 ;; Keywords: files, hypermedia, matching, mouse, convenience
-;; X-URL: ftp://ftp.mathcs.emory.edu/pub/mic/emacs/
 
 ;; This file is part of GNU Emacs.
 
@@ -21,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 
 ;;; Commentary:
@@ -105,6 +104,7 @@
 
 ;;; Code:
 
+(eval-when-compile (require 'cl-lib))
 (require 'url-parse)
 (require 'thingatpt)
 
@@ -249,7 +249,7 @@ it passes it on to `dired'."
 
 (defcustom ffap-newfile-prompt nil
   ;; Suggestion from RHOGEE, 11 Jul 1994.  Disabled, I think this is
-  ;; better handled by `find-file-not-found-hooks'.
+  ;; better handled by `find-file-not-found-functions'.
   "Whether `find-file-at-point' prompts about a nonexistent file."
   :type 'boolean
   :group 'ffap)
@@ -513,7 +513,9 @@ When using jka-compr (a.k.a. `auto-compression-mode'), the returned
 name may have a suffix added from `ffap-compression-suffixes'.
 The optional NOMODIFY argument suppresses the extra search."
   (cond
-   ((not file) nil)			; quietly reject nil
+   ((or (not file)			; quietly reject nil
+	(zerop (length file)))		; and also ""
+    nil)
    ((file-exists-p file) file)		; try unmodified first
    ;; three reasons to suppress search:
    (nomodify nil)
@@ -787,7 +789,7 @@ This uses `ffap-file-exists-string', which may try adding suffixes from
     ("\\`~/" . ffap-lcd)		; |~/misc/ffap.el.Z|
     ;; This used to have a blank, but ffap-string-at-point doesn't
     ;; handle blanks.
-    ;; http://lists.gnu.org/archive/html/emacs-devel/2008-01/msg01058.html
+    ;; https://lists.gnu.org/r/emacs-devel/2008-01/msg01058.html
     ("\\`[Rr][Ff][Cc][-#]?\\([0-9]+\\)"	; no $
      . ffap-rfc)			; "100% RFC2100 compliant"
     (dired-mode . ffap-dired)		; maybe in a subdirectory
@@ -1079,10 +1081,10 @@ If a given RFC isn't in these then `ffap-rfc-path' is offered."
   '(
     ;; The default, used when the `major-mode' is not found.
     ;; Slightly controversial decisions:
-    ;; * strip trailing "@" and ":"
+    ;; * strip trailing "@", ":" and enclosing "{"/"}".
     ;; * no commas (good for latex)
-    (file "--:\\\\${}+<>@-Z_[:alpha:]~*?" "<@" "@>;.,!:")
-    ;; An url, or maybe a email/news message-id:
+    (file "--:\\\\${}+<>@-Z_[:alpha:]~*?" "{<@" "@>;.,!:}")
+    ;; An url, or maybe an email/news message-id:
     (url "--:=&?$+@-Z_[:alpha:]~#,%;*()!'" "^[0-9a-zA-Z]" ":;.,!?")
     ;; Find a string that does *not* contain a colon:
     (nocolon "--9$+<>@-Z_[:alpha:]~" "<@" "@>;.,!?")
@@ -1110,32 +1112,67 @@ The arguments CHARS, BEG and END are handled as described in
 
 (defun ffap-string-at-point (&optional mode)
   "Return a string of characters from around point.
+
 MODE (defaults to value of `major-mode') is a symbol used to look up
 string syntax parameters in `ffap-string-at-point-mode-alist'.
+
 If MODE is not found, we use `file' instead of MODE.
+
 If the region is active, return a string from the region.
-Set the variable `ffap-string-at-point' and the variable
+
+If the point is in a comment, ensure that the returned string does not
+contain the comment start characters (especially for major modes that
+have '//' as comment start characters).
+
+Set the variables `ffap-string-at-point' and
 `ffap-string-at-point-region'.
+
 When the region is active and larger than `ffap-max-region-length',
 return an empty string, and set `ffap-string-at-point-region' to '(1 1)."
   (let* ((args
 	  (cdr
 	   (or (assq (or mode major-mode) ffap-string-at-point-mode-alist)
 	       (assq 'file ffap-string-at-point-mode-alist))))
+         (region-selected (use-region-p))
 	 (pt (point))
-	 (beg (if (use-region-p)
+         (beg (if region-selected
 		  (region-beginning)
 		(save-excursion
 		  (skip-chars-backward (car args))
 		  (skip-chars-forward (nth 1 args) pt)
 		  (point))))
-	 (end (if (use-region-p)
+         (end (if region-selected
 		  (region-end)
 		(save-excursion
 		  (skip-chars-forward (car args))
 		  (skip-chars-backward (nth 2 args) pt)
 		  (point))))
          (region-len (- (max beg end) (min beg end))))
+
+    ;; If the initial characters of the to-be-returned string are the
+    ;; current major mode's comment starter characters, *and* are
+    ;; not part of a comment, remove those from the returned string
+    ;; (Bug#24057).
+    ;; Example comments in `c-mode' (which considers lines beginning
+    ;; with "//" as comments):
+    ;;  //tmp - This is a comment. It does not contain any path reference.
+    ;;  ///tmp - This is a comment. The "/tmp" portion in that is a path.
+    ;;  ////tmp - This is a comment. The "//tmp" portion in that is a path.
+    (when (and
+           ;; Proceed if no region is selected by the user.
+           (null region-selected)
+           ;; Check if END character is part of a comment.
+           (save-excursion
+             (nth 4 (syntax-ppss end))))
+      ;; Move BEG to beginning of comment (after the comment start
+      ;; characters), or END, whichever comes first.
+      (save-excursion
+        (let ((state (syntax-ppss beg)))
+          ;; (nth 4 (syntax-ppss)) will be nil for comment start chars.
+          (unless (nth 4 state)
+            (parse-partial-sexp beg end nil nil state :commentstop)
+            (setq beg (point))))))
+
     (if (and (natnump ffap-max-region-length)
              (< region-len ffap-max-region-length)) ; Bug#25243.
         (setf ffap-string-at-point-region (list beg end)
@@ -1291,6 +1328,7 @@ which may actually result in an URL rather than a filename."
 	 ;; If it contains a colon, get rid of it (and return if exists)
 	 ((and (string-match path-separator name)
 	       (setq name (ffap-string-at-point 'nocolon))
+	       (> (length name) 0)
 	       (ffap-file-exists-string name)))
 	 ;; File does not exist, try the alist:
 	 ((let ((alist ffap-alist) tem try case-fold-search)
@@ -1475,7 +1513,7 @@ Uses the face `ffap' if it is defined, or else `highlight'."
       (ffap-file-at-point)		; may yield url!
       (ffap-fixup-machine (ffap-machine-at-point))))
 
-(defun ffap-prompter (&optional guess)
+(defun ffap-prompter (&optional guess suffix)
   ;; Does guess and prompt step for find-file-at-point.
   ;; Extra complication for the temporary highlighting.
   (unwind-protect
@@ -1483,7 +1521,9 @@ Uses the face `ffap' if it is defined, or else `highlight'."
       ;; and then maybe skip over this prompt (ff-paths, for example).
       (catch 'ffap-prompter
 	(ffap-read-file-or-url
-	 (if ffap-url-regexp "Find file or URL: " "Find file: ")
+	 (if ffap-url-regexp
+             (format "Find file or URL%s: " (or suffix ""))
+           (format "Find file%s: " (or suffix "")))
 	 (prog1
              (let ((mark-active nil))
                ;; Don't use the region here, since it can be something
@@ -1501,7 +1541,8 @@ If `ffap-url-regexp' is not nil, the FILENAME may also be an URL.
 With a prefix, this command behaves exactly like `ffap-file-finder'.
 If `ffap-require-prefix' is set, the prefix meaning is reversed.
 See also the variables `ffap-dired-wildcards', `ffap-newfile-prompt',
-and the functions `ffap-file-at-point' and `ffap-url-at-point'."
+`ffap-url-unwrap-local', `ffap-url-unwrap-remote', and the functions
+`ffap-file-at-point' and `ffap-url-at-point'."
   (interactive)
   (if (and (called-interactively-p 'interactive)
 	   (if ffap-require-prefix (not current-prefix-arg)
@@ -1729,23 +1770,18 @@ Return value:
 ;; at least two new user variables, and there is no w3-fetch-noselect.
 ;; So instead, we just fake it with a slow save-window-excursion.
 
-(defun ffap-other-window ()
+(defun ffap-other-window (filename)
   "Like `ffap', but put buffer in another window.
 Only intended for interactive use."
-  (interactive)
-  (let (value)
-    (switch-to-buffer-other-window
-     (save-window-excursion
-       (setq value (call-interactively 'ffap))
-       (unless (or (bufferp value) (bufferp (car-safe value)))
-	 (setq value (current-buffer)))
-       (current-buffer)))
-    value))
+  (interactive (list (ffap-prompter nil " other window")))
+  (pcase (save-window-excursion (find-file-at-point filename))
+    ((or (and (pred bufferp) b) `(,(and (pred bufferp) b) . ,_))
+     (switch-to-buffer-other-window b))))
 
-(defun ffap-other-frame ()
+(defun ffap-other-frame (filename)
   "Like `ffap', but put buffer in another frame.
 Only intended for interactive use."
-  (interactive)
+  (interactive (list (ffap-prompter nil " other frame")))
   ;; Extra code works around dedicated windows (noted by JENS, 7/96):
   (let* ((win (selected-window))
 	 (wdp (window-dedicated-p win))
@@ -1755,7 +1791,7 @@ Only intended for interactive use."
 	  (set-window-dedicated-p win nil)
 	  (switch-to-buffer-other-frame
 	   (save-window-excursion
-	     (setq value (call-interactively 'ffap))
+	     (setq value (find-file-at-point filename))
 	     (unless (or (bufferp value) (bufferp (car-safe value)))
 	       (setq value (current-buffer)))
 	     (current-buffer))))
@@ -1769,52 +1805,52 @@ Only intended for interactive use."
     (with-current-buffer buffer
       (read-only-mode 1))))
 
-(defun ffap-read-only ()
+(defun ffap-read-only (filename)
   "Like `ffap', but mark buffer as read-only.
 Only intended for interactive use."
-  (interactive)
-  (let ((value (call-interactively 'ffap)))
+  (interactive (list (ffap-prompter nil " read only")))
+  (let ((value (find-file-at-point filename)))
     (unless (or (bufferp value) (bufferp (car-safe value)))
       (setq value (current-buffer)))
     (ffap--toggle-read-only value)
     value))
 
-(defun ffap-read-only-other-window ()
+(defun ffap-read-only-other-window (filename)
   "Like `ffap', but put buffer in another window and mark as read-only.
 Only intended for interactive use."
-  (interactive)
-  (let ((value (ffap-other-window)))
+  (interactive (list (ffap-prompter nil " read only other window")))
+  (let ((value (ffap-other-window filename)))
     (ffap--toggle-read-only value)
     value))
 
-(defun ffap-read-only-other-frame ()
+(defun ffap-read-only-other-frame (filename)
   "Like `ffap', but put buffer in another frame and mark as read-only.
 Only intended for interactive use."
-  (interactive)
-  (let ((value (ffap-other-frame)))
+  (interactive (list (ffap-prompter nil " read only other frame")))
+  (let ((value (ffap-other-frame filename)))
     (ffap--toggle-read-only value)
     value))
 
-(defun ffap-alternate-file ()
+(defun ffap-alternate-file (filename)
   "Like `ffap' and `find-alternate-file'.
 Only intended for interactive use."
-  (interactive)
+  (interactive (list (ffap-prompter nil " alternate file")))
   (let ((ffap-file-finder 'find-alternate-file))
-    (call-interactively 'ffap)))
+    (find-file-at-point filename)))
 
-(defun ffap-alternate-file-other-window ()
+(defun ffap-alternate-file-other-window (filename)
   "Like `ffap' and `find-alternate-file-other-window'.
 Only intended for interactive use."
-  (interactive)
+  (interactive (list (ffap-prompter nil " alternate file other window")))
   (let ((ffap-file-finder 'find-alternate-file-other-window))
-    (call-interactively 'ffap)))
+    (find-file-at-point filename)))
 
-(defun ffap-literally ()
+(defun ffap-literally (filename)
   "Like `ffap' and command `find-file-literally'.
 Only intended for interactive use."
-  (interactive)
+  (interactive (list (ffap-prompter nil " literally")))
   (let ((ffap-file-finder 'find-file-literally))
-    (call-interactively 'ffap)))
+    (find-file-at-point filename)))
 
 (defalias 'find-file-literally-at-point 'ffap-literally)
 
@@ -2011,19 +2047,19 @@ This hook is intended to be put in `file-name-at-point-functions'."
    '((global-set-key [S-mouse-3] 'ffap-at-mouse)
      (global-set-key [C-S-mouse-3] 'ffap-menu)
 
-     (global-set-key "\C-x\C-f" 'find-file-at-point)
-     (global-set-key "\C-x\C-r" 'ffap-read-only)
-     (global-set-key "\C-x\C-v" 'ffap-alternate-file)
+     (global-set-key [remap find-file] 'find-file-at-point)
+     (global-set-key [remap find-file-read-only] 'ffap-read-only)
+     (global-set-key [remap find-alternate-file] 'ffap-alternate-file)
 
-     (global-set-key "\C-x4f"   'ffap-other-window)
-     (global-set-key "\C-x5f"   'ffap-other-frame)
-     (global-set-key "\C-x4r"   'ffap-read-only-other-window)
-     (global-set-key "\C-x5r"   'ffap-read-only-other-frame)
+     (global-set-key [remap find-file-other-window] 'ffap-other-window)
+     (global-set-key [remap find-file-other-frame] 'ffap-other-frame)
+     (global-set-key [remap find-file-read-only-other-window] 'ffap-read-only-other-window)
+     (global-set-key [remap find-file-read-only-other-frame] 'ffap-read-only-other-frame)
 
-     (global-set-key "\C-xd"    'dired-at-point)
-     (global-set-key "\C-x4d"   'ffap-dired-other-window)
-     (global-set-key "\C-x5d"   'ffap-dired-other-frame)
-     (global-set-key "\C-x\C-d" 'ffap-list-directory)
+     (global-set-key [remap dired] 'dired-at-point)
+     (global-set-key [remap dired-other-window] 'ffap-dired-other-window)
+     (global-set-key [remap dired-other-frame] 'ffap-dired-other-frame)
+     (global-set-key [remap list-directory] 'ffap-list-directory)
 
      (add-hook 'gnus-summary-mode-hook 'ffap-gnus-hook)
      (add-hook 'gnus-article-mode-hook 'ffap-gnus-hook)

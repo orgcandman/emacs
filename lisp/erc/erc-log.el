@@ -1,6 +1,6 @@
 ;;; erc-log.el --- Logging facilities for ERC.
 
-;; Copyright (C) 2003-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2003-2019 Free Software Foundation, Inc.
 
 ;; Author: Lawrence Mitchell <wence@gmx.li>
 ;; Maintainer: emacs-devel@gnu.org
@@ -22,7 +22,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -122,7 +122,7 @@ custom function which returns the directory part and set
 		 (function :tag "Other function")))
 
 (defcustom erc-truncate-buffer-on-save nil
-  "Truncate any ERC (channel, query, server) buffer when it is saved."
+  "Erase the contents of any ERC (channel, query, server) buffer when it is saved."
   :group 'erc-log
   :type 'boolean)
 
@@ -195,9 +195,7 @@ If you set this to nil, you may want to enable both
   :group 'erc-log
   :type 'boolean)
 
-(defcustom erc-log-file-coding-system (if (featurep 'xemacs)
-					  'binary
-					'emacs-mule)
+(defcustom erc-log-file-coding-system 'emacs-mule
   "The coding system ERC should use for writing log files.
 
 This should ideally, be a \"catch-all\" coding system, like
@@ -215,7 +213,7 @@ The function should take one argument, which is the text to filter."
 		 (const :tag "No filtering" nil)))
 
 
-;;;###autoload (autoload 'erc-log-mode "erc-log" nil t)
+;;;###autoload(autoload 'erc-log-mode "erc-log" nil t)
 (define-erc-module log nil
   "Automatically logs things you receive on IRC into files.
 Files are stored in `erc-log-channels-directory'; file name
@@ -321,12 +319,13 @@ If BUFFER is nil, the value of `current-buffer' is used.
 Logging is enabled if `erc-log-channels-directory' is non-nil, the directory
 is writable (it will be created as necessary) and
 `erc-enable-logging' returns a non-nil value."
+  (or buffer (setq buffer (current-buffer)))
   (and erc-log-channels-directory
        (or (functionp erc-log-channels-directory)
 	   (erc-directory-writable-p erc-log-channels-directory))
        (if (functionp erc-enable-logging)
-	   (funcall erc-enable-logging (or buffer (current-buffer)))
-	 erc-enable-logging)))
+	   (funcall erc-enable-logging buffer)
+	 (buffer-local-value 'erc-enable-logging buffer))))
 
 (defun erc-log-standardize-name (filename)
   "Make FILENAME safe to use as the name of an ERC log.
@@ -343,18 +342,19 @@ If BUFFER is nil, the value of `current-buffer' is used.
 This is determined by `erc-generate-log-file-name-function'.
 The result is converted to lowercase, as IRC is case-insensitive"
   (unless buffer (setq buffer (current-buffer)))
-  (let ((target (or (buffer-name buffer) (erc-default-target)))
-	(nick (erc-current-nick))
-	(server erc-session-server)
-	(port erc-session-port))
-    (expand-file-name
-     (erc-log-standardize-name
-      (funcall erc-generate-log-file-name-function
-	       buffer target nick server port))
-     (if (functionp erc-log-channels-directory)
-	 (funcall erc-log-channels-directory
-		  buffer target nick server port)
-       erc-log-channels-directory))))
+  (with-current-buffer buffer
+    (let ((target (or (buffer-name buffer) (erc-default-target)))
+	  (nick (erc-current-nick))
+	  (server erc-session-server)
+	  (port erc-session-port))
+      (expand-file-name
+       (erc-log-standardize-name
+	(funcall erc-generate-log-file-name-function
+		 buffer target nick server port))
+       (if (functionp erc-log-channels-directory)
+	   (funcall erc-log-channels-directory
+		    buffer target nick server port)
+	 erc-log-channels-directory)))))
 
 (defun erc-generate-log-file-name-with-date (buffer &rest ignore)
   "This function computes a short log file name.
@@ -455,6 +455,7 @@ You can save every individual message by putting this function on
 ;;; erc-log.el ends here
 ;;
 ;; Local Variables:
+;; generated-autoload-file: "erc-loaddefs.el"
 ;; indent-tabs-mode: t
 ;; tab-width: 8
 ;; End:

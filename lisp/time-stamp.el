@@ -1,11 +1,11 @@
 ;;; time-stamp.el --- Maintain last change time stamps in files edited by Emacs
 
-;; Copyright (C) 1989, 1993-1995, 1997, 2000-2017 Free Software
+;; Copyright (C) 1989, 1993-1995, 1997, 2000-2019 Free Software
 ;; Foundation, Inc.
 
 ;; This file is part of GNU Emacs.
 
-;; Maintainer: Stephen Gildea <gildea@stop.mail-abuse.org>
+;; Maintainer: Stephen Gildea <stepheng+emacs@gildea.com>
 ;; Keywords: tools
 
 ;; GNU Emacs is free software: you can redistribute it and/or modify
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -223,10 +223,17 @@ The fourth part is a regexp identifying the pattern following the time stamp.
 This part may be omitted to use the normal pattern.
 
 Examples:
-\"-10/\"
-\"-9/^Last modified: %%$\"
-\"@set Time-stamp: %:b %:d, %:y$\"
-\"newcommand{\\\\\\\\timestamp}{%%}\"
+
+\"-10/\" (sets only `time-stamp-line-limit')
+
+\"-9/^Last modified: %%$\" (sets `time-stamp-line-limit',
+`time-stamp-start', `time-stamp-end' and `time-stamp-format')
+
+\"@set Time-stamp: %:b %:d, %:y$\" (sets `time-stamp-start',
+`time-stamp-end' and `time-stamp-format')
+
+\"newcommand{\\\\\\\\timestamp}{%%}\" (sets `time-stamp-start',
+`time-stamp-end' and `time-stamp-format')
 
 Do not change `time-stamp-pattern' `time-stamp-line-limit',
 `time-stamp-start', or `time-stamp-end' for yourself or you will be
@@ -569,7 +576,7 @@ and all `time-stamp-format' compatibility."
 	 ((eq cur-char ?L)		;(undocumented alt user full name)
 	  (user-full-name))
 	 ((eq cur-char ?h)		;mail host name
-	  (time-stamp-mail-host-name))
+	  (or mail-host-address (system-name)))
 	 ((eq cur-char ?q)		;(undocumented unqual hostname)
 	  (let ((qualname (system-name)))
 	    (if (string-match "\\." qualname)
@@ -638,17 +645,6 @@ Suggests replacing OLD-FORM with NEW-FORM."
 	     "The following obsolescent time-stamp-format construct(s) were found:\n\n")))
       (insert "\"" old-form "\" -- use " new-form "\n"))
     (display-buffer "*Time-stamp-compatibility*"))))
-
-
-
-(defun time-stamp-mail-host-name ()
-  "Return the name of the host where the user receives mail.
-This is the value of `mail-host-address' if bound and a string,
-otherwise the value of the function `system-name'."
-  (or (and (boundp 'mail-host-address)
-	   (stringp mail-host-address)
-	   mail-host-address)
-      (system-name)))
 
 (provide 'time-stamp)
 

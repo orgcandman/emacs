@@ -1,6 +1,6 @@
-;;; wid-edit.el --- Functions for creating and using widgets -*-byte-compile-dynamic: t; lexical-binding:t -*-
+;;; wid-edit.el --- Functions for creating and using widgets -*- lexical-binding:t -*-
 ;;
-;; Copyright (C) 1996-1997, 1999-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-1997, 1999-2019 Free Software Foundation, Inc.
 ;;
 ;; Author: Per Abrahamsen <abraham@dina.kvl.dk>
 ;; Maintainer: emacs-devel@gnu.org
@@ -20,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Wishlist items (from widget.texi):
 
@@ -56,6 +56,7 @@
 
 ;;; Code:
 (require 'cl-lib)
+(eval-when-compile (require 'subr-x)) 	; when-let
 
 ;;; Compatibility.
 
@@ -252,7 +253,10 @@ minibuffer."
 	   (define-key map [?\M--] 'negative-argument)
 	   (save-window-excursion
 	     (let ((buf (get-buffer " widget-choose")))
-	       (fit-window-to-buffer (display-buffer buf))
+	       (display-buffer buf
+			       '(display-buffer-in-direction
+				 (direction . bottom)
+				 (window-height . fit-window-to-buffer)))
 	       (let ((cursor-in-echo-area t)
 		     (arg 1))
                  (while (not value)
@@ -410,6 +414,7 @@ the :notify function can't know the new value.")
 
 (defmacro widget-specify-insert (&rest form)
   "Execute FORM without inheriting any text properties."
+   (declare (debug body))
   `(save-restriction
     (let ((inhibit-read-only t)
 	  (inhibit-modification-hooks t))
@@ -828,11 +833,18 @@ button end points."
       (delete-overlay field))
     (mapc 'widget-leave-text (widget-get widget :children))))
 
+(defun widget-text (widget)
+  "Get the text representation of the widget."
+  (when-let ((from (widget-get widget :from))
+             (to (widget-get widget :to)))
+    (when (eq (marker-buffer from) (marker-buffer to)) ; is this check necessary?
+      (buffer-substring-no-properties from to))))
+
 ;;; Keymap and Commands.
 
 ;; This alias exists only so that one can choose in doc-strings (e.g.
 ;; Custom-mode) which key-binding of widget-keymap one wants to refer to.
-;; http://lists.gnu.org/archive/html/emacs-devel/2008-11/msg00480.html
+;; https://lists.gnu.org/r/emacs-devel/2008-11/msg00480.html
 (define-obsolete-function-alias 'advertised-widget-backward
   'widget-backward "23.2")
 
@@ -1029,9 +1041,11 @@ POS defaults to the value of (point)."
   "If non-nil, use overlay change functions to tab around in the buffer.
 This is much faster.")
 
-(defun widget-move (arg)
+(defun widget-move (arg &optional suppress-echo)
   "Move point to the ARG next field or button.
-ARG may be negative to move backward."
+ARG may be negative to move backward.
+When the second optional argument is non-nil,
+nothing is shown in the echo area."
   (or (bobp) (> arg 0) (backward-char))
   (let ((wrapped 0)
 	(number arg)
@@ -1073,7 +1087,8 @@ ARG may be negative to move backward."
       (while (eq (widget-tabable-at) new)
 	(backward-char)))
     (forward-char))
-  (widget-echo-help (point))
+  (unless suppress-echo
+    (widget-echo-help (point)))
   (run-hooks 'widget-move-hook))
 
 (defun widget-forward (arg)
@@ -1163,8 +1178,9 @@ When not inside a field, signal an error."
 
 (defun widget-at (&optional pos)
   "The button or field at POS (default, point)."
-  (or (get-char-property (or pos (point)) 'button)
-      (widget-field-at pos)))
+  (let ((widget (or (get-char-property (or pos (point)) 'button)
+                    (widget-field-at pos))))
+    (and (widgetp widget) widget)))
 
 ;;;###autoload
 (defun widget-setup ()
@@ -1229,7 +1245,7 @@ When not inside a field, signal an error."
                               (save-restriction
                                 ;; `widget-narrow-to-field' can be
                                 ;; active when this function is called
-                                ;; from an change-functions hook. So
+                                ;; from a change-functions hook. So
                                 ;; temporarily remove field narrowing
                                 ;; before to call `get-char-property'.
                                 (widen)
@@ -1775,17 +1791,22 @@ If END is omitted, it defaults to the length of LIST."
   :type 'string
   :group 'widget-button)
 
+(defvar widget-link-keymap
+  (let ((map (copy-keymap widget-keymap)))
+    ;; Only bind mouse-2, since mouse-1 will be translated accordingly to
+    ;; the customization of `mouse-1-click-follows-link'.
+    (define-key map [down-mouse-1] (lookup-key widget-global-map [down-mouse-1]))
+    (define-key map [down-mouse-2] 'widget-button-click)
+    (define-key map [mouse-2] 'widget-button-click)
+    map)
+  "Keymap used inside a link widget.")
+
 (define-widget 'link 'item
   "An embedded link."
   :button-prefix 'widget-link-prefix
   :button-suffix 'widget-link-suffix
-  ;; The `follow-link' property should only be used in those contexts where the
-  ;; mouse-1 event normally doesn't follow the link, yet the `link' widget
-  ;; seems to almost always be used in contexts where (down-)mouse-1 is bound
-  ;; to `widget-button-click' and hence the "mouse-1 to mouse-2" remapping is
-  ;; not necessary (and can even be harmful).  So let's not add a :follow-link
-  ;; by default.  See (bug#22434).
-  ;; :follow-link 'mouse-face
+  :follow-link 'mouse-face
+  :keymap widget-link-keymap
   :help-echo "Follow the link."
   :format "%[%t%]")
 
@@ -1802,7 +1823,7 @@ If END is omitted, it defaults to the length of LIST."
 ;;; The `url-link' Widget.
 
 (define-widget 'url-link 'link
-  "A link to an www page."
+  "A link to a web page."
   :action 'widget-url-link-action)
 
 (defun widget-url-link-action (widget &optional _event)
@@ -1993,6 +2014,7 @@ But if NO-TRUNCATE is non-nil, include them."
 
 (define-widget 'text 'editable-field
   "A multiline text area."
+  :format "%{%t%}: %v"
   :keymap widget-text-keymap)
 
 ;;; The `menu-choice' Widget.
@@ -2746,7 +2768,7 @@ Return an alist of (TYPE MATCH)."
   "A widget which groups other widgets inside."
   :convert-widget 'widget-types-convert-widget
   :copy 'widget-types-copy
-  :format "%v"
+  :format ":\n%v"
   :value-create 'widget-group-value-create
   :value-get 'widget-editable-list-value-get
   :default-get 'widget-group-default-get
@@ -3062,7 +3084,9 @@ as the value."
 (define-widget 'file 'string
   "A file widget.
 It reads a file name from an editable text field."
-  :completions #'completion-file-name-table
+  :completions (completion-table-case-fold
+                #'completion-file-name-table
+                (not read-file-name-completion-ignore-case))
   :prompt-value 'widget-file-prompt-value
   :format "%{%t%}: %v"
   ;; Doesn't work well with terminating newline.
@@ -3097,6 +3121,11 @@ It reads a file name from an editable text field."
 (define-widget 'directory 'file
   "A directory widget.
 It reads a directory name from an editable text field."
+  :completions (apply-partially #'completion-table-with-predicate
+                                (completion-table-case-fold
+                                 #'completion-file-name-table
+                                 (not read-file-name-completion-ignore-case))
+                                #'directory-name-p 'strict)
   :tag "Directory")
 
 (defvar widget-symbol-prompt-value-history nil
@@ -3312,13 +3341,13 @@ It reads a directory name from an editable text field."
       (condition-case data ;Note: We get a spurious byte-compile warning here.
 	  (progn
 	    ;; Avoid a confusing end-of-file error.
-	    (skip-syntax-forward "\\s-")
+	    (skip-syntax-forward "-")
 	    (if (eobp)
 		(setq err "Empty sexp -- use nil?")
 	      (unless (widget-apply widget :match (read (current-buffer)))
 		(setq err (widget-get widget :type-error))))
 	    ;; Allow whitespace after expression.
-	    (skip-syntax-forward "\\s-")
+	    (skip-syntax-forward "-")
 	    (if (and (not (eobp))
 		     (not err))
 		(setq err (format "Junk at end of expression: %s"
@@ -3694,15 +3723,17 @@ example:
 (defun widget-color--choose-action (widget &optional _event)
   (list-colors-display
    nil nil
-   `(lambda (color)
-      (when (buffer-live-p ,(current-buffer))
-	(widget-value-set ',(widget-get widget :parent) color)
-	(let* ((buf (get-buffer "*Colors*"))
-	       (win (get-buffer-window buf 0)))
-	  (if win
-	      (quit-window nil win)
-	    (bury-buffer buf)))
-	(pop-to-buffer ,(current-buffer))))))
+   (let ((cbuf (current-buffer))
+         (wp (widget-get widget :parent)))
+     (lambda (color)
+       (when (buffer-live-p cbuf)
+	 (widget-value-set wp color)
+	 (let* ((buf (get-buffer "*Colors*"))
+	        (win (get-buffer-window buf 0)))
+	   (if win
+	       (quit-window nil win)
+	     (bury-buffer buf)))
+	 (pop-to-buffer cbuf))))))
 
 (defun widget-color-sample-face-get (widget)
   (let* ((value (condition-case nil

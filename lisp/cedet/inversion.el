@@ -1,6 +1,6 @@
 ;;; inversion.el --- When you need something in version XX.XX
 
-;;; Copyright (C) 2002-2003, 2005-2017 Free Software Foundation, Inc.
+;;; Copyright (C) 2002-2003, 2005-2019 Free Software Foundation, Inc.
 
 ;; Author: Eric M. Ludlam <zappo@gnu.org>
 ;; Version: 1.3
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -79,9 +79,9 @@
 
 (defconst inversion-decoders
   '(
-    (alpha  "^\\([0-9]+\\)\\.\\([0-9]+\\)\\.?\\([0-9]*\\)?\\s-*\\.?alpha\\([0-9]+\\)?$" 4)
-    (beta   "^\\([0-9]+\\)\\.\\([0-9]+\\)\\.?\\([0-9]*\\)?\\s-*\\.?beta\\([0-9]+\\)?$" 4)
-    (beta   "^\\([0-9]+\\)\\.\\([0-9]+\\)\\.?\\([0-9]*\\)?\\s-*\\.?(beta\\([0-9]+\\)?)$" 4)
+    (alpha  "^\\([0-9]+\\)\\.\\([0-9]+\\)\\.?\\([0-9]*\\)\\s-*\\.?alpha\\([0-9]+\\)?$" 4)
+    (beta   "^\\([0-9]+\\)\\.\\([0-9]+\\)\\.?\\([0-9]*\\)\\s-*\\.?beta\\([0-9]+\\)?$" 4)
+    (beta   "^\\([0-9]+\\)\\.\\([0-9]+\\)\\.?\\([0-9]*\\)\\s-*\\.?(beta\\([0-9]+\\)?)$" 4)
     (beta  "^[^/]+/\\w+--\\w+--\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)--patch-\\([0-9]+\\)" 4)
     (beta "^\\w+: v\\([0-9]+\\)\\.\\([0-9]+\\)\\.\\([0-9]+\\)-\\([0-9]+\\)-\\(.*\\)" 5)
     (prerelease "^\\([0-9]+\\)\\.\\([0-9]+\\)\\s-*\\.?pre\\([0-9]+\\)?$" 3)

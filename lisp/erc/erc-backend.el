@@ -1,6 +1,6 @@
 ;;; erc-backend.el --- Backend network communication for ERC  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2004-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2004-2019 Free Software Foundation, Inc.
 
 ;; Filename: erc-backend.el
 ;; Author: Lawrence Mitchell <wence@gmx.li>
@@ -21,7 +21,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -53,6 +53,7 @@
 ;; CONTENTS --- `erc-response.contents'
 ;; SENDER --- `erc-response.sender'
 ;; LINE --- `erc-response.unparsed'
+;; TAGS --- `erc-response.tags'
 ;;
 ;; WARNING, WARNING!!
 ;; It's probably not a good idea to destructively modify the list
@@ -115,7 +116,8 @@
   (sender "" :type string)
   (command "" :type string)
   (command-args '() :type list)
-  (contents "" :type string))
+  (contents "" :type string)
+  (tags '() :type list))
 
 ;;; User data
 
@@ -464,14 +466,18 @@ If this is set to nil, never try to reconnect."
 The length is specified in `erc-split-line-length'.
 
 Currently this is called by `erc-send-input'."
-  (if (< (length longline)
-         erc-split-line-length)
-      (list longline)
+  (let ((charset (car (erc-coding-system-for-target nil))))
     (with-temp-buffer
       (insert longline)
+      ;; The line lengths are in octets, not characters (because these
+      ;; are server protocol limits), so we have to first make the
+      ;; text into bytes, then fold the bytes on "word" boundaries,
+      ;; and then make the bytes into text again.
+      (encode-coding-region (point-min) (point-max) charset)
       (let ((fill-column erc-split-line-length))
         (fill-region (point-min) (point-max)
                      nil t))
+      (decode-coding-region (point-min) (point-max) charset)
       (split-string (buffer-string) "\n"))))
 
 (defun erc-forward-word ()
@@ -642,22 +648,24 @@ Make sure you are in an ERC buffer when running this."
             (erc-log-irc-protocol line nil)
             (erc-parse-server-response process line)))))))
 
-(defsubst erc-server-reconnect-p (event)
+(define-inline erc-server-reconnect-p (event)
   "Return non-nil if ERC should attempt to reconnect automatically.
 EVENT is the message received from the closed connection process."
-  (or erc-server-reconnecting
-      (and erc-server-auto-reconnect
-           (not erc-server-banned)
-           ;; make sure we don't infinitely try to reconnect, unless the
-           ;; user wants that
-           (or (eq erc-server-reconnect-attempts t)
-               (and (integerp erc-server-reconnect-attempts)
-                    (< erc-server-reconnect-count
-                       erc-server-reconnect-attempts)))
-           (or erc-server-timed-out
-               (not (string-match "^deleted" event)))
-           ;; open-network-stream-nowait error for connection refused
-           (if (string-match "^failed with code 111" event) 'nonblocking t))))
+  (inline-letevals (event)
+    (inline-quote
+     (or erc-server-reconnecting
+         (and erc-server-auto-reconnect
+              (not erc-server-banned)
+              ;; make sure we don't infinitely try to reconnect, unless the
+              ;; user wants that
+              (or (eq erc-server-reconnect-attempts t)
+                  (and (integerp erc-server-reconnect-attempts)
+                       (< erc-server-reconnect-count
+                          erc-server-reconnect-attempts)))
+              (or erc-server-timed-out
+                  (not (string-match "^deleted" ,event)))
+              ;; open-network-stream-nowait error for connection refused
+              (if (string-match "^failed with code 111" ,event) 'nonblocking t))))))
 
 (defun erc-process-sentinel-2 (event buffer)
   "Called when `erc-process-sentinel-1' has detected an unexpected disconnect."
@@ -836,10 +844,9 @@ Additionally, detect whether the IRC process has hung."
              erc-server-last-received-time))
       (with-current-buffer buf
         (if (and erc-server-send-ping-timeout
-                 (>
-                  (erc-time-diff (erc-current-time)
-                                 erc-server-last-received-time)
-                  erc-server-send-ping-timeout))
+                 (time-less-p
+                  erc-server-send-ping-timeout
+                  (time-since erc-server-last-received-time)))
             (progn
               ;; if the process is hung, kill it
               (setq erc-server-timed-out t)
@@ -857,16 +864,15 @@ Additionally, detect whether the IRC process has hung."
 See `erc-server-flood-margin' for an explanation of the flood
 protection algorithm."
   (with-current-buffer buffer
-    (let ((now (erc-current-time)))
+    (let ((now (current-time)))
       (when erc-server-flood-timer
         (erc-cancel-timer erc-server-flood-timer)
         (setq erc-server-flood-timer nil))
-      (when (< erc-server-flood-last-message
-               now)
-        (setq erc-server-flood-last-message now))
+      (when (time-less-p erc-server-flood-last-message now)
+        (setq erc-server-flood-last-message (erc-emacs-time-to-erc-time now)))
       (while (and erc-server-flood-queue
-                  (< erc-server-flood-last-message
-                     (+ now erc-server-flood-margin)))
+                  (time-less-p erc-server-flood-last-message
+                               (time-add now erc-server-flood-margin)))
         (let ((msg (caar erc-server-flood-queue))
               (encoding (cdar erc-server-flood-queue)))
           (setq erc-server-flood-queue (cdr erc-server-flood-queue)
@@ -955,16 +961,34 @@ See also `erc-server-send'."
 
 ;;;; Handling responses
 
+(defun erc-parse-tags (string)
+  "Parse IRCv3 tags list in STRING to a (tag . value) alist."
+  (let ((tags)
+        (tag-strings (split-string string ";")))
+    (dolist (tag-string tag-strings tags)
+      (let ((pair (split-string tag-string "=")))
+        (push (if (consp pair)
+                  pair
+                `(,pair))
+              tags)))))
+
 (defun erc-parse-server-response (proc string)
   "Parse and act upon a complete line from an IRC server.
 PROC is the process (connection) from which STRING was received.
 PROCs `process-buffer' is `current-buffer' when this function is called."
   (unless (string= string "") ;; Ignore empty strings
     (save-match-data
-      (let ((posn (if (eq (aref string 0) ?:)
-                      (string-match " " string)
-                    0))
-            (msg (make-erc-response :unparsed string)))
+      (let* ((tag-list (when (eq (aref string 0) ?@)
+                         (substring string 1 (string-match " " string))))
+             (msg (make-erc-response :unparsed string :tags (when tag-list
+                                                              (erc-parse-tags
+                                                               tag-list))))
+             (string (if tag-list
+                         (substring string (+ 1 (string-match " " string)))
+                       string))
+             (posn (if (eq (aref string 0) ?:)
+                       (string-match " " string)
+                     0)))
 
         (setf (erc-response.sender msg)
               (if (eq posn 0)
@@ -1044,8 +1068,8 @@ Hands off to helper functions via `erc-call-hooks'."
               erc-server-prevent-duplicates)
       (let ((m (erc-response.unparsed parsed-response)))
         ;; duplicate suppression
-        (if (< (or (gethash m erc-server-duplicates) 0)
-               (- (erc-current-time) erc-server-duplicate-timeout))
+        (if (time-less-p (or (gethash m erc-server-duplicates) 0)
+                         (time-since erc-server-duplicate-timeout))
             (erc-call-hooks process parsed-response))
         (puthash m (erc-current-time) erc-server-duplicates))
     ;; Hand off to the relevant handler.
@@ -1261,7 +1285,7 @@ add things to `%s' instead."
     (pcase-let ((`(,nick ,login ,host)
                  (erc-parse-user (erc-response.sender parsed))))
       ;; strip the stupid combined JOIN facility (IRC 2.9)
-      (if (string-match "^\\(.*\\)?\^g.*$" chnl)
+      (if (string-match "^\\(.*\\)\^g.*$" chnl)
           (setq chnl (match-string 1 chnl)))
       (save-excursion
         (let* ((str (cond
@@ -1421,7 +1445,7 @@ add things to `%s' instead."
   "Handle pong messages." nil
   (let ((time (string-to-number (erc-response.contents parsed))))
     (when (> time 0)
-      (setq erc-server-lag (erc-time-diff time (erc-current-time)))
+      (setq erc-server-lag (erc-time-diff time nil))
       (when erc-verbose-server-ping
         (erc-display-message
          parsed 'notice proc 'PONG
@@ -1704,7 +1728,7 @@ See `erc-display-server-message'." nil
                (cdr (erc-response.command-args parsed))))
     (setq time (when on-since
                  (format-time-string erc-server-timestamp-format
-                                     (erc-string-to-emacs-time on-since))))
+                                     (string-to-number on-since))))
     (erc-update-user-nick nick nick nil nil nil
                           (and time (format "on since %s" time)))
     (if time
@@ -1776,7 +1800,7 @@ See `erc-display-server-message'." nil
 (define-erc-response-handler (329)
   "Channel creation date." nil
   (let ((channel (cadr (erc-response.command-args parsed)))
-        (time (erc-string-to-emacs-time
+        (time (string-to-number
                (nth 2 (erc-response.command-args parsed)))))
     (erc-display-message
      parsed 'notice (erc-get-buffer channel proc)
@@ -1818,7 +1842,7 @@ See `erc-display-server-message'." nil
   (pcase-let ((`(,channel ,nick ,time)
                (cdr (erc-response.command-args parsed))))
     (setq time (format-time-string erc-server-timestamp-format
-                                   (erc-string-to-emacs-time time)))
+                                   (string-to-number time)))
     (erc-update-channel-topic channel
                               (format "\C-o (%s, %s)" nick time)
                               'append)

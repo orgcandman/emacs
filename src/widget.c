@@ -1,5 +1,5 @@
 /* The emacs frame widget.
-   Copyright (C) 1992-1993, 2000-2017 Free Software Foundation, Inc.
+   Copyright (C) 1992-1993, 2000-2019 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -14,7 +14,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 /* Emacs 19 face widget ported by Fred Pierresteguy */
 
@@ -31,10 +31,10 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include <config.h>
 #include "widget.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 
 #include "lisp.h"
+#include "sysstdio.h"
 #include "xterm.h"
 #include "frame.h"
 
@@ -57,31 +57,34 @@ static XtGeometryResult EmacsFrameQueryGeometry (Widget widget, XtWidgetGeometry
 #define offset(field) offsetof (EmacsFrameRec, emacs_frame.field)
 
 static XtResource resources[] = {
-  {XtNgeometry, XtCGeometry, XtRString, sizeof (String),
+  {(char *) XtNgeometry, (char *) XtCGeometry, XtRString, sizeof (String),
      offset (geometry), XtRString, (XtPointer) 0},
   {XtNiconic, XtCIconic, XtRBoolean, sizeof (Boolean),
      offset (iconic), XtRImmediate, (XtPointer) False},
 
-  {XtNemacsFrame, XtCEmacsFrame, XtRPointer, sizeof (XtPointer),
+  {(char *) XtNemacsFrame, (char *) XtCEmacsFrame,
+     XtRPointer, sizeof (XtPointer),
      offset (frame), XtRImmediate, 0},
 
-  {XtNminibuffer, XtCMinibuffer, XtRInt, sizeof (int),
+  {(char *) XtNminibuffer, (char *) XtCMinibuffer, XtRInt, sizeof (int),
      offset (minibuffer), XtRImmediate, (XtPointer)0},
-  {XtNunsplittable, XtCUnsplittable, XtRBoolean, sizeof (Boolean),
+  {(char *) XtNunsplittable, (char *) XtCUnsplittable,
+     XtRBoolean, sizeof (Boolean),
      offset (unsplittable), XtRImmediate, (XtPointer)0},
-  {XtNinternalBorderWidth, XtCInternalBorderWidth, XtRInt, sizeof (int),
+  {(char *) XtNinternalBorderWidth, (char *) XtCInternalBorderWidth,
+     XtRInt, sizeof (int),
      offset (internal_border_width), XtRImmediate, (XtPointer)4},
-  {XtNinterline, XtCInterline, XtRInt, sizeof (int),
+  {(char *) XtNinterline, (char *) XtCInterline, XtRInt, sizeof (int),
      offset (interline), XtRImmediate, (XtPointer)0},
-  {XtNforeground, XtCForeground, XtRPixel, sizeof (Pixel),
-     offset (foreground_pixel), XtRString, "XtDefaultForeground"},
-  {XtNcursorColor, XtCForeground, XtRPixel, sizeof (Pixel),
-     offset (cursor_color), XtRString, "XtDefaultForeground"},
-  {XtNbarCursor, XtCBarCursor, XtRBoolean, sizeof (Boolean),
+  {(char *) XtNforeground, (char *) XtCForeground, XtRPixel, sizeof (Pixel),
+     offset (foreground_pixel), XtRString, (char *) "XtDefaultForeground"},
+  {(char *) XtNcursorColor, (char *) XtCForeground, XtRPixel, sizeof (Pixel),
+     offset (cursor_color), XtRString, (char *) "XtDefaultForeground"},
+  {(char *) XtNbarCursor, (char *) XtCBarCursor, XtRBoolean, sizeof (Boolean),
      offset (bar_cursor), XtRImmediate, (XtPointer)0},
-  {XtNvisualBell, XtCVisualBell, XtRBoolean, sizeof (Boolean),
+  {(char *) XtNvisualBell, (char *) XtCVisualBell, XtRBoolean, sizeof (Boolean),
      offset (visual_bell), XtRImmediate, (XtPointer)0},
-  {XtNbellVolume, XtCBellVolume, XtRInt, sizeof (int),
+  {(char *) XtNbellVolume, (char *) XtCBellVolume, XtRInt, sizeof (int),
      offset (bell_volume), XtRImmediate, (XtPointer)0},
 };
 
@@ -105,8 +108,8 @@ emacsFrameTranslations [] = "\
 
 static EmacsFrameClassRec emacsFrameClassRec = {
     { /* core fields */
-    /* superclass		*/	&widgetClassRec,
-    /* class_name		*/	"EmacsFrame",
+    /* superclass		*/	0, /* filled in by emacsFrameClass */
+    /* class_name		*/	(char *) "EmacsFrame",
     /* widget_size		*/	sizeof (EmacsFrameRec),
     /* class_initialize		*/	0,
     /* class_part_initialize	*/	0,
@@ -143,12 +146,21 @@ static EmacsFrameClassRec emacsFrameClassRec = {
     }
 };
 
-WidgetClass emacsFrameClass = (WidgetClass) &emacsFrameClassRec;
+WidgetClass
+emacsFrameClass (void)
+{
+  /* Set the superclass here rather than relying on static
+     initialization, to work around an unexelf.c bug on x86 platforms
+     that use the GNU Gold linker (Bug#27248).  */
+  emacsFrameClassRec.core_class.superclass = &widgetClassRec;
+
+  return (WidgetClass) &emacsFrameClassRec;
+}
 
 static void
 get_default_char_pixel_size (EmacsFrame ew, int *pixel_width, int *pixel_height)
 {
-  struct frame* f = ew->emacs_frame.frame;
+  struct frame *f = ew->emacs_frame.frame;
   *pixel_width = FRAME_COLUMN_WIDTH (f);
   *pixel_height = FRAME_LINE_HEIGHT (f);
 }
@@ -156,7 +168,7 @@ get_default_char_pixel_size (EmacsFrame ew, int *pixel_width, int *pixel_height)
 static void
 pixel_to_char_size (EmacsFrame ew, Dimension pixel_width, Dimension pixel_height, int *char_width, int *char_height)
 {
-  struct frame* f = ew->emacs_frame.frame;
+  struct frame *f = ew->emacs_frame.frame;
   *char_width = FRAME_PIXEL_WIDTH_TO_TEXT_COLS (f, (int) pixel_width);
   *char_height = FRAME_PIXEL_HEIGHT_TO_TEXT_LINES (f, (int) pixel_height);
 }
@@ -164,7 +176,7 @@ pixel_to_char_size (EmacsFrame ew, Dimension pixel_width, Dimension pixel_height
 static void
 pixel_to_text_size (EmacsFrame ew, Dimension pixel_width, Dimension pixel_height, int *text_width, int *text_height)
 {
-  struct frame* f = ew->emacs_frame.frame;
+  struct frame *f = ew->emacs_frame.frame;
   *text_width = FRAME_PIXEL_TO_TEXT_WIDTH (f, (int) pixel_width);
   *text_height = FRAME_PIXEL_TO_TEXT_HEIGHT (f, (int) pixel_height);
 }
@@ -172,7 +184,7 @@ pixel_to_text_size (EmacsFrame ew, Dimension pixel_width, Dimension pixel_height
 static void
 char_to_pixel_size (EmacsFrame ew, int char_width, int char_height, Dimension *pixel_width, Dimension *pixel_height)
 {
-  struct frame* f = ew->emacs_frame.frame;
+  struct frame *f = ew->emacs_frame.frame;
   *pixel_width = FRAME_TEXT_COLS_TO_PIXEL_WIDTH (f, char_width);
   *pixel_height = FRAME_TEXT_LINES_TO_PIXEL_HEIGHT (f, char_height);
 }
@@ -270,7 +282,7 @@ set_frame_size (EmacsFrame ew)
 
   frame_size_history_add
     (f, Qset_frame_size, FRAME_TEXT_WIDTH (f), FRAME_TEXT_HEIGHT (f),
-     list2 (make_number (ew->core.width), make_number (ew->core.height)));
+     list2i (ew->core.width, ew->core.height));
 }
 
 static void
@@ -285,7 +297,6 @@ update_wm_hints (EmacsFrame ew)
   int char_height;
   int base_width;
   int base_height;
-  int min_rows = 0, min_cols = 0;
 
   /* This happens when the frame is just created.  */
   if (! wmshell) return;
@@ -311,8 +322,8 @@ update_wm_hints (EmacsFrame ew)
 		 XtNbaseHeight, (XtArgVal) base_height,
 		 XtNwidthInc, (XtArgVal) (frame_resize_pixelwise ? 1 : cw),
 		 XtNheightInc, (XtArgVal) (frame_resize_pixelwise ? 1 : ch),
-		 XtNminWidth, (XtArgVal) (base_width + min_cols * cw),
-		 XtNminHeight, (XtArgVal) (base_height + min_rows * ch),
+		 XtNminWidth, (XtArgVal) base_width,
+		 XtNminHeight, (XtArgVal) base_height,
 		 NULL);
 }
 
@@ -353,8 +364,7 @@ EmacsFrameInitialize (Widget request, Widget new, ArgList dum1, Cardinal *dum2)
 
   if (!ew->emacs_frame.frame)
     {
-      fprintf (stderr,
-	       "can't create an emacs frame widget without a frame\n");
+      fputs ("can't create an emacs frame widget without a frame\n", stderr);
       exit (1);
     }
 
@@ -365,8 +375,8 @@ EmacsFrameInitialize (Widget request, Widget new, ArgList dum1, Cardinal *dum2)
 static void
 resize_cb (Widget widget,
            XtPointer closure,
-           XEvent* event,
-           Boolean* continue_to_dispatch)
+           XEvent *event,
+           Boolean *continue_to_dispatch)
 {
   EmacsFrameResize (widget);
 }
@@ -409,10 +419,10 @@ EmacsFrameResize (Widget widget)
 
   frame_size_history_add
     (f, QEmacsFrameResize, width, height,
-     list5 (make_number (ew->core.width), make_number (ew->core.height),
-	    make_number (FRAME_TOP_MARGIN_HEIGHT (f)),
-	    make_number (FRAME_SCROLL_BAR_AREA_HEIGHT (f)),
-	    make_number (2 * FRAME_INTERNAL_BORDER_WIDTH (f))));
+     list5 (make_fixnum (ew->core.width), make_fixnum (ew->core.height),
+	    make_fixnum (FRAME_TOP_MARGIN_HEIGHT (f)),
+	    make_fixnum (FRAME_SCROLL_BAR_AREA_HEIGHT (f)),
+	    make_fixnum (2 * FRAME_INTERNAL_BORDER_WIDTH (f))));
 
   change_frame_size (f, width, height, 0, 1, 0, 1);
 
@@ -423,21 +433,20 @@ EmacsFrameResize (Widget widget)
 }
 
 static XtGeometryResult
-EmacsFrameQueryGeometry (Widget widget, XtWidgetGeometry *request, XtWidgetGeometry *result)
+EmacsFrameQueryGeometry (Widget widget, XtWidgetGeometry *request,
+			 XtWidgetGeometry *result)
 {
-  EmacsFrame ew = (EmacsFrame) widget;
-
   int mask = request->request_mode;
-  Dimension ok_width, ok_height;
 
-  if (mask & (CWWidth | CWHeight))
+  if (mask & (CWWidth | CWHeight) && !frame_resize_pixelwise)
     {
-      if (!frame_resize_pixelwise)
-	round_size_to_char (ew,
-			    (mask & CWWidth) ? request->width : ew->core.width,
-			    ((mask & CWHeight) ? request->height
-			     : ew->core.height),
-			    &ok_width, &ok_height);
+      EmacsFrame ew = (EmacsFrame) widget;
+      Dimension ok_width, ok_height;
+
+      round_size_to_char (ew,
+			  mask & CWWidth ? request->width : ew->core.width,
+			  mask & CWHeight ? request->height : ew->core.height,
+			  &ok_width, &ok_height);
       if ((mask & CWWidth) && (ok_width != request->width))
 	{
 	  result->request_mode |= CWWidth;

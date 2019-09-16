@@ -1,6 +1,6 @@
 /* System description file for Windows NT.
 
-Copyright (C) 1993-1995, 2001-2017 Free Software Foundation, Inc.
+Copyright (C) 1993-1995, 2001-2019 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -15,7 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 /* Define symbols to identify the version of Unix this is.
    Define all the symbols that apply correctly.  */
@@ -33,6 +33,11 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 # include <_mingw.h>
 # ifdef __MINGW64_VERSION_MAJOR
 #  define MINGW_W64
+# endif
+# if defined __MINGW32_VERSION && __MINGW32_VERSION >= 5001000L
+/* Avoid warnings about gettimeofday being deprecated.  */
+#  undef __POSIX_2008_DEPRECATED
+#  define __POSIX_2008_DEPRECATED
 # endif
 #endif
 
@@ -151,7 +156,7 @@ extern char *getenv ();
 #endif
 
 /* Make a leaner executable.  */
-#define WIN32_LEAN_AND_MEAN 1
+#define WIN32_LEAN_AND_MEAN
 
 #include <sys/types.h>
 
@@ -237,9 +242,6 @@ extern void w32_reset_stack_overflow_guard (void);
 #define fopen   sys_fopen
 #define link    sys_link
 #define localtime sys_localtime
-#define mkdir   sys_mkdir
-#undef open
-#define open    sys_open
 #undef read
 #define read    sys_read
 #define rename  sys_rename
@@ -289,6 +291,10 @@ extern int sys_umask (int);
 
 #endif /* emacs */
 
+/* Used both in Emacs, in lib-src, and in Gnulib.  */
+#undef open
+#define open    sys_open
+
 /* Map to MSVC names.  */
 #define execlp    _execlp
 #define execvp    _execvp
@@ -305,7 +311,7 @@ extern int execve (const char *, char * const *, char * const *);
 #else
 extern intptr_t execve (const char *, char * const *, char * const *);
 #endif
-#define fdatasync _commit
+#define tcdrain _commit
 #define fdopen	  _fdopen
 #define fsync	  _commit
 #define ftruncate _chsize
@@ -454,7 +460,12 @@ extern char *get_emacs_configuration_options (void);
    windows.h.  For this to have proper effect, config.h must always be
    included before windows.h.  */
 #define _WINSOCKAPI_    1
-#define _WINSOCK_H
+#if !(defined __MINGW32_VERSION && __MINGW32_VERSION >= 5000002L)
+/* mingw.org's MinGW 5.x changed how it includes winsock.h and time.h,
+   and now defining _WINSOCK_H skips the definition of struct timeval,
+   which we don't want.  */
+# define _WINSOCK_H
+#endif
 
 /* Defines size_t and alloca ().  */
 #include <stdlib.h>
@@ -464,6 +475,12 @@ extern char *get_emacs_configuration_options (void);
 #else
 #include <malloc.h>
 #endif
+
+/* Needed in Emacs and in Gnulib.  */
+/* This must be after including sys/stat.h, because we need mode_t.  */
+#undef mkdir
+#define mkdir(d,f)   sys_mkdir(d,f)
+int sys_mkdir (const char *, mode_t);
 
 #ifdef emacs
 
@@ -518,8 +535,8 @@ extern int getpagesize (void);
 
 extern void * memrchr (void const *, int, size_t);
 
+/* Declared here, since we don't use Gnulib's stdlib.h.  */
 extern int mkostemp (char *, int);
-
 
 #if defined (__MINGW32__)
 
@@ -595,13 +612,6 @@ typedef unsigned int EMACS_UINT;
 
 /* #define FULL_DEBUG */
 /* #define EMACSDEBUG */
-
-#ifdef EMACSDEBUG
-extern void _DebPrint (const char *fmt, ...);
-#define DebPrint(stuff) _DebPrint stuff
-#else
-#define DebPrint(stuff)
-#endif
 
 #ifdef _MSC_VER
 #if _MSC_VER >= 800 && !defined(__cplusplus)

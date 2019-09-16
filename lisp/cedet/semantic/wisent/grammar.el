@@ -1,9 +1,8 @@
 ;;; semantic/wisent/grammar.el --- Wisent's input grammar mode
 
-;; Copyright (C) 2002-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2002-2019 Free Software Foundation, Inc.
 ;;
 ;; Author: David Ponce <david@dponce.com>
-;; Maintainer: David Ponce <david@dponce.com>
 ;; Created: 26 Aug 2002
 ;; Keywords: syntax
 ;; This file is part of GNU Emacs.
@@ -19,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 ;;
@@ -194,7 +193,7 @@ See also the function `wisent-skip-block'."
   "Expand call to SKIP-TOKEN grammar macro.
 Return the form to skip the lookahead token.
 See also the function `wisent-skip-token'."
-  `(wisent-skip-token))
+  '(wisent-skip-token))
 
 (defun wisent-grammar-assocs ()
   "Return associativity and precedence level definitions."
@@ -370,7 +369,7 @@ Menu items are appended to the common grammar menu.")
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.")
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.")
 
 (defvar wisent-make-parsers--python-license
   ";; It is derived in part from the Python grammar, used under the

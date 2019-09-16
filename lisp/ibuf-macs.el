@@ -1,6 +1,6 @@
 ;;; ibuf-macs.el --- macros for ibuffer  -*- lexical-binding:t -*-
 
-;; Copyright (C) 2000-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2000-2019 Free Software Foundation, Inc.
 
 ;; Author: Colin Walters <walters@verbum.org>
 ;; Maintainer: John Paul Wallington <jpw@gnu.org>
@@ -21,7 +21,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -169,6 +169,8 @@ value if and only if `a' is \"less than\" `b'.
 				  dangerous
 				  (opstring "operated on")
 				  (active-opstring "Operate on")
+                                  before
+                                  after
 				  complex)
 				 &rest body)
   "Generate a function which operates on a buffer.
@@ -198,6 +200,8 @@ operation is complete, in the form:
 ACTIVE-OPSTRING is a string which will be displayed to the user in a
 confirmation message, in the form:
  \"Really ACTIVE-OPSTRING x buffers?\"
+BEFORE is a form to evaluate before start the operation.
+AFTER is a form to evaluate once the operation is complete.
 COMPLEX means this function is special; if COMPLEX is nil BODY
 evaluates once for each marked buffer, MBUF, with MBUF current
 and saving the point.  If COMPLEX is non-nil, BODY evaluates
@@ -206,7 +210,7 @@ BODY define the operation; they are forms to evaluate per each
 marked buffer.  BODY is evaluated with `buf' bound to the
 buffer object.
 
-\(fn OP ARGS DOCUMENTATION (&key INTERACTIVE MARK MODIFIER-P DANGEROUS OPSTRING ACTIVE-OPSTRING COMPLEX) &rest BODY)"
+\(fn OP ARGS DOCUMENTATION (&key INTERACTIVE MARK MODIFIER-P DANGEROUS OPSTRING ACTIVE-OPSTRING BEFORE AFTER COMPLEX) &rest BODY)"
   (declare (indent 2) (doc-string 3))
   `(progn
      (defun ,(intern (concat (if (string-match "^ibuffer-do" (symbol-name op))
@@ -238,6 +242,7 @@ buffer object.
 			  (if (eq modifier-p t)
 			      '((setq ibuffer-did-modification t))
 			    ())
+                          (and after `(,after)) ; post-operation form.
 			  `((ibuffer-redisplay t)
 			    (message ,(concat "Operation finished; " opstring " %s buffers") count))))
 		 (inner-body (if complex
@@ -247,7 +252,8 @@ buffer object.
 				    (save-excursion
 				      ,@body))
 				  t)))
-		 (body `(let ((count
+		 (body `(let ((_ ,before) ; pre-operation form.
+                               (count
 			       (,(pcase mark
 				   (:deletion
 				    'ibuffer-map-deletion-lines)
@@ -274,14 +280,18 @@ buffer object.
 
 ;;;###autoload
 (cl-defmacro define-ibuffer-filter (name documentation
-				       (&key
-					reader
-					description)
-				       &rest body)
+                                         (&key
+                                          reader
+                                          description
+                                          accept-list)
+                                         &rest body)
   "Define a filter named NAME.
 DOCUMENTATION is the documentation of the function.
 READER is a form which should read a qualifier from the user.
 DESCRIPTION is a short string describing the filter.
+ACCEPT-LIST is a boolean; if non-nil, the filter accepts either
+a single condition or a list of them; in the latter
+case the filter is the `or' composition of the conditions.
 
 BODY should contain forms which will be evaluated to test whether or
 not a particular buffer should be displayed or not.  The forms in BODY
@@ -290,26 +300,41 @@ bound to the current value of the filter.
 
 \(fn NAME DOCUMENTATION (&key READER DESCRIPTION) &rest BODY)"
   (declare (indent 2) (doc-string 2))
-  (let ((fn-name (intern (concat "ibuffer-filter-by-" (symbol-name name)))))
+  (let ((fn-name (intern (concat "ibuffer-filter-by-" (symbol-name name))))
+        (filter (make-symbol "ibuffer-filter"))
+        (qualifier-str (make-symbol "ibuffer-qualifier-str")))
     `(progn
        (defun ,fn-name (qualifier)
-	 ,(or documentation "This filter is not documented.")
-	 (interactive (list ,reader))
-	 (ibuffer-push-filter (cons ',name qualifier))
-	 (message "%s"
-		  (format ,(concat (format "Filter by %s added: " description)
-				   " %s")
-			  qualifier))
-	 (ibuffer-update nil t))
+     ,(or documentation "This filter is not documented.")
+     (interactive (list ,reader))
+     (let ((,filter (cons ',name qualifier))
+           (,qualifier-str qualifier))
+       ,(when accept-list
+          `(progn
+         (unless (listp qualifier) (setq qualifier (list qualifier)))
+         ;; Reject equivalent filters: (or f1 f2) is same as (or f2 f1).
+         (setq qualifier (sort (delete-dups qualifier) #'string-lessp))
+         (setq ,filter (cons ',name (car qualifier)))
+         (setq ,qualifier-str
+               (mapconcat (lambda (m) (if (symbolp m) (symbol-name m) m))
+                  qualifier ","))
+         (when (cdr qualifier) ; Compose individual filters with `or'.
+           (setq ,filter `(or ,@(mapcar (lambda (m) (cons ',name m)) qualifier))))))
+       (if (null (ibuffer-push-filter ,filter))
+           (message ,(format "Filter by %s already applied:  %%s" description)
+                ,qualifier-str)
+         (message ,(format "Filter by %s added:  %%s" description)
+              ,qualifier-str)
+         (ibuffer-update nil t))))
        (push (list ',name ,description
-		   (lambda (buf qualifier)
-                     (condition-case nil
-                         (progn ,@body)
-                       (error (ibuffer-pop-filter)
-                              (when (eq ',name 'predicate)
-                                (error "Wrong filter predicate: %S"
-                                       qualifier))))))
-	     ibuffer-filtering-alist)
+           (lambda (buf qualifier)
+                  (condition-case nil
+                      (progn ,@body)
+                    (error (ibuffer-pop-filter)
+                           (when (eq ',name 'predicate)
+                             (error "Wrong filter predicate: %S"
+                                    qualifier))))))
+         ibuffer-filtering-alist)
        :autoload-end)))
 
 (provide 'ibuf-macs)

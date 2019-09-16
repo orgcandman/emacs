@@ -1,7 +1,7 @@
 /* The lwlib interface to Athena widgets.
 
 Copyright (C) 1993 Chuck Thompson <cthomp@cs.uiuc.edu>
-Copyright (C) 1994, 2001-2017 Free Software Foundation, Inc.
+Copyright (C) 1994, 2001-2019 Free Software Foundation, Inc.
 
 This file is part of the Lucid Widget Library.
 
@@ -16,12 +16,11 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <setjmp.h>
 
 #include <lisp.h>
@@ -51,8 +50,13 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 
 #include <X11/Xatom.h>
 
-#ifdef HAVE_XFT
+#if defined USE_CAIRO || defined HAVE_XFT
+#ifdef USE_CAIRO
+#include <stdlib.h>
+#include "lwlib-utils.h"
+#else  /* HAVE_XFT */
 #include <X11/Xft/Xft.h>
+#endif
 
 struct widget_xft_data
 {
@@ -80,7 +84,7 @@ lw_xaw_widget_p (Widget widget)
 }
 
 
-#ifdef HAVE_XFT
+#if defined USE_CAIRO || defined HAVE_XFT
 static void
 fill_xft_data (struct widget_xft_data *data, Widget widget, XftFont *font)
 {
@@ -112,6 +116,23 @@ fill_xft_data (struct widget_xft_data *data, Widget widget, XftFont *font)
   data->p = None;
   data->xft_draw = 0;
   data->p_width = data->p_height = 0;
+}
+
+static void
+destroy_xft_data (Widget widget, XtPointer closure, XtPointer call_data)
+{
+  struct widget_xft_data *xft_data = closure;
+
+  for (int i = 0; xft_data[i].widget; ++i)
+    {
+      if (xft_data[i].xft_draw)
+	XftDrawDestroy (xft_data[i].xft_draw);
+      if (xft_data[i].p != None)
+	XFreePixmap (XtDisplay (widget), xft_data[i].p);
+    }
+  if (xft_data[0].xft_font)
+    XftFontClose (XtDisplay (widget), xft_data[0].xft_font);
+  xfree (xft_data);
 }
 
 static XftFont*
@@ -155,7 +176,7 @@ get_text_width_and_height (Widget widget, char *text,
                           &gi);
       bp = cp ? cp + 1 : NULL;
       h += xft_font->height;
-      if (w < gi.width) w = gi.width;
+      if (w < gi.xOff) w = gi.xOff;
     }
 
   *height = h;
@@ -171,11 +192,12 @@ draw_text (struct widget_xft_data *data, char *lbl, int inverse)
   int x = inverse ? 0 : 2;
   char *bp = lbl;
 
-  data->xft_draw = XftDrawCreate (XtDisplay (data->widget),
-                                  data->p,
-                                  DefaultVisual (XtDisplay (data->widget),
-                                                 screen),
-                                  DefaultColormapOfScreen (sc));
+  if (!data->xft_draw)
+    data->xft_draw = XftDrawCreate (XtDisplay (data->widget),
+				    data->p,
+				    DefaultVisual (XtDisplay (data->widget),
+						   screen),
+				    DefaultColormapOfScreen (sc));
   XftDrawRect (data->xft_draw,
                inverse ? &data->xft_fg : &data->xft_bg,
                0, 0, data->p_width, data->p_height);
@@ -193,6 +215,9 @@ draw_text (struct widget_xft_data *data, char *lbl, int inverse)
       /* 1.2 gives reasonable line spacing.  */
       y += data->xft_font->height * 1.2;
     }
+#ifdef USE_CAIRO
+  cairo_surface_flush (cairo_get_target (data->xft_draw));
+#endif
 
 }
 
@@ -230,7 +255,7 @@ find_xft_data (Widget widget)
     }
   if (!inst || !inst->xft_data || !inst->xft_data[0].xft_font) return 0;
 
-  for (nr = 0; data == NULL && nr < inst->nr_xft_data; ++nr)
+  for (nr = 0; data == NULL && inst->xft_data[nr].widget; ++nr)
     {
       if (inst->xft_data[nr].widget == widget)
         data = &inst->xft_data[nr];
@@ -290,7 +315,7 @@ xaw_update_one_widget (widget_instance *instance,
   if (XtIsSubclass (widget, dialogWidgetClass))
     {
 
-#ifdef HAVE_XFT
+#if defined USE_CAIRO || defined HAVE_XFT
       if (instance->xft_data && instance->xft_data[0].xft_font)
         {
           set_text (&instance->xft_data[0], instance->parent,
@@ -322,15 +347,15 @@ xaw_update_one_widget (widget_instance *instance,
       XtSetArg (al[ac], XtNlabel, val->value);ac++;
       /* Force centered button text.  Se above. */
       XtSetArg (al[ac], XtNjustify, XtJustifyCenter);ac++;
-#ifdef HAVE_XFT
+#if defined USE_CAIRO || defined HAVE_XFT
       if (instance->xft_data && instance->xft_data[0].xft_font)
         {
           int th;
           int nr;
-          for (nr = 0; nr < instance->nr_xft_data; ++nr)
+          for (nr = 0; instance->xft_data[nr].widget; ++nr)
             if (instance->xft_data[nr].widget == widget)
               break;
-          if (nr < instance->nr_xft_data)
+          if (instance->xft_data[nr].widget)
             {
               set_text (&instance->xft_data[nr], instance->parent,
                         val->value, 6);
@@ -361,28 +386,6 @@ xaw_update_one_value (widget_instance *instance,
 void
 xaw_destroy_instance (widget_instance *instance)
 {
-#ifdef HAVE_XFT
-  if (instance->xft_data)
-    {
-      int i;
-      for (i = 0; i < instance->nr_xft_data; ++i)
-        {
-          if (instance->xft_data[i].xft_draw)
-            XftDrawDestroy (instance->xft_data[i].xft_draw);
-          if (instance->xft_data[i].p != None)
-            {
-              XtVaSetValues (instance->xft_data[i].widget, XtNbitmap, None,
-                             NULL);
-              XFreePixmap (XtDisplay (instance->widget),
-                           instance->xft_data[i].p);
-            }
-        }
-      if (instance->xft_data[0].xft_font)
-        XftFontClose (XtDisplay (instance->widget),
-                      instance->xft_data[0].xft_font);
-      xfree (instance->xft_data);
-    }
-#endif
   if (XtIsSubclass (instance->widget, dialogWidgetClass))
     /* Need to destroy the Shell too. */
     XtDestroyWidget (XtParent (instance->widget));
@@ -478,7 +481,7 @@ static XtActionsRec xaw_actions [] = {
 };
 static Boolean actions_initted = False;
 
-#ifdef HAVE_XFT
+#if defined USE_CAIRO || defined HAVE_XFT
 static XtActionsRec button_actions[] =
   {
     { "my_reset", command_reset },
@@ -511,22 +514,22 @@ make_dialog (char* name,
   Widget dialog;
   Widget button;
   XtTranslations override;
-#ifdef HAVE_XFT
+#if defined USE_CAIRO || defined HAVE_XFT
   XftFont *xft_font = 0;
   XtTranslations button_override;
 #endif
 
-  if (! pop_up_p) abort (); /* not implemented */
-  if (text_input_slot) abort (); /* not implemented */
-  if (radio_box) abort (); /* not implemented */
-  if (list) abort (); /* not implemented */
+  if (! pop_up_p) emacs_abort (); /* not implemented */
+  if (text_input_slot) emacs_abort (); /* not implemented */
+  if (radio_box) emacs_abort (); /* not implemented */
+  if (list) emacs_abort (); /* not implemented */
 
   if (! actions_initted)
     {
       XtAppContext app = XtWidgetToApplicationContext (parent);
       XtAppAddActions (app, xaw_actions,
 		       sizeof (xaw_actions) / sizeof (xaw_actions[0]));
-#ifdef HAVE_XFT
+#if defined USE_CAIRO || defined HAVE_XFT
       XtAppAddActions (app, button_actions,
 		       sizeof (button_actions) / sizeof (button_actions[0]));
 #endif
@@ -551,7 +554,7 @@ make_dialog (char* name,
   override = XtParseTranslationTable (dialogOverride);
   XtOverrideTranslations (dialog, override);
 
-#ifdef HAVE_XFT
+#if defined USE_CAIRO || defined HAVE_XFT
   {
     int num;
     Widget *ch = NULL;
@@ -569,7 +572,6 @@ make_dialog (char* name,
           }
       }
     instance->xft_data = 0;
-    instance->nr_xft_data = 0;
     if (w)
       {
         XtResource rec[] =
@@ -589,11 +591,13 @@ make_dialog (char* name,
 
         if (xft_font)
           {
-            instance->nr_xft_data = left_buttons + right_buttons + 1;
-            instance->xft_data = calloc (instance->nr_xft_data,
+            int nr_xft_data = left_buttons + right_buttons + 1;
+            instance->xft_data = calloc (nr_xft_data + 1,
                                          sizeof(*instance->xft_data));
 
             fill_xft_data (&instance->xft_data[0], w, xft_font);
+	    XtAddCallback (dialog, XtNdestroyCallback, destroy_xft_data,
+			   instance->xft_data);
           }
       }
 
@@ -622,7 +626,7 @@ make_dialog (char* name,
       sprintf (button_name, "button%d", ++bc);
       button = XtCreateManagedWidget (button_name, commandWidgetClass,
 				      dialog, av, ac);
-#ifdef HAVE_XFT
+#if defined USE_CAIRO || defined HAVE_XFT
       if (xft_font)
         {
           fill_xft_data (&instance->xft_data[bc], button, xft_font);
@@ -655,7 +659,7 @@ make_dialog (char* name,
       sprintf (button_name, "button%d", ++bc);
       button = XtCreateManagedWidget (button_name, commandWidgetClass,
 				      dialog, av, ac);
-#ifdef HAVE_XFT
+#if defined USE_CAIRO || defined HAVE_XFT
       if (xft_font)
         {
           fill_xft_data (&instance->xft_data[bc], button, xft_font);
@@ -764,7 +768,7 @@ xaw_generic_callback (Widget widget, XtPointer closure, XtPointer call_data)
 	  break;
 	val = val->next;
       }
-    if (! val) abort ();
+    if (! val) emacs_abort ();
     user_data = val->call_data;
   }
 
@@ -790,11 +794,11 @@ wm_delete_window (Widget w,
     shell = w;
 
   if (! XtIsSubclass (shell, shellWidgetClass))
-    abort ();
+    emacs_abort ();
   XtVaGetValues (shell, XtNnumChildren, &nkids, NULL);
   XtVaGetValues (shell, XtNchildren, &kids, NULL);
   if (!kids || !*kids)
-    abort ();
+    emacs_abort ();
   for (i = 0; i < nkids; i++)
     {
       widget = kids[i];
@@ -804,11 +808,11 @@ wm_delete_window (Widget w,
   if (! widget) return;
 
   id = lw_get_widget_id (widget);
-  if (! id) abort ();
+  if (! id) emacs_abort ();
 
   {
     widget_info *info = lw_get_widget_info (id);
-    if (! info) abort ();
+    if (! info) emacs_abort ();
     if (info->selection_cb)
       info->selection_cb (widget, id, (XtPointer) -1);
   }

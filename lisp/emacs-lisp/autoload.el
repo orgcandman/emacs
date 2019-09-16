@@ -1,6 +1,6 @@
 ;; autoload.el --- maintain autoloads in loaddefs.el  -*- lexical-binding: t -*-
 
-;; Copyright (C) 1991-1997, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1991-1997, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Roland McGrath <roland@gnu.org>
 ;; Keywords: maint
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -146,7 +146,7 @@ expression, in which case we want to handle forms differently."
                            t))))
         ;; Add the usage form at the end where describe-function-1
         ;; can recover it.
-        (when (listp args) (setq doc (help-add-fundoc-usage doc args)))
+        (when (consp args) (setq doc (help-add-fundoc-usage doc args)))
         ;; (message "autoload of %S" (nth 1 form))
         `(autoload ,(nth 1 form) ,file ,doc ,interactive ,type)))
 
@@ -164,7 +164,8 @@ expression, in which case we want to handle forms differently."
      ((and (memq car '(easy-mmode-define-global-mode define-global-minor-mode
                        define-globalized-minor-mode defun defmacro
 		       easy-mmode-define-minor-mode define-minor-mode
-                       define-inline cl-defun cl-defmacro))
+                       define-inline cl-defun cl-defmacro cl-defgeneric
+                       cl-defstruct pcase-defmacro))
            (macrop car)
 	   (setq expand (let ((load-file-name file)) (macroexpand form)))
 	   (memq (car expand) '(progn prog1 defalias)))
@@ -181,13 +182,13 @@ expression, in which case we want to handle forms differently."
       (let* ((macrop (memq car '(defmacro cl-defmacro defmacro*)))
 	     (name (nth 1 form))
 	     (args (pcase car
-                     ((or `defun `defmacro
-                          `defun* `defmacro* `cl-defun `cl-defmacro
-                          `define-overloadable-function)
+                     ((or 'defun 'defmacro
+                          'defun* 'defmacro* 'cl-defun 'cl-defmacro
+                          'define-overloadable-function)
                       (nth 2 form))
-                     (`define-skeleton '(&optional str arg))
-                     ((or `define-generic-mode `define-derived-mode
-                          `define-compilation-mode)
+                     ('define-skeleton '(&optional str arg))
+                     ((or 'define-generic-mode 'define-derived-mode
+                          'define-compilation-mode)
                       nil)
                      (_ t)))
 	     (body (nthcdr (or (function-get car 'doc-string-elt) 3) form))
@@ -254,30 +255,22 @@ expression, in which case we want to handle forms differently."
 ;; Those properties are now set in lisp-mode.el.
 
 (defun autoload-find-generated-file ()
-  "Visit the autoload file for the current buffer, and return its buffer.
-If a buffer is visiting the desired autoload file, return it."
+  "Visit the autoload file for the current buffer, and return its buffer."
   (let ((enable-local-variables :safe)
-	(enable-local-eval nil))
+        (enable-local-eval nil)
+        (delay-mode-hooks t)
+        (file (autoload-generated-file)))
     ;; We used to use `raw-text' to read this file, but this causes
     ;; problems when the file contains non-ASCII characters.
-    (let* ((delay-mode-hooks t)
-           (file (autoload-generated-file))
-           (file-missing (not (file-exists-p file))))
-      (when file-missing
-        (autoload-ensure-default-file file))
-      (with-current-buffer
-          (find-file-noselect
-           (autoload-ensure-file-writeable
-            file))
-        ;; block backups when the file has just been created, since
-        ;; the backups will just be the auto-generated headers.
-        ;; bug#23203
-        (when file-missing
-          (setq buffer-backed-up t)
-          (save-buffer))
-        (current-buffer)))))
+    (with-current-buffer (find-file-noselect
+                          (autoload-ensure-file-writeable file))
+      (if (zerop (buffer-size)) (insert (autoload-rubric file nil t)))
+      (current-buffer))))
 
 (defun autoload-generated-file ()
+  "Return `generated-autoload-file' as an absolute name.
+If local to the current buffer, expand using the default directory;
+otherwise, using `source-directory'/lisp."
   (expand-file-name generated-autoload-file
                     ;; File-local settings of generated-autoload-file should
                     ;; be interpreted relative to the file's location,
@@ -331,6 +324,7 @@ put the output in."
 	    (setcdr p nil)
 	    (princ "\n(" outbuf)
 	    (let ((print-escape-newlines t)
+		  (print-escape-control-characters t)
                   (print-quoted t)
 		  (print-escape-nonascii t))
 	      (dolist (elt form)
@@ -355,6 +349,7 @@ put the output in."
 		       outbuf))
 	      (terpri outbuf)))
 	(let ((print-escape-newlines t)
+	      (print-escape-control-characters t)
               (print-quoted t)
 	      (print-escape-nonascii t))
 	  (print form outbuf)))))))
@@ -362,27 +357,30 @@ put the output in."
 (defun autoload-rubric (file &optional type feature)
   "Return a string giving the appropriate autoload rubric for FILE.
 TYPE (default \"autoloads\") is a string stating the type of
-information contained in FILE.  If FEATURE is non-nil, FILE
-will provide a feature.  FEATURE may be a string naming the
-feature, otherwise it will be based on FILE's name.
+information contained in FILE.  TYPE \"package\" acts like the default,
+but adds an extra line to the output to modify `load-path'.
 
-At present, a feature is in fact always provided, but this should
-not be relied upon."
-  (let ((basename (file-name-nondirectory file)))
+If FEATURE is non-nil, FILE will provide a feature.  FEATURE may
+be a string naming the feature, otherwise it will be based on
+FILE's name."
+  (let ((basename (file-name-nondirectory file))
+	(lp (if (equal type "package") (setq type "autoloads"))))
     (concat ";;; " basename
 	    " --- automatically extracted " (or type "autoloads") "\n"
 	    ";;\n"
 	    ";;; Code:\n\n"
+	    (if lp
+		"(add-to-list 'load-path (directory-file-name
+                         (or (file-name-directory #$) (car load-path))))\n\n")
 	    "\n"
 	    ;; This is used outside of autoload.el, eg cus-dep, finder.
-	    "(provide '"
-	    (if (stringp feature)
-		feature
-	      (file-name-sans-extension basename))
-	    ")\n"
+	    (if feature
+		(format "(provide '%s)\n"
+			(if (stringp feature) feature
+			  (file-name-sans-extension basename))))
 	    ";; Local Variables:\n"
 	    ";; version-control: never\n"
-	    ";; no-byte-compile: t\n"
+            ";; no-byte-compile: t\n" ;; #$ is byte-compiled into nil.
 	    ";; no-update-autoloads: t\n"
 	    ";; coding: utf-8\n"
 	    ";; End:\n"
@@ -390,7 +388,7 @@ not be relied upon."
 	    " ends here\n")))
 
 (defvar autoload-ensure-writable nil
-  "Non-nil means `autoload-ensure-default-file' makes existing file writable.")
+  "Non-nil means `autoload-find-generated-file' makes existing file writable.")
 ;; Just in case someone tries to get you to overwrite a file that you
 ;; don't want to.
 ;;;###autoload
@@ -400,18 +398,13 @@ not be relied upon."
   ;; Probably pointless, but replaces the old AUTOGEN_VCS in lisp/Makefile,
   ;; which was designed to handle CVSREAD=1 and equivalent.
   (and autoload-ensure-writable
+       (file-exists-p file)
        (let ((modes (file-modes file)))
          (if (zerop (logand modes #o0200))
              ;; Ignore any errors here, and let subsequent attempts
              ;; to write the file raise any real error.
              (ignore-errors (set-file-modes file (logior modes #o0200))))))
   file)
-
-(defun autoload-ensure-default-file (file)
-  "Make sure that the autoload file FILE exists, creating it if needed.
-If the file already exists and `autoload-ensure-writable' is non-nil,
-make it writable."
-  (write-region (autoload-rubric file) nil file))
 
 (defun autoload-insert-section-header (outbuf autoloads load-name file time)
   "Insert the section-header line,
@@ -505,6 +498,7 @@ Return non-nil in the case where no autoloads were added at point."
 Standard prefixes won't be registered anyway.  I.e. if a file \"foo.el\" defines
 variables or functions that use \"foo-\" as prefix, that will not be registered.
 But all other prefixes will be included.")
+(put 'autoload-compute-prefixes 'safe #'booleanp)
 
 (defconst autoload-def-prefixes-max-entries 5
   "Target length of the list of definition prefixes per file.
@@ -546,7 +540,9 @@ Don't try to split prefixes that are already longer than that.")
     ;; "cc-helper" and "c-mode", you'll get "c" in the root prefixes.
     (dolist (pair (prog1 prefixes (setq prefixes nil)))
       (let ((s (car pair)))
-        (if (or (> (length s) 2)                  ;Long enough!
+        (if (or (and (> (length s) 2)   ; Long enough!
+                     ;; But don't use "def" from deffoo-pkg-thing.
+                     (not (string= "def" s)))
                 (string-match ".[[:punct:]]\\'" s) ;A real (tho short) prefix?
                 (radix-tree-lookup (cdr pair) "")) ;Nothing to expand!
             (push pair prefixes) ;Keep it as is.
@@ -595,7 +591,8 @@ Don't try to split prefixes that are already longer than that.")
               (lambda (x)
                 (let ((prefix (car x)))
                   (if (or (> (length prefix) 2) ;Long enough!
-                          (string-match ".[[:punct:]]\\'" prefix))
+                          (and (eq (length prefix) 2)
+                               (string-match "[[:punct:]]" prefix)))
                       prefix
                     ;; Some packages really don't follow the rules.
                     ;; Drop the most egregious cases such as the
@@ -609,7 +606,8 @@ Don't try to split prefixes that are already longer than that.")
                       nil))))
               prefixes)))
         `(if (fboundp 'register-definition-prefixes)
-             (register-definition-prefixes ,file ',(delq nil strings)))))))
+             (register-definition-prefixes ,file ',(sort (delq nil strings)
+							 'string<)))))))
 
 (defun autoload--setup-output (otherbuf outbuf absfile load-name)
   (let ((outbuf
@@ -660,6 +658,21 @@ Don't try to split prefixes that are already longer than that.")
               (progn (forward-line 1) (point)))))))
 
 (defvar autoload-builtin-package-versions nil)
+
+(defvar autoload-ignored-definitions
+  '("define-obsolete-function-alias"
+    "define-obsolete-variable-alias"
+    "define-category" "define-key"
+    "defgroup" "defface" "defadvice"
+    "def-edebug-spec"
+    ;; Hmm... this is getting ugly:
+    "define-widget"
+    "define-erc-module"
+    "define-erc-response-handler"
+    "defun-rcirc-command")
+  "List of strings naming definitions to ignore for prefixes.
+More specifically those definitions will not be considered for the
+`register-definition-prefixes' call.")
 
 ;; When called from `generate-file-autoloads' we should ignore
 ;; `generated-autoload-file' altogether.  When called from
@@ -748,7 +761,7 @@ FILE's modification time."
                               (setq output-start (autoload--setup-output
                                                   otherbuf outbuf absfile load-name)))
                             (autoload--print-cookie-text output-start load-name file))
-                           ((looking-at ";")
+                           ((= (following-char) ?\;)
                             ;; Don't read the comment.
                             (forward-line 1))
                            (t
@@ -759,16 +772,8 @@ FILE's modification time."
                              (looking-at "(\\(def[^ ]+\\) ['(]*\\([^' ()\"\n]+\\)[\n \t]")
                              (not (member
                                    (match-string 1)
-                                   '("define-obsolete-function-alias"
-                                     "define-obsolete-variable-alias"
-                                     "define-category" "define-key"
-                                     "defgroup" "defface" "defadvice"
-                                     "def-edebug-spec"
-                                     ;; Hmm... this is getting ugly:
-                                     "define-widget"
-                                     "define-erc-response-handler"
-                                     "defun-rcirc-command"))))
-                    (push (match-string 2) defs))
+                                   autoload-ignored-definitions)))
+                    (push (match-string-no-properties 2) defs))
                             (forward-sexp 1)
                             (forward-line 1)))))))
 
@@ -813,7 +818,8 @@ FILE's modification time."
                          (marker-buffer other-output-start)
                          "actual autoloads are elsewhere" load-name relfile
 			 (if autoload-timestamps
-			     (nth 5 (file-attributes absfile))
+			     (file-attribute-modification-time
+			      (file-attributes absfile))
 			   autoload--non-timestamp))
                         (insert ";;; Generated autoloads from " relfile "\n")))
                     (insert generate-autoload-section-trailer)))))))
@@ -849,7 +855,8 @@ FILE's modification time."
                                       ;; `emacs-internal' instead.
                                       nil nil 'emacs-mule-unix)
                                (if autoload-timestamps
-                                   (nth 5 (file-attributes relfile))
+                                   (file-attribute-modification-time
+				    (file-attributes relfile))
                                  autoload--non-timestamp)))
                             (insert ";;; Generated autoloads from " relfile "\n")))
                         (insert generate-autoload-section-trailer))))
@@ -862,7 +869,7 @@ FILE's modification time."
                   ;; If the entries were added to some other buffer, then the file
                   ;; doesn't add entries to OUTFILE.
                   otherbuf))
-          (nth 5 (file-attributes absfile))))
+          (file-attribute-modification-time (file-attributes absfile))))
     (error
      ;; Probably unbalanced parens in forward-sexp. In that case, the
      ;; condition is scan-error, and the signal data includes point
@@ -875,14 +882,35 @@ FILE's modification time."
      (error "%s:0:0: error: %s: %s" file (car err) (cdr err)))
     ))
 
+;; For parallel builds, to stop another process reading a half-written file.
+(defun autoload--save-buffer ()
+  "Save current buffer to its file, atomically."
+  ;; Similar to byte-compile-file.
+  (let* ((version-control 'never)
+         (tempfile (make-temp-file buffer-file-name))
+	 (default-modes (default-file-modes))
+	 (temp-modes (logand default-modes #o600))
+	 (desired-modes (logand default-modes
+				(or (file-modes buffer-file-name) #o666)))
+         (kill-emacs-hook
+          (cons (lambda () (ignore-errors (delete-file tempfile)))
+                kill-emacs-hook)))
+    (unless (= temp-modes desired-modes)
+      (set-file-modes tempfile desired-modes))
+    (write-region (point-min) (point-max) tempfile nil 1)
+    (backup-buffer)
+    (rename-file tempfile buffer-file-name t))
+  (set-buffer-modified-p nil)
+  (set-visited-file-modtime)
+  (or noninteractive (message "Wrote %s" buffer-file-name)))
+
 (defun autoload-save-buffers ()
   (while autoload-modified-buffers
     (with-current-buffer (pop autoload-modified-buffers)
-      (let ((version-control 'never))
-	(save-buffer)))))
+      (autoload--save-buffer))))
 
 ;; FIXME This command should be deprecated.
-;; See http://debbugs.gnu.org/22213#41
+;; See https://debbugs.gnu.org/22213#41
 ;;;###autoload
 (defun update-file-autoloads (file &optional save-after outfile)
   "Update the autoloads for FILE.
@@ -901,7 +929,7 @@ Return FILE if there was no autoload cookie in it, else nil."
   (let* ((generated-autoload-file (or outfile generated-autoload-file))
 	 (autoload-modified-buffers nil)
 	 ;; We need this only if the output file handles more than one input.
-	 ;; See http://debbugs.gnu.org/22213#38 and subsequent.
+	 ;; See https://debbugs.gnu.org/22213#38 and subsequent.
 	 (autoload-timestamps t)
          (no-autoloads (autoload-generate-file-autoloads file)))
     (if autoload-modified-buffers
@@ -922,7 +950,8 @@ removes any prior now out-of-date autoload entries."
            (existing-buffer (if buffer-file-name buf))
            (output-file (autoload-generated-file))
            (output-time (if (file-exists-p output-file)
-                            (nth 5 (file-attributes output-file))))
+                            (file-attribute-modification-time
+			     (file-attributes output-file))))
            (found nil))
       (with-current-buffer (autoload-find-generated-file)
         ;; This is to make generated-autoload-file have Unix EOLs, so
@@ -944,7 +973,8 @@ removes any prior now out-of-date autoload entries."
                    ;; Check if it is up to date.
                    (let ((begin (match-beginning 0))
                          (last-time (nth 4 form))
-                         (file-time (nth 5 (file-attributes file))))
+                         (file-time (file-attribute-modification-time
+				     (file-attributes file))))
                      (if (and (or (null existing-buffer)
                                   (not (buffer-modified-p existing-buffer)))
                               (cond
@@ -1016,7 +1046,7 @@ write its autoloads into the specified file instead."
                        ;; we don't want to depend on whether Emacs was
                        ;; built with or without modules support, nor
                        ;; what is the suffix for the underlying OS.
-		       (unless (string-match "\\.\\(elc\\|\\so\\|dll\\)" suf)
+		       (unless (string-match "\\.\\(elc\\|so\\|dll\\)" suf)
                          (push suf tmp)))
                      (concat "^[^=.].*" (regexp-opt tmp t) "\\'")))
 	 (files (apply #'nconc
@@ -1037,7 +1067,8 @@ write its autoloads into the specified file instead."
 	    generated-autoload-file))
 	 (output-time
 	  (if (file-exists-p generated-autoload-file)
-	      (nth 5 (file-attributes generated-autoload-file)))))
+	      (file-attribute-modification-time
+	       (file-attributes generated-autoload-file)))))
 
     (with-current-buffer (autoload-find-generated-file)
       (save-excursion
@@ -1058,7 +1089,8 @@ write its autoloads into the specified file instead."
 		   (if (member last-time (list t autoload--non-timestamp))
 		       (setq last-time output-time))
 		   (dolist (file file)
-		     (let ((file-time (nth 5 (file-attributes file))))
+		     (let ((file-time (file-attribute-modification-time
+				       (file-attributes file))))
 		       (when (and file-time
 				  (not (time-less-p last-time file-time)))
 			 ;; file unchanged
@@ -1077,7 +1109,8 @@ write its autoloads into the specified file instead."
 						    t autoload--non-timestamp))
 					   output-time
 					 oldtime))
-                                     (nth 5 (file-attributes file))))
+                                     (file-attribute-modification-time
+				      (file-attributes file))))
 		   ;; File hasn't changed.
 		   nil)
 		  (t
@@ -1090,8 +1123,17 @@ write its autoloads into the specified file instead."
             (push file done)
 	    (setq files (delete file files)))))
       ;; Elements remaining in FILES have no existing autoload sections yet.
-      (let ((no-autoloads-time (or last-time '(0 0 0 0))) file-time)
+      (let ((no-autoloads-time (or last-time '(0 0 0 0)))
+            (progress (make-progress-reporter
+                       (byte-compile-info-string
+                        (concat "Scraping files for "
+                                (file-relative-name
+                                 generated-autoload-file)))
+                       0 (length files) nil 10))
+            (file-count 0)
+            file-time)
 	(dolist (file files)
+          (progress-reporter-update progress (setq file-count (1+ file-count)))
 	  (cond
 	   ;; Passing nil as second argument forces
 	   ;; autoload-generate-file-autoloads to look for the right
@@ -1102,6 +1144,7 @@ write its autoloads into the specified file instead."
 	    (if (time-less-p no-autoloads-time file-time)
 		(setq no-autoloads-time file-time)))
            (t (setq changed t))))
+        (progress-reporter-done progress)
 
 	(when no-autoloads
 	  ;; Sort them for better readability.
@@ -1119,15 +1162,11 @@ write its autoloads into the specified file instead."
       ;; dependencies don't trigger unnecessarily.
       (if (not changed)
           (set-buffer-modified-p nil)
-        (let ((version-control 'never))
-          (save-buffer)))
+        (autoload--save-buffer))
 
       ;; In case autoload entries were added to other files because of
       ;; file-local autoload-generated-file settings.
       (autoload-save-buffers))))
-
-(define-obsolete-function-alias 'update-autoloads-from-directories
-    'update-directory-autoloads "22.1")
 
 ;;;###autoload
 (defun batch-update-autoloads ()

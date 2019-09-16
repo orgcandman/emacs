@@ -1,6 +1,6 @@
 /* Support for embedding graphical components in a buffer.
 
-Copyright (C) 2011-2017 Free Software Foundation, Inc.
+Copyright (C) 2011-2019 Free Software Foundation, Inc.
 
 This file is part of GNU Emacs.
 
@@ -15,7 +15,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
+along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.  */
 
 #include <config.h>
 
@@ -26,21 +26,29 @@ along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "frame.h"
 #include "keyboard.h"
 #include "gtkutil.h"
+#include "sysstdio.h"
 
 #include <webkit2/webkit2.h>
 #include <JavaScriptCore/JavaScript.h>
 
+/* Suppress GCC deprecation warnings starting in WebKitGTK+ 2.21.1 for
+   webkit_javascript_result_get_global_context and
+   webkit_javascript_result_get_value (Bug#33679).
+   FIXME: Use the JavaScriptCore GLib API instead, and remove this hack.  */
+#if WEBKIT_CHECK_VERSION (2, 21, 1) && GNUC_PREREQ (4, 2, 0)
+# pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 static struct xwidget *
 allocate_xwidget (void)
 {
-  return ALLOCATE_PSEUDOVECTOR (struct xwidget, height, PVEC_XWIDGET);
+  return ALLOCATE_PSEUDOVECTOR (struct xwidget, script_callbacks, PVEC_XWIDGET);
 }
 
 static struct xwidget_view *
 allocate_xwidget_view (void)
 {
-  return ALLOCATE_PSEUDOVECTOR (struct xwidget_view, redisplayed,
-                                PVEC_XWIDGET_VIEW);
+  return ALLOCATE_PSEUDOVECTOR (struct xwidget_view, w, PVEC_XWIDGET_VIEW);
 }
 
 #define XSETXWIDGET(a, b) XSETPSEUDOVECTOR (a, b, PVEC_XWIDGET)
@@ -78,17 +86,19 @@ Returns the newly constructed xwidget, or nil if construction fails.  */)
    Lisp_Object title, Lisp_Object width, Lisp_Object height,
    Lisp_Object arguments, Lisp_Object buffer)
 {
+  if (!xg_gtk_initialized)
+    error ("make-xwidget: GTK has not been initialized");
   CHECK_SYMBOL (type);
-  CHECK_NATNUM (width);
-  CHECK_NATNUM (height);
+  CHECK_FIXNAT (width);
+  CHECK_FIXNAT (height);
 
   struct xwidget *xw = allocate_xwidget ();
   Lisp_Object val;
   xw->type = type;
   xw->title = title;
   xw->buffer = NILP (buffer) ? Fcurrent_buffer () : Fget_buffer_create (buffer);
-  xw->height = XFASTINT (height);
-  xw->width = XFASTINT (width);
+  xw->height = XFIXNAT (height);
+  xw->width = XFIXNAT (width);
   xw->kill_without_query = false;
   XSETXWIDGET (val, xw);
   Vxwidget_list = Fcons (val, Vxwidget_list);
@@ -294,20 +304,24 @@ webkit_js_to_lisp (JSContextRef context, JSValueRef value)
     case kJSTypeBoolean:
       return (JSValueToBoolean (context, value)) ? Qt : Qnil;
     case kJSTypeNumber:
-      return make_number (JSValueToNumber (context, value, NULL));
+      return make_fixnum (JSValueToNumber (context, value, NULL));
     case kJSTypeObject:
       {
         if (JSValueIsArray (context, value))
           {
             JSStringRef pname = JSStringCreateWithUTF8CString("length");
-            JSValueRef len = JSObjectGetProperty (context, (JSObjectRef) value, pname, NULL);
-            int n = JSValueToNumber (context, len, NULL);
+	    JSValueRef len = JSObjectGetProperty (context, (JSObjectRef) value,
+						  pname, NULL);
+	    double dlen = JSValueToNumber (context, len, NULL);
             JSStringRelease(pname);
 
             Lisp_Object obj;
+	    if (! (0 <= dlen && dlen < PTRDIFF_MAX + 1.0))
+	      memory_full (SIZE_MAX);
+	    ptrdiff_t n = dlen;
             struct Lisp_Vector *p = allocate_vector (n);
 
-            for (int i = 0; i < n; ++i)
+            for (ptrdiff_t i = 0; i < n; ++i)
               {
                 p->contents[i] =
                   webkit_js_to_lisp (context,
@@ -323,13 +337,15 @@ webkit_js_to_lisp (JSContextRef context, JSValueRef value)
             JSPropertyNameArrayRef properties =
               JSObjectCopyPropertyNames (context, (JSObjectRef) value);
 
-            int n = JSPropertyNameArrayGetCount (properties);
+	    size_t n = JSPropertyNameArrayGetCount (properties);
             Lisp_Object obj;
 
             /* TODO: can we use a regular list here?  */
+	    if (PTRDIFF_MAX < n)
+	      memory_full (n);
             struct Lisp_Vector *p = allocate_vector (n);
 
-            for (int i = 0; i < n; ++i)
+            for (ptrdiff_t i = 0; i < n; ++i)
               {
                 JSStringRef name = JSPropertyNameArrayGetNameAtIndex (properties, i);
                 JSValueRef property = JSObjectGetProperty (context,
@@ -362,7 +378,7 @@ webkit_js_to_lisp (JSContextRef context, JSValueRef value)
 static void
 webkit_javascript_finished_cb (GObject      *webview,
                                GAsyncResult *result,
-                               gpointer      lisp_callback)
+                               gpointer      arg)
 {
     WebKitJavascriptResult *js_result;
     JSValueRef value;
@@ -370,6 +386,11 @@ webkit_javascript_finished_cb (GObject      *webview,
     GError *error = NULL;
     struct xwidget *xw = g_object_get_data (G_OBJECT (webview),
                                             XG_XWIDGET);
+    ptrdiff_t script_idx = (intptr_t) arg;
+    Lisp_Object script_callback = AREF (xw->script_callbacks, script_idx);
+    ASET (xw->script_callbacks, script_idx, Qnil);
+    if (!NILP (script_callback))
+      xfree (xmint_pointer (XCAR (script_callback)));
 
     js_result = webkit_web_view_run_javascript_finish
       (WEBKIT_WEB_VIEW (webview), result, &error);
@@ -381,16 +402,19 @@ webkit_javascript_finished_cb (GObject      *webview,
         return;
       }
 
-    context = webkit_javascript_result_get_global_context (js_result);
-    value = webkit_javascript_result_get_value (js_result);
-    Lisp_Object lisp_value = webkit_js_to_lisp (context, value);
-    webkit_javascript_result_unref (js_result);
+    if (!NILP (script_callback) && !NILP (XCDR (script_callback)))
+      {
+	context = webkit_javascript_result_get_global_context (js_result);
+	value = webkit_javascript_result_get_value (js_result);
+	Lisp_Object lisp_value = webkit_js_to_lisp (context, value);
 
-    /* Register an xwidget event here, which then runs the callback.
-       This ensures that the callback runs in sync with the Emacs
-       event loop.  */
-    store_xwidget_js_callback_event (xw, (Lisp_Object)lisp_callback,
-                                     lisp_value);
+	/* Register an xwidget event here, which then runs the callback.
+	   This ensures that the callback runs in sync with the Emacs
+	   event loop.  */
+	store_xwidget_js_callback_event (xw, XCDR (script_callback), lisp_value);
+      }
+
+    webkit_javascript_result_unref (js_result);
 }
 
 
@@ -505,6 +529,10 @@ xwidget_init_view (struct xwidget *xww,
                    struct glyph_string *s,
                    int x, int y)
 {
+
+  if (!xg_gtk_initialized)
+    error ("xwidget_init_view: GTK has not been initialized");
+
   struct xwidget_view *xv = allocate_xwidget_view ();
   Lisp_Object val;
 
@@ -582,22 +610,20 @@ x_draw_xwidget_glyph_string (struct glyph_string *s)
      xwidget on screen.  Moving and clipping is done here.  Also view
      initialization.  */
   struct xwidget *xww = s->xwidget;
-  struct xwidget_view *xv;
+  struct xwidget_view *xv = xwidget_view_lookup (xww, s->w);
   int clip_right;
   int clip_bottom;
   int clip_top;
   int clip_left;
 
-  /* FIXME: The result of this call is discarded.
-     What if the lookup fails?  */
-  xwidget_view_lookup (xww, s->w);
-
   int x = s->x;
   int y = s->y + (s->height / 2) - (xww->height / 2);
 
   /* Do initialization here in the display loop because there is no
-     other time to know things like window placement etc.  */
-  xv = xwidget_init_view (xww, s, x, y);
+     other time to know things like window placement etc.  Do not
+     create a new view if we have found one that is usable.  */
+  if (!xv)
+    xv = xwidget_init_view (xww, s, x, y);
 
   int text_area_x, text_area_y, text_area_width, text_area_height;
 
@@ -665,7 +691,8 @@ x_draw_xwidget_glyph_string (struct glyph_string *s)
   struct xwidget *xw = XXWIDGET (xwidget);				\
   if (!xw->widget_osr || !WEBKIT_IS_WEB_VIEW (xw->widget_osr))		\
     {									\
-      printf ("ERROR xw->widget_osr does not hold a webkit instance\n"); \
+      fputs ("ERROR xw->widget_osr does not hold a webkit instance\n",	\
+	     stdout);							\
       return Qnil;							\
     }
 
@@ -677,6 +704,7 @@ DEFUN ("xwidget-webkit-goto-uri",
 {
   WEBKIT_FN_INIT ();
   CHECK_STRING (uri);
+  uri = ENCODE_FILE (uri);
   webkit_web_view_load_uri (WEBKIT_WEB_VIEW (xw->widget_osr), SSDATA (uri));
   return Qnil;
 }
@@ -684,8 +712,7 @@ DEFUN ("xwidget-webkit-goto-uri",
 DEFUN ("xwidget-webkit-zoom",
        Fxwidget_webkit_zoom, Sxwidget_webkit_zoom,
        2, 2, 0,
-       doc: /* Change the zoom factor of the xwidget webkit instance
-referenced by XWIDGET.  */)
+       doc: /* Change the zoom factor of the xwidget webkit instance referenced by XWIDGET.  */)
   (Lisp_Object xwidget, Lisp_Object factor)
 {
   WEBKIT_FN_INIT ();
@@ -700,12 +727,33 @@ referenced by XWIDGET.  */)
   return Qnil;
 }
 
+/* Save script and fun in the script/callback save vector and return
+   its index.  */
+static ptrdiff_t
+save_script_callback (struct xwidget *xw, Lisp_Object script, Lisp_Object fun)
+{
+  Lisp_Object cbs = xw->script_callbacks;
+  if (NILP (cbs))
+    xw->script_callbacks = cbs = make_nil_vector (32);
+
+  /* Find first free index.  */
+  ptrdiff_t idx;
+  for (idx = 0; !NILP (AREF (cbs, idx)); idx++)
+    if (idx + 1 == ASIZE (cbs))
+      {
+	xw->script_callbacks = cbs = larger_vector (cbs, 1, -1);
+	break;
+      }
+
+  ASET (cbs, idx, Fcons (make_mint_ptr (xlispstrdup (script)), fun));
+  return idx;
+}
 
 DEFUN ("xwidget-webkit-execute-script",
        Fxwidget_webkit_execute_script, Sxwidget_webkit_execute_script,
        2, 3, 0,
-       doc: /* Make the Webkit XWIDGET execute JavaScript SCRIPT.  If
-FUN is provided, feed the JavaScript return value to the single
+       doc: /* Make the Webkit XWIDGET execute JavaScript SCRIPT.
+If FUN is provided, feed the JavaScript return value to the single
 argument procedure FUN.*/)
   (Lisp_Object xwidget, Lisp_Object script, Lisp_Object fun)
 {
@@ -714,30 +762,34 @@ argument procedure FUN.*/)
   if (!NILP (fun) && !FUNCTIONP (fun))
     wrong_type_argument (Qinvalid_function, fun);
 
-  void *callback = (FUNCTIONP (fun)) ?
-    &webkit_javascript_finished_cb : NULL;
+  script = ENCODE_SYSTEM (script);
+
+  /* Protect script and fun during GC.  */
+  intptr_t idx = save_script_callback (xw, script, fun);
 
   /* JavaScript execution happens asynchronously.  If an elisp
      callback function is provided we pass it to the C callback
      procedure that retrieves the return value.  */
+  gchar *script_string
+    = xmint_pointer (XCAR (AREF (xw->script_callbacks, idx)));
   webkit_web_view_run_javascript (WEBKIT_WEB_VIEW (xw->widget_osr),
-                                  SSDATA (script),
+				  script_string,
                                   NULL, /* cancelable */
-                                  callback,
-                                  (gpointer) fun);
+                                  webkit_javascript_finished_cb,
+				  (gpointer) idx);
   return Qnil;
 }
 
 DEFUN ("xwidget-resize", Fxwidget_resize, Sxwidget_resize, 3, 3, 0,
-       doc: /* Resize XWIDGET.  NEW_WIDTH, NEW_HEIGHT define the new size.  */ )
+       doc: /* Resize XWIDGET to NEW_WIDTH, NEW_HEIGHT.  */ )
   (Lisp_Object xwidget, Lisp_Object new_width, Lisp_Object new_height)
 {
   CHECK_XWIDGET (xwidget);
-  CHECK_NATNUM (new_width);
-  CHECK_NATNUM (new_height);
+  CHECK_RANGED_INTEGER (new_width, 0, INT_MAX);
+  CHECK_RANGED_INTEGER (new_height, 0, INT_MAX);
   struct xwidget *xw = XXWIDGET (xwidget);
-  int w = XFASTINT (new_width);
-  int h = XFASTINT (new_height);
+  int w = XFIXNAT (new_width);
+  int h = XFIXNAT (new_height);
 
   xw->width = w;
   xw->height = h;
@@ -780,8 +832,7 @@ Emacs allocated area accordingly.  */)
   CHECK_XWIDGET (xwidget);
   GtkRequisition requisition;
   gtk_widget_size_request (XXWIDGET (xwidget)->widget_osr, &requisition);
-  return list2 (make_number (requisition.width),
-		make_number (requisition.height));
+  return list2i (requisition.width, requisition.height);
 }
 
 DEFUN ("xwidgetp",
@@ -812,7 +863,7 @@ Currently [TYPE TITLE WIDTH HEIGHT].  */)
   CHECK_XWIDGET (xwidget);
   struct xwidget *xw = XXWIDGET (xwidget);
   return CALLN (Fvector, xw->type, xw->title,
-		make_natnum (xw->width), make_natnum (xw->height));
+		make_fixed_natnum (xw->width), make_fixed_natnum (xw->height));
 }
 
 DEFUN ("xwidget-view-info",
@@ -824,9 +875,9 @@ Currently [X Y CLIP_RIGHT CLIP_BOTTOM CLIP_TOP CLIP_LEFT].  */)
 {
   CHECK_XWIDGET_VIEW (xwidget_view);
   struct xwidget_view *xv = XXWIDGET_VIEW (xwidget_view);
-  return CALLN (Fvector, make_number (xv->x), make_number (xv->y),
-		make_number (xv->clip_right), make_number (xv->clip_bottom),
-		make_number (xv->clip_top), make_number (xv->clip_left));
+  return CALLN (Fvector, make_fixnum (xv->x), make_fixnum (xv->y),
+		make_fixnum (xv->clip_right), make_fixnum (xv->clip_bottom),
+		make_fixnum (xv->clip_top), make_fixnum (xv->clip_left));
 }
 
 DEFUN ("xwidget-view-model",
@@ -983,8 +1034,6 @@ syms_of_xwidget (void)
   defsubr (&Sxwidget_buffer);
   defsubr (&Sset_xwidget_plist);
 
-  DEFSYM (Qxwidget, "xwidget");
-
   DEFSYM (QCxwidget, ":xwidget");
   DEFSYM (QCtitle, ":title");
 
@@ -1068,7 +1117,7 @@ xwidget_view_lookup (struct xwidget *xw, struct window *w)
 
   ret = Fxwidget_view_lookup (xwidget, window);
 
-  return EQ (ret, Qnil) ? NULL : XXWIDGET_VIEW (ret);
+  return NILP (ret) ? NULL : XXWIDGET_VIEW (ret);
 }
 
 struct xwidget *
@@ -1191,6 +1240,14 @@ kill_buffer_xwidgets (Lisp_Object buffer)
             gtk_widget_destroy (xw->widget_osr);
             gtk_widget_destroy (xw->widgetwindow_osr);
           }
+	if (!NILP (xw->script_callbacks))
+	  for (ptrdiff_t idx = 0; idx < ASIZE (xw->script_callbacks); idx++)
+	    {
+	      Lisp_Object cb = AREF (xw->script_callbacks, idx);
+	      if (!NILP (cb))
+		xfree (xmint_pointer (XCAR (cb)));
+	      ASET (xw->script_callbacks, idx, Qnil);
+	    }
       }
     }
 }

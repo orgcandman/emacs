@@ -1,6 +1,6 @@
 ;;; descr-text.el --- describe text mode  -*- lexical-binding:t -*-
 
-;; Copyright (C) 1994-1996, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1994-1996, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Boris Goldowsky <boris@gnu.org>
 ;; Maintainer: emacs-devel@gnu.org
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -88,8 +88,6 @@ into help buttons that call `describe-text-category' or
 	     (insert-text-button
 	      (format "%S" value)
 	      'type 'help-face 'help-args (list value)))
-            ((widgetp value)
-	     (describe-text-widget value))
 	    (t
 	     (describe-text-sexp value))))
     (insert "\n")))
@@ -386,13 +384,22 @@ The position information includes POS; the total size of BUFFER; the
 region limits, if narrowed; the column number; and the horizontal
 scroll amount, if the buffer is horizontally scrolled.
 
-The character information includes the character code; charset and
-code points in it; syntax; category; how the character is encoded in
-BUFFER and in BUFFER's file; character composition information (if
-relevant); the font and font glyphs used to display the character;
-the character's canonical name and other properties defined by the
-Unicode Data Base; and widgets, buttons, overlays, and text properties
-relevant to POS."
+The character information includes:
+ its codepoint;
+ its charset (see `char-charset'), overridden by the `charset' text
+   property at POS, if any;
+ the codepoint of the character in the above charset;
+ the character's script (as defined by `char-script-table')
+ the character's syntax, as produced by `syntax-after'
+   and `internal-describe-syntax-value';
+ its category (see `char-category-set' and `describe-char-categories');
+ how to input the character using the keyboard and input methods;
+ how the character is encoded in BUFFER and in BUFFER's file;
+ the font and font glyphs used to display the character;
+ the composition information for displaying the character (if relevant);
+ the character's canonical name and other properties defined by the
+   Unicode Data Base;
+ and widgets, buttons, overlays, and text properties relevant to POS."
   (interactive "d")
   (unless (buffer-live-p buffer) (setq buffer (current-buffer)))
   (let ((src-buf (current-buffer)))
@@ -413,12 +420,11 @@ relevant to POS."
            (multibyte-p enable-multibyte-characters)
            (overlays (mapcar (lambda (o) (overlay-properties o))
                              (overlays-at pos)))
-           (char-description (if (not multibyte-p)
+           (char-description (if (< char 128)
                                  (single-key-description char)
-                               (if (< char 128)
-                                   (single-key-description char)
-                                 (string-to-multibyte
-                                  (char-to-string char)))))
+                               (string (if (not multibyte-p)
+                                           (decode-char 'eight-bit char)
+                                         char))))
            (text-props-desc
             (let ((tmp-buf (generate-new-buffer " *text-props*")))
               (unwind-protect
@@ -557,7 +563,7 @@ relevant to POS."
                         (apply 'propertize char-description
                                (text-properties-at pos))
                         char char char))
-              ("preferred charset"
+              ("charset"
                ,`(insert-text-button
                   ,(symbol-name charset)
                   'type 'help-character-set 'help-args '(,charset))
@@ -616,10 +622,18 @@ relevant to POS."
                                    'help-args '(,current-input-method))
 				 "input method")
 			 (list
-                          (let ((name
-                                 (or (get-char-code-property char 'name)
-                                     (get-char-code-property char 'old-name))))
-                            (if (and name (assoc-string name (ucs-names)))
+                          (let* ((names (ucs-names))
+                                 (name
+                                  (or (when (= char ?\a)
+				       ;; Special case for "BELL" which is
+				       ;; apparently the only char which
+				       ;; doesn't have a new name and whose
+				       ;; old-name is shadowed by a newer char
+				       ;; with that name (bug#25641).
+				       "BELL (BEL)")
+                                      (get-char-code-property char 'name)
+                                      (get-char-code-property char 'old-name))))
+                            (if (and name (gethash name names))
                                 (format
                                  "type \"C-x 8 RET %x\" or \"C-x 8 RET %s\""
                                  char name)
@@ -627,7 +641,9 @@ relevant to POS."
               ("buffer code"
                ,(if multibyte-p
                     (encoded-string-description
-                     (string-as-unibyte (char-to-string char)) nil)
+                     (encode-coding-string (char-to-string char)
+                                           'emacs-internal)
+                     nil)
                   (format "#x%02X" char)))
               ("file code"
                ,@(if multibyte-p
@@ -696,7 +712,6 @@ relevant to POS."
                        (called-interactively-p 'interactive))
       (with-help-window (help-buffer)
         (with-current-buffer standard-output
-          (set-buffer-multibyte multibyte-p)
           (let ((formatter (format "%%%ds:" max-width)))
             (dolist (elt item-list)
               (when (cadr elt)
@@ -826,8 +841,6 @@ relevant to POS."
 
           (if text-props-desc (insert text-props-desc))
           (setq buffer-read-only t))))))
-
-(define-obsolete-function-alias 'describe-char-after 'describe-char "22.1")
 
 ;;; Describe-Char-ElDoc
 

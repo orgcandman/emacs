@@ -1,6 +1,6 @@
 ;;; gnus-int.el --- backend interface functions for Gnus
 
-;; Copyright (C) 1996-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;; Keywords: news
@@ -18,13 +18,11 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
 ;;; Code:
-
-(eval-when-compile (require 'cl))
 
 (require 'gnus)
 (require 'message)
@@ -65,6 +63,8 @@ server denied."
 		 (const :tag "Deny server" denied)
 		 (const :tag "Unplug Agent" offline)))
 
+;; Note: When this option is finally removed, also remove the entire
+;; `gnus-start-news-server' function.
 (defcustom gnus-nntp-server nil
   "The name of the host running the NNTP server."
   :group 'gnus-server
@@ -259,7 +259,8 @@ If it is down, start it up (again)."
       (insert (format-time-string "%H:%M:%S")
 	      (format " %.2fs %s %S\n"
 		      (if (numberp gnus-backend-trace-elapsed)
-			  (- (float-time) gnus-backend-trace-elapsed)
+			  (float-time
+			   (time-since gnus-backend-trace-elapsed))
 			0)
 		      type form))
       (setq gnus-backend-trace-elapsed (float-time)))))

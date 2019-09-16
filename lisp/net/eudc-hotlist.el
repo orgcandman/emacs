@@ -1,6 +1,6 @@
 ;;; eudc-hotlist.el --- hotlist management for EUDC
 
-;; Copyright (C) 1998-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2019 Free Software Foundation, Inc.
 
 ;; Author: Oscar Figueiredo <oscar@cpe.fr>
 ;;         Pavel Janík <Pavel@Janik.cz>
@@ -21,7 +21,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -42,7 +42,7 @@
     (define-key map "s" 'eudc-hotlist-select-server)
     (define-key map "t" 'eudc-hotlist-transpose-servers)
     (define-key map "q" 'eudc-hotlist-quit-edit)
-    (define-key map "x" 'kill-this-buffer)
+    (define-key map "x" 'kill-current-buffer)
     map))
 
 (define-derived-mode eudc-hotlist-mode fundamental-mode "EUDC-Servers"
@@ -55,11 +55,6 @@ These are the special commands of this mode:
     t -- Transpose the server at point and the previous one
     q -- Commit the changes and quit.
     x -- Quit without committing the changes."
-  (when (featurep 'xemacs)
-    (setq mode-popup-menu eudc-hotlist-menu)
-    (when (featurep 'menubar)
-      (set-buffer-menubar current-menubar)
-      (add-submenu nil (cons "EUDC-Hotlist" (cdr (cdr eudc-hotlist-menu))))))
   (setq buffer-read-only t))
 
 ;;;###autoload
@@ -179,10 +174,9 @@ These are the special commands of this mode:
     ["Save and Quit" eudc-hotlist-quit-edit t]
     ["Exit without Saving" kill-this-buffer t]))
 
-(when (not (featurep 'xemacs))
-  (easy-menu-define eudc-hotlist-emacs-menu
+(easy-menu-define eudc-hotlist-emacs-menu
     eudc-hotlist-mode-map
     ""
-    eudc-hotlist-menu))
+    eudc-hotlist-menu)
 
 ;;; eudc-hotlist.el ends here

@@ -1,6 +1,6 @@
 ;;; cc-vars.el --- user customization variables for CC Mode
 
-;; Copyright (C) 1985, 1987, 1992-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1985, 1987, 1992-2019 Free Software Foundation, Inc.
 
 ;; Authors:    2002- Alan Mackenzie
 ;;             1998- Martin Stjernholm
@@ -26,7 +26,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -87,7 +87,7 @@ use c-constant-symbol instead."
   :value nil
   :tag "Symbol"
   :format "%t: %v\n%d"
-  :match (lambda (widget value) (symbolp value))
+  :match (lambda (_widget value) (symbolp value))
   :value-to-internal
   (lambda (widget value)
     (let ((s (if (symbolp value)
@@ -98,7 +98,7 @@ use c-constant-symbol instead."
 	  (setq s (concat s (make-string (- l (length s)) ?\ ))))
       s))
   :value-to-external
-  (lambda (widget value)
+  (lambda (_widget value)
     (if (stringp value)
 	(intern (progn
 		  (string-match "\\`[^ ]*" value)
@@ -109,14 +109,14 @@ use c-constant-symbol instead."
   "An integer or the value nil."
   :value nil
   :tag "Optional integer"
-  :match (lambda (widget value) (or (integerp value) (null value))))
+  :match (lambda (_widget value) (or (integerp value) (null value))))
 
 (define-widget 'c-symbol-list 'sexp
   "A single symbol or a list of symbols."
   :tag "Symbols separated by spaces"
   :validate 'widget-field-validate
   :match
-  (lambda (widget value)
+  (lambda (_widget value)
     (or (symbolp value)
 	(catch 'ok
 	  (while (listp value)
@@ -125,7 +125,7 @@ use c-constant-symbol instead."
 	    (setq value (cdr value)))
 	  (null value))))
   :value-to-internal
-  (lambda (widget value)
+  (lambda (_widget value)
     (cond ((null value)
 	   "")
 	  ((symbolp value)
@@ -138,7 +138,7 @@ use c-constant-symbol instead."
 	  (t
 	   value)))
   :value-to-external
-  (lambda (widget value)
+  (lambda (_widget value)
     (if (stringp value)
 	(let (list end)
 	  (while (string-match "\\S +" value end)
@@ -167,7 +167,7 @@ use c-constant-symbol instead."
 (defmacro defcustom-c-stylevar (name val doc &rest args)
   "Define a style variable NAME with VAL and DOC.
 More precisely, convert the given `:type FOO', mined out of ARGS,
-to an aggregate `:type (radio STYLE (PREAMBLE FOO))', append some
+to an aggregate `:type (radio STYLE (PREAMBLE FOO))', append
 some boilerplate documentation to DOC, arrange for the fallback
 value of NAME to be VAL, and call `custom-declare-variable' to
 do the rest of the work.
@@ -563,7 +563,8 @@ variable in a mode hook."
 (defcustom-c-stylevar c-doc-comment-style
   '((java-mode . javadoc)
     (pike-mode . autodoc)
-    (c-mode    . gtkdoc))
+    (c-mode    . gtkdoc)
+    (c++-mode  . gtkdoc))
   "Specifies documentation comment style(s) to recognize.
 This is primarily used to fontify doc comments and the markup within
 them, e.g. Javadoc comments.
@@ -573,7 +574,7 @@ comment styles:
 
  javadoc -- Javadoc style for \"/** ... */\" comments (default in Java mode).
  autodoc -- Pike autodoc style for \"//! ...\" comments (default in Pike mode).
- gtkdoc  -- GtkDoc style for \"/** ... **/\" comments (default in C mode).
+ gtkdoc  -- GtkDoc style for \"/** ... **/\" comments (default in C and C++ modes).
 
 The value may also be a list of doc comment styles, in which case all
 of them are recognized simultaneously (presumably with markup cues
@@ -1115,7 +1116,7 @@ can always override the use of `c-default-style' by making calls to
        ;; Anchor pos: At the brace list decl start(*).
        (brace-list-intro      . +)
        ;; Anchor pos: At the brace list decl start(*).
-       (brace-list-entry      . c-lineup-under-anchor)
+       (brace-list-entry      . 0)
        ;; Anchor pos: At the first non-ws char after the open paren if
        ;; the first token is on the same line, otherwise boi at that
        ;; token.
@@ -1210,7 +1211,7 @@ can always override the use of `c-default-style' by making calls to
        (template-args-cont    . (c-lineup-template-args +))
        ;; Anchor pos: Boi at the decl start.  This might be changed;
        ;; the logical position is clearly the opening '<'.
-       (inlambda              . c-lineup-inexpr-block)
+       (inlambda              . 0)
        ;; Anchor pos: None.
        (lambda-intro-cont     . +)
        ;; Anchor pos: Boi at the lambda start.
@@ -1227,8 +1228,8 @@ As described below, each cons cell in this list has the form:
 
 When a line is indented, CC Mode first determines the syntactic
 context of it by generating a list of symbols called syntactic
-elements.  The global variable `c-syntactic-context' is bound to the
-that list.  Each element in the list is in turn a list where the first
+elements.  The global variable `c-syntactic-context' is bound to that
+list.  Each element in the list is in turn a list where the first
 element is a syntactic symbol which tells what kind of construct the
 indentation point is located within.  More elements in the syntactic
 element lists are optional.  If there is one more and it isn't nil,
@@ -1634,8 +1635,24 @@ names)."))
   :type 'c-extra-types-widget
   :group 'c)
 
-(defvar c-noise-macro-with-parens-name-re "\\<\\>")
-(defvar c-noise-macro-name-re "\\<\\>")
+(defcustom c-asymmetry-fontification-flag t
+  "Whether to fontify certain ambiguous constructs by white space asymmetry.
+
+In the fontification engine, it is sometimes impossible to determine
+whether a construct is a declaration or an expression.  This happens
+particularly in C++, due to ambiguities in the language.  When such a
+construct is like \"foo * bar\" or \"foo &bar\", and this variable is non-nil
+\(the default), the construct will be fontified as a declaration if there is
+white space either before or after the operator, but not both."
+  :version "26.1"
+  :type 'boolean
+  :group 'c)
+
+;; Initialize the next two to a regexp which never matches.
+(defvar c-noise-macro-with-parens-name-re regexp-unmatchable)
+(make-variable-buffer-local 'c-noise-macro-with-parens-name-re)
+(defvar c-noise-macro-name-re regexp-unmatchable)
+(make-variable-buffer-local 'c-noise-macro-name-re)
 
 (defcustom c-noise-macro-names nil
   "A list of names of macros which expand to nothing, or compiler extensions
@@ -1646,23 +1663,27 @@ identifiers.
 If you change this variable's value, call the function
 `c-make-noise-macro-regexps' to set the necessary internal variables (or do
 this implicitly by reinitializing C/C++/Objc Mode on any buffer)."
+  :version "26.1"
   :type '(repeat :tag "List of names" string)
   :group 'c)
 (put 'c-noise-macro-names 'safe-local-variable #'c-string-list-p)
+(make-variable-buffer-local 'c-noise-macro-names)
 
 (defcustom c-noise-macro-with-parens-names nil
   "A list of names of macros \(or compiler extensions like \"__attribute__\")
 which optionally have arguments in parentheses, and which expand to nothing.
 These are recognized by CC Mode only in declarations."
-  :type '(regexp :tag "List of names (possibly empty)" string)
+  :version "26.1"
+  :type '(repeat :tag "List of names (possibly empty)" string)
   :group 'c)
 (put 'c-noise-macro-with-parens-names 'safe-local-variable #'c-string-list-p)
+(make-variable-buffer-local 'c-noise-macro-with-parens-names)
 
 (defun c-make-noise-macro-regexps ()
   ;; Convert `c-noise-macro-names' and `c-noise-macro-with-parens-names' into
   ;; `c-noise-macro-name-re' and `c-noise-macro-with-parens-name-re'.
   (setq c-noise-macro-with-parens-name-re
-	(cond ((null c-noise-macro-with-parens-names) "\\<\\>")
+	(cond ((null c-noise-macro-with-parens-names) regexp-unmatchable)
 	      ((consp c-noise-macro-with-parens-names)
 	       (concat (regexp-opt c-noise-macro-with-parens-names t)
 		       "\\([^[:alnum:]_$]\\|$\\)"))
@@ -1671,7 +1692,7 @@ These are recognized by CC Mode only in declarations."
 	      (t (error "c-make-noise-macro-regexps: \
 c-noise-macro-with-parens-names is invalid: %s" c-noise-macro-with-parens-names))))
   (setq c-noise-macro-name-re
-	(cond ((null c-noise-macro-names) "\\<\\>")
+	(cond ((null c-noise-macro-names) regexp-unmatchable)
 	      ((consp c-noise-macro-names)
 	       (concat (regexp-opt c-noise-macro-names t)
 		       "\\([^[:alnum:]_$]\\|$\\)"))

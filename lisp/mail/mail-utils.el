@@ -1,6 +1,6 @@
 ;;; mail-utils.el --- utility functions used both by rmail and rnews
 
-;; Copyright (C) 1985, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1985, 2001-2019 Free Software Foundation, Inc.
 
 ;; Maintainer: emacs-devel@gnu.org
 ;; Keywords: mail, news
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -29,7 +29,7 @@
 
 ;;;###autoload
 (defcustom mail-use-rfc822 nil
-  "If non-nil, use a full, hairy RFC822 parser on mail addresses.
+  "If non-nil, use a full, hairy RFC 822 (or later) parser on mail addresses.
 Otherwise, (the default) use a smaller, somewhat faster, and
 often correct parser."
   :type 'boolean
@@ -41,7 +41,7 @@ often correct parser."
 If this is nil, it is set the first time you compose a reply, to
 a value which excludes your own email address.
 
-Matching addresses are excluded from the CC field in replies, and
+Matching addresses are excluded from the Cc field in replies, and
 also the To field, unless this would leave an empty To field."
   :type '(choice regexp (const :tag "Your Name" nil))
   :group 'mail)
@@ -237,21 +237,12 @@ comma-separated list, and return the pruned list."
   ;; Or just set the default directly in the defcustom.
   (if (null mail-dont-reply-to-names)
       (setq mail-dont-reply-to-names
-	    (concat
 	     ;; `rmail-default-dont-reply-to-names' is obsolete.
-	     (if (bound-and-true-p rmail-default-dont-reply-to-names)
-		 (concat rmail-default-dont-reply-to-names "\\|")
-	       "")
-	     (if (and user-mail-address
-		      (not (equal user-mail-address user-login-name)))
-		 ;; Anchor the login name and email address so that we
-		 ;; don't match substrings: if the login name is
-		 ;; "foo", we shouldn't match "barfoo@baz.com".
-		 (concat "\\`"
-			 (regexp-quote user-mail-address)
-			 "\\'\\|")
-	       "")
-	     (concat "\\`" (regexp-quote user-login-name) "@"))))
+	    (let ((a (bound-and-true-p rmail-default-dont-reply-to-names))
+		  (b (if (> (length user-mail-address) 0)
+			 (concat "\\`" (regexp-quote user-mail-address) "\\'"))))
+	      (cond ((and a b) (concat a "\\|" b))
+		    ((or a b))))))
   ;; Split up DESTINATIONS and match each element separately.
   (let ((start-pos 0) (cur-pos 0)
 	(case-fold-search t))
@@ -271,7 +262,8 @@ comma-separated list, and return the pruned list."
 	      (setq cur-pos start-pos)))
 	(let* ((address (substring destinations start-pos cur-pos))
 	       (naked-address (mail-strip-quoted-names address)))
-	  (if (string-match mail-dont-reply-to-names naked-address)
+	  (if (and mail-dont-reply-to-names
+		   (string-match mail-dont-reply-to-names naked-address))
 	      (setq destinations (concat (substring destinations 0 start-pos)
 				    (and cur-pos (substring destinations
 							    (1+ cur-pos))))
@@ -292,11 +284,13 @@ comma-separated list, and return the pruned list."
 
 
 ;;;###autoload
-(defun mail-fetch-field (field-name &optional last all list)
+(defun mail-fetch-field (field-name &optional last all list delete)
   "Return the value of the header field whose type is FIELD-NAME.
 If second arg LAST is non-nil, use the last field of type FIELD-NAME.
 If third arg ALL is non-nil, concatenate all such fields with commas between.
 If 4th arg LIST is non-nil, return a list of all such fields.
+If 5th arg DELETE is non-nil, delete all header lines that are
+included in the result.
 The buffer should be narrowed to just the header, else false
 matches may be returned from the message body."
   (save-excursion
@@ -319,7 +313,9 @@ matches may be returned from the message body."
 		  (setq value (concat value
 				      (if (string= value "") "" ", ")
 				      (buffer-substring-no-properties
-				       opoint (point)))))))
+				       opoint (point)))))
+                (if delete
+                    (delete-region (point-at-bol) (point)))))
 	    (if list
 		value
 	      (and (not (string= value "")) value)))
@@ -332,7 +328,10 @@ matches may be returned from the message body."
 		;; Back up over newline, then trailing spaces or tabs
 		(forward-char -1)
 		(skip-chars-backward " \t" opoint)
-		(buffer-substring-no-properties opoint (point)))))))))
+                (prog1
+                    (buffer-substring-no-properties opoint (point))
+                  (if delete
+                      (delete-region (point-at-bol) (1+ (point))))))))))))
 
 ;; Parse a list of tokens separated by commas.
 ;; It runs from point to the end of the visible part of the buffer.
@@ -392,7 +391,7 @@ The buffer should be narrowed to just the header."
 	 (date (mail-fetch-field "date"))
 	 ;; A From: header can contain multiple addresses, a "From "
 	 ;; line must contain only one.  (Bug#7760)
-	 ;; See eg RFC 5322, 3.6.2. Originator Fields.
+	 ;; See, e.g., RFC 5322, 3.6.2. Originator Fields.
 	 (end (string-match "[ \t]*[,\n]" from)))
     (format "From %s %s\n" (if end
 			       (substring from 0 end)

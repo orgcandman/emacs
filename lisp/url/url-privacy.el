@@ -1,6 +1,6 @@
 ;;; url-privacy.el --- Global history tracking for URL package
 
-;; Copyright (C) 1996-1999, 2004-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1996-1999, 2004-2019 Free Software Foundation, Inc.
 
 ;; Keywords: comm, data, processes, hypermedia
 
@@ -17,7 +17,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Code:
 
@@ -43,12 +43,11 @@
 	 ((eq system-type 'windows-nt) "Windows-NT; 32bit")
 	 ((eq system-type 'ms-dos) "MS-DOS; 32bit")
 	 ((memq (url-device-type) '(win32 w32)) "Windows; 32bit")
-	 ((eq (url-device-type) 'pm) "OS/2; 32bit")
 	 (t
 	  (pcase (url-device-type)
-	    (`x "X11")
-	    (`ns "OpenStep")
-	    (`tty "TTY")
+	    ('x "X11")
+	    ('ns "OpenStep")
+	    ('tty "TTY")
 	    (_ nil)))))
 
   (setq url-personal-mail-address (or url-personal-mail-address

@@ -1,6 +1,6 @@
 ;;; mm-bodies.el --- Functions for decoding MIME things
 
-;; Copyright (C) 1998-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2019 Free Software Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
 ;;	MORIOKA Tomohiko <morioka@jaist.ac.jp>
@@ -17,7 +17,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -35,7 +35,7 @@
 ;; BS, vertical TAB, form feed, and ^_
 ;;
 ;; Note that CR is *not* included, as that would allow a non-paired CR
-;; in the body contrary to RFC 2822:
+;; in the body contrary to RFC 822 (or later):
 ;;
 ;;   - CR and LF MUST only occur together as CRLF; they MUST NOT
 ;;     appear independently in the body.
@@ -68,14 +68,14 @@ Valid encodings are `7bit', `8bit', `quoted-printable' and `base64'."
 (declare-function message-options-set "message" (symbol value))
 
 (defun mm-encode-body (&optional charset)
-  "Encode a body.
-Should be called narrowed to the body that is to be encoded.
+  "Encode whole buffer's contents.
+Buffer's multibyteness will be turned off when encoding takes place.
 If there is more than one non-ASCII MULE charset in the body, then the
 list of MULE charsets found is returned.
 If CHARSET is non-nil, it is used as the MIME charset to encode the body.
 If successful, the MIME charset is returned.
 If no encoding was done, nil is returned."
-  (if (not (mm-multibyte-p))
+  (if (not enable-multibyte-characters)
       ;; In the non-Mule case, we search for non-ASCII chars and
       ;; return the value of `mail-parse-charset' if any are found.
       (or charset
@@ -93,8 +93,12 @@ If no encoding was done, nil is returned."
     (save-excursion
       (if charset
 	  (progn
-	    (encode-coding-region (point-min) (point-max)
-				  (mm-charset-to-coding-system charset))
+	    (insert
+	     (prog1
+		 (encode-coding-string (buffer-string)
+				       (mm-charset-to-coding-system charset))
+	       (erase-buffer)
+	       (set-buffer-multibyte nil)))
 	    charset)
 	(goto-char (point-min))
 	(let ((charsets (mm-find-mime-charset-region (point-min) (point-max)
@@ -110,8 +114,12 @@ If no encoding was done, nil is returned."
 	   (t
 	    (prog1
 		(setq charset (car charsets))
-	      (encode-coding-region (point-min) (point-max)
-				    (mm-charset-to-coding-system charset))))
+	      (insert
+	       (prog1
+		   (encode-coding-string (buffer-string)
+					 (mm-charset-to-coding-system charset))
+		 (erase-buffer)
+		 (set-buffer-multibyte nil)))))
 	   ))))))
 
 (defun mm-long-lines-p (length)
@@ -254,7 +262,7 @@ decoding.  If it is nil, default to `mail-parse-charset'."
 	    (setq coding-system
 		  (mm-charset-to-coding-system mail-parse-charset)))
 	(when (and charset coding-system
-		   (mm-multibyte-p)
+		   enable-multibyte-characters
 		   (or (not (eq coding-system 'ascii))
 		       (setq coding-system mail-parse-charset)))
 	  (decode-coding-region (point-min) (point-max) coding-system))
@@ -281,7 +289,7 @@ decoding.  If it is nil, default to `mail-parse-charset'."
 	 (setq coding-system
 	       (mm-charset-to-coding-system mail-parse-charset)))
      (when (and charset coding-system
-		(mm-multibyte-p)
+		enable-multibyte-characters
 		(or (not (eq coding-system 'ascii))
 		    (setq coding-system mail-parse-charset)))
        (decode-coding-string string coding-system)))

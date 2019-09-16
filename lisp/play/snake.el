@@ -1,6 +1,6 @@
 ;;; snake.el --- implementation of Snake for Emacs
 
-;; Copyright (C) 1997, 2001-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1997, 2001-2019 Free Software Foundation, Inc.
 
 ;; Author: Glynn Clements <glynn@sensei.co.uk>
 ;; Created: 1997-09-10
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -179,8 +179,13 @@ and then start moving it leftwards.")
 
     (define-key map [left]	'snake-move-left)
     (define-key map [right]	'snake-move-right)
-    (define-key map [up]		'snake-move-up)
+    (define-key map [up]	'snake-move-up)
     (define-key map [down]	'snake-move-down)
+
+    (define-key map "\C-b"	'snake-move-left)
+    (define-key map "\C-f"	'snake-move-right)
+    (define-key map "\C-p"	'snake-move-up)
+    (define-key map "\C-n"	'snake-move-down)
     map))
 
 (defvar snake-null-map

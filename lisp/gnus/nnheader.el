@@ -1,6 +1,6 @@
 ;;; nnheader.el --- header access macros for Gnus and its backends
 
-;; Copyright (C) 1987-1990, 1993-1998, 2000-2017 Free Software
+;; Copyright (C) 1987-1990, 1993-1998, 2000-2019 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Masanobu UMEDA <umerin@flab.flab.fujitsu.junet>
@@ -20,17 +20,16 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
 ;;; Code:
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 (defvar nnmail-extra-headers)
 (defvar gnus-newsgroup-name)
-(defvar nnheader-file-coding-system)
 (defvar jka-compr-compression-info-list)
 
 ;; Requiring `gnus-util' at compile time creates a circular
@@ -40,7 +39,6 @@
 (require 'mail-utils)
 (require 'mm-util)
 (require 'gnus-util)
-(require 'subr-x)
 (autoload 'gnus-range-add "gnus-range")
 (autoload 'gnus-remove-from-range "gnus-range")
 ;; FIXME none of these are used explicitly in this file.
@@ -82,8 +80,7 @@ Integer values will in effect be rounded up to the nearest multiple of
   :type 'integer)
 
 (defvar nnheader-read-timeout
-  (if (string-match "windows-nt\\|os/2\\|cygwin"
-		    (symbol-name system-type))
+  (if (memq system-type '(windows-nt cygwin))
       ;; http://thread.gmane.org/v9655t3pjo.fsf@marauder.physik.uni-ulm.de
       ;;
       ;; IIRC, values lower than 1.0 didn't/don't work on Windows/DOS.
@@ -105,17 +102,8 @@ Integer values will in effect be rounded up to the nearest multiple of
 Shorter values mean quicker response, but are more CPU intensive.")
 
 (defcustom nnheader-file-name-translation-alist
-  (let ((case-fold-search t))
-    (cond
-     ((string-match "windows-nt\\|os/2\\|cygwin"
-		    (symbol-name system-type))
-      (append (mapcar (lambda (c) (cons c ?_))
-		      '(?: ?* ?\" ?< ?> ??))
-	      (if (string-match "windows-nt\\|cygwin"
-				(symbol-name system-type))
-		  nil
-		'((?+ . ?-)))))
-     (t nil)))
+  (if (memq system-type '(windows-nt cygwin))
+      (mapcar (lambda (c) (cons c ?_)) '(?: ?* ?\" ?< ?> ??)))
   "Alist that says how to translate characters in file names.
 For instance, if \":\" is invalid as a file character in file names
 on your system, you could say something like:
@@ -132,7 +120,6 @@ on your system, you could say something like:
 
 (autoload 'nnmail-message-id "nnmail")
 (autoload 'mail-position-on-field "sendmail")
-(autoload 'gnus-buffer-live-p "gnus-util")
 
 ;;; Header access macros.
 
@@ -147,97 +134,31 @@ on your system, you could say something like:
 ;; (That next-to-last entry is defined as "misc" in the NOV format,
 ;; but Gnus uses it for xrefs.)
 
-(defmacro mail-header-number (header)
-  "Return article number in HEADER."
-  `(aref ,header 0))
+(defalias 'mail-header-p #'vectorp)     ;For lack of tag, it's all we have.
+(cl-defstruct (mail-header
+               (:type vector)
+               (:constructor nil)
+               (:constructor make-full-mail-header
+                (&optional number subject from date id
+			   references chars lines xref
+			   extra)))
+  number
+  subject
+  from
+  date
+  id
+  references
+  chars
+  lines
+  xref
+  extra)
 
-(defmacro mail-header-set-number (header number)
-  "Set article number of HEADER to NUMBER."
-  `(aset ,header 0 ,number))
-
-(defmacro mail-header-subject (header)
-  "Return subject string in HEADER."
-  `(aref ,header 1))
-
-(defmacro mail-header-set-subject (header subject)
-  "Set article subject of HEADER to SUBJECT."
-  `(aset ,header 1 ,subject))
-
-(defmacro mail-header-from (header)
-  "Return author string in HEADER."
-  `(aref ,header 2))
-
-(defmacro mail-header-set-from (header from)
-  "Set article author of HEADER to FROM."
-  `(aset ,header 2 ,from))
-
-(defmacro mail-header-date (header)
-  "Return date in HEADER."
-  `(aref ,header 3))
-
-(defmacro mail-header-set-date (header date)
-  "Set article date of HEADER to DATE."
-  `(aset ,header 3 ,date))
-
-(defalias 'mail-header-message-id 'mail-header-id)
-(defmacro mail-header-id (header)
-  "Return Id in HEADER."
-  `(aref ,header 4))
-
-(defalias 'mail-header-set-message-id 'mail-header-set-id)
-(defmacro mail-header-set-id (header id)
-  "Set article Id of HEADER to ID."
-  `(aset ,header 4 ,id))
-
-(defmacro mail-header-references (header)
-  "Return references in HEADER."
-  `(aref ,header 5))
-
-(defmacro mail-header-set-references (header ref)
-  "Set article references of HEADER to REF."
-  `(aset ,header 5 ,ref))
-
-(defmacro mail-header-chars (header)
-  "Return number of chars of article in HEADER."
-  `(aref ,header 6))
-
-(defmacro mail-header-set-chars (header chars)
-  "Set number of chars in article of HEADER to CHARS."
-  `(aset ,header 6 ,chars))
-
-(defmacro mail-header-lines (header)
-  "Return lines in HEADER."
-  `(aref ,header 7))
-
-(defmacro mail-header-set-lines (header lines)
-  "Set article lines of HEADER to LINES."
-  `(aset ,header 7 ,lines))
-
-(defmacro mail-header-xref (header)
-  "Return xref string in HEADER."
-  `(aref ,header 8))
-
-(defmacro mail-header-set-xref (header xref)
-  "Set article XREF of HEADER to xref."
-  `(aset ,header 8 ,xref))
-
-(defmacro mail-header-extra (header)
-  "Return the extra headers in HEADER."
-  `(aref ,header 9))
-
-(defun mail-header-set-extra (header extra)
-  "Set the extra headers in HEADER to EXTRA."
-  (aset header 9 extra))
+(defalias 'mail-header-message-id #'mail-header-id)
 
 (defsubst make-mail-header (&optional init)
   "Create a new mail header structure initialized with INIT."
-  (make-vector 10 init))
-
-(defsubst make-full-mail-header (&optional number subject from date id
-					   references chars lines xref
-					   extra)
-  "Create a new mail header structure initialized with the parameters given."
-  (vector number subject from date id references chars lines xref extra))
+  (make-full-mail-header init init init init init
+                         init init init init init))
 
 ;; fake message-ids: generation and detection
 
@@ -248,7 +169,7 @@ on your system, you could say something like:
       (format "fake+none+%s+%d" gnus-newsgroup-name number)
     (format "fake+none+%s+%s"
 	    gnus-newsgroup-name
-	    (int-to-string (incf nnheader-fake-message-id)))))
+	    (int-to-string (cl-incf nnheader-fake-message-id)))))
 
 (defsubst nnheader-fake-message-id-p (id)
   (save-match-data		       ; regular message-id's are <.*>
@@ -419,7 +340,7 @@ on your system, you could say something like:
   `(let ((id (nnheader-nov-field)))
      (if (string-match "^<[^>]+>$" id)
 	 ,(if nnheader-uniquify-message-id
-	      `(if (string-match "__[^@]+@" id)
+	      '(if (string-match "__[^@]+@" id)
 		   (concat (substring id 0 (match-beginning 0))
 			   (substring id (1- (match-end 0))))
 		 id)
@@ -577,7 +498,8 @@ the line could be found."
 
 (defvar nntp-server-buffer nil)
 (defvar nntp-process-response nil)
-
+(defvar nnheader-file-coding-system 'undecided
+  "Coding system used in file backends of Gnus.")
 (defvar nnheader-callback-function nil)
 
 (defun nnheader-init-server-buffer ()
@@ -623,7 +545,7 @@ the line could be found."
 	(while (and (eq nnheader-head-chop-length
 			(nth 1 (mm-insert-file-contents
 				file nil beg
-				(incf beg nnheader-head-chop-length))))
+				(cl-incf beg nnheader-head-chop-length))))
 		    ;; CRLF or CR might be used for the line-break code.
 		    (prog1 (not (re-search-forward "\n\r?\n\\|\r\r" nil t))
 		      (goto-char (point-max)))
@@ -795,7 +717,7 @@ If FULL, translate everything."
 	(when (setq trans (cdr (assq (aref leaf i)
 				     nnheader-file-name-translation-alist)))
 	  (aset leaf i trans))
-	(incf i))
+	(cl-incf i))
       (concat path leaf))))
 
 (defun nnheader-report (backend &rest args)
@@ -907,7 +829,7 @@ without formatting."
 
 (defun nnheader-file-size (file)
   "Return the file size of FILE or 0."
-  (or (nth 7 (file-attributes file)) 0))
+  (or (file-attribute-size (file-attributes file)) 0))
 
 (defun nnheader-find-etc-directory (package &optional file first)
   "Go through `load-path' and find the \"../etc/PACKAGE\" directory.
@@ -949,20 +871,17 @@ first.  Otherwise, find the newest one, though it may take a time."
       (when (string-match (car ange-ftp-path-format) path)
 	(ange-ftp-re-read-dir path)))))
 
-(defvar nnheader-file-coding-system 'raw-text
-  "Coding system used in file backends of Gnus.")
-
 (defun nnheader-insert-file-contents (filename &optional visit beg end replace)
   "Like `insert-file-contents', q.v., but only reads in the file.
 A buffer may be modified in several ways after reading into the buffer due
 to advanced Emacs features, such as file-name-handlers, format decoding,
-find-file-hooks, etc.
+find-file-hook, etc.
   This function ensures that none of these modifications will take place."
   (let ((coding-system-for-read nnheader-file-coding-system))
     (mm-insert-file-contents filename visit beg end replace)))
 
 (defun nnheader-insert-nov-file (file first)
-  (let ((size (nth 7 (file-attributes file)))
+  (let ((size (file-attribute-size (file-attributes file)))
 	(cutoff (* 32 1024)))
     (when size
       (if (< size cutoff)
@@ -984,7 +903,7 @@ find-file-hooks, etc.
 (defun nnheader-find-file-noselect (&rest args)
   "Open a file with some variables bound.
 See `find-file-noselect' for the arguments."
-  (letf* ((format-alist nil)
+  (cl-letf* ((format-alist nil)
           (auto-mode-alist (mm-auto-mode-alist))
           ((default-value 'major-mode) 'fundamental-mode)
           (enable-local-variables nil)
@@ -1047,18 +966,14 @@ See `find-file-noselect' for the arguments."
   "Strip all \r's from the current buffer."
   (nnheader-skeleton-replace "\r"))
 
-(defalias 'nnheader-cancel-timer 'cancel-timer)
-(defalias 'nnheader-cancel-function-timers 'cancel-function-timers)
+(define-obsolete-function-alias 'nnheader-cancel-timer 'cancel-timer "27.1")
+(define-obsolete-function-alias 'nnheader-cancel-function-timers
+  'cancel-function-timers "27.1")
 
 ;; When changing this function, consider changing `pop3-accept-process-output'
 ;; as well.
 (defun nnheader-accept-process-output (process)
-  (accept-process-output
-   process
-   (truncate nnheader-read-timeout)
-   (truncate (* (- nnheader-read-timeout
-		   (truncate nnheader-read-timeout))
-		1000))))
+  (accept-process-output process nnheader-read-timeout))
 
 (defun nnheader-update-marks-actions (backend-marks actions)
   (dolist (action actions)
@@ -1082,19 +997,16 @@ See `find-file-noselect' for the arguments."
 
 (defmacro nnheader-insert-buffer-substring (buffer &optional start end)
   "Copy string from unibyte buffer to multibyte current buffer."
-  `(if enable-multibyte-characters
-       (insert (with-current-buffer ,buffer
-		 (string-to-multibyte
-		  ,(if (or start end)
-		       `(buffer-substring (or ,start (point-min))
-					  (or ,end (point-max)))
-		     '(buffer-string)))))
-     (insert-buffer-substring ,buffer ,start ,end)))
+  `(insert (with-current-buffer ,buffer
+	     ,(if (or start end)
+		  `(buffer-substring (or ,start (point-min))
+				     (or ,end (point-max)))
+		'(buffer-string)))))
 
 (defvar nnheader-last-message-time '(0 0))
 (defun nnheader-message-maybe (&rest args)
   (let ((now (current-time)))
-    (when (> (float-time (time-subtract now nnheader-last-message-time)) 1)
+    (when (time-less-p 1 (time-subtract now nnheader-last-message-time))
       (setq nnheader-last-message-time now)
       (apply 'nnheader-message args))))
 

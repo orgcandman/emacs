@@ -1,6 +1,6 @@
 ;;; gnus-uu.el --- extract (uu)encoded files in Gnus
 
-;; Copyright (C) 1985-1987, 1993-1998, 2000-2017 Free Software
+;; Copyright (C) 1985-1987, 1993-1998, 2000-2019 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Lars Magne Ingebrigtsen <larsi@gnus.org>
@@ -20,13 +20,13 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
 ;;; Code:
 
-(eval-when-compile (require 'cl))
+(eval-when-compile (require 'cl-lib))
 
 (require 'gnus)
 (require 'gnus-art)
@@ -2047,7 +2047,7 @@ If no file has been included, the user will be asked for a file."
       (setq length (count-lines (point-min) (point-max)))
       (setq parts (/ length gnus-uu-post-length))
       (unless (< (% length gnus-uu-post-length) 4)
-	(incf parts)))
+	(cl-incf parts)))
 
     (when gnus-uu-post-separate-description
       (forward-line -1))
@@ -2106,7 +2106,7 @@ If no file has been included, the user will be asked for a file."
 	(insert-buffer-substring uubuf beg end)
 	(insert beg-line "\n")
 	(setq beg end)
-	(incf i)
+	(cl-incf i)
 	(goto-char (point-min))
 	(re-search-forward
 	 (concat "^" (regexp-quote mail-header-separator) "$") nil t)

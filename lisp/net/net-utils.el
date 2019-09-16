@@ -1,8 +1,8 @@
 ;;; net-utils.el --- network functions
 
-;; Copyright (C) 1998-2017 Free Software Foundation, Inc.
+;; Copyright (C) 1998-2019 Free Software Foundation, Inc.
 
-;; Author:  Peter Breton <pbreton@cs.umb.edu>
+;; Author: Peter Breton <pbreton@cs.umb.edu>
 ;; Created: Sun Mar 16 1997
 ;; Keywords: network comm
 
@@ -19,7 +19,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -43,6 +43,10 @@
 ;; still use them for queries).  Actually the trend these
 ;; days is for /sbin to be a symlink to /usr/sbin, but we still need to
 ;; search both for older systems.
+
+(require 'subr-x)
+(require 'cl-lib)
+
 (defun net-utils--executable-find-sbin (command)
   "Return absolute name of COMMAND if found in an sbin directory."
   (let ((exec-path '("/sbin" "/usr/sbin" "/usr/local/sbin")))
@@ -86,8 +90,6 @@ These options can be used to limit how many ICMP packets are emitted."
   :group 'net-utils
   :type  '(repeat string))
 
-(define-obsolete-variable-alias 'ipconfig-program 'ifconfig-program "22.2")
-
 (defcustom ifconfig-program
   (cond ((eq system-type 'windows-nt) "ipconfig")
         ((executable-find "ifconfig") "ifconfig")
@@ -98,9 +100,6 @@ These options can be used to limit how many ICMP packets are emitted."
   :version "25.1"                       ; add ip
   :group 'net-utils
   :type  'string)
-
-(define-obsolete-variable-alias 'ipconfig-program-options
-  'ifconfig-program-options "22.2")
 
 (defcustom ifconfig-program-options
   (cond ((string-match "ipconfig\\'" ifconfig-program) '("/all"))
@@ -198,6 +197,12 @@ This variable is only used if the variable
   "Program to query DNS information."
   :group 'net-utils
   :type  'string)
+
+(defcustom dig-program-options nil
+  "Options for the dig program."
+  :group 'net-utils
+  :type '(repeat string)
+  :version "26.1")
 
 (defcustom ftp-program "ftp"
   "Program to run to do FTP transfers."
@@ -418,7 +423,7 @@ This variable is only used if the variable
 
 ;;;###autoload
 (defun ifconfig ()
-  "Run ifconfig and display diagnostic output."
+  "Run `ifconfig-program' and display diagnostic output."
   (interactive)
   (net-utils-run-simple
    (format "*%s*" ifconfig-program)
@@ -429,7 +434,7 @@ This variable is only used if the variable
 
 ;;;###autoload
 (defun iwconfig ()
-  "Run iwconfig and display diagnostic output."
+  "Run `iwconfig-program' and display diagnostic output."
   (interactive)
   (net-utils-run-simple
    (format "*%s*" iwconfig-program)
@@ -438,7 +443,7 @@ This variable is only used if the variable
 
 ;;;###autoload
 (defun netstat ()
-  "Run netstat and display diagnostic output."
+  "Run `netstat-program' and display diagnostic output."
   (interactive)
   (net-utils-run-simple
    (format "*%s*" netstat-program)
@@ -447,7 +452,7 @@ This variable is only used if the variable
 
 ;;;###autoload
 (defun arp ()
-  "Run arp and display diagnostic output."
+  "Run `arp-program' and display diagnostic output."
   (interactive)
   (net-utils-run-simple
    (format "*%s*" arp-program)
@@ -456,7 +461,7 @@ This variable is only used if the variable
 
 ;;;###autoload
 (defun route ()
-  "Run route and display diagnostic output."
+  "Run `route-program' and display diagnostic output."
   (interactive)
   (net-utils-run-simple
    (format "*%s*" route-program)
@@ -469,7 +474,7 @@ This variable is only used if the variable
 
 ;;;###autoload
 (defun traceroute (target)
-  "Run traceroute program for TARGET."
+  "Run `traceroute-program' for TARGET."
   (interactive "sTarget: ")
   (let ((options
 	 (if traceroute-program-options
@@ -507,14 +512,23 @@ If your system's ping continues until interrupted, you can try setting
 ;;   (delete-matching-lines filter))
 
 ;;;###autoload
-(defun nslookup-host (host)
-  "Lookup the DNS information for HOST."
+(defun nslookup-host (host &optional name-server)
+  "Look up the DNS information for HOST (name or IP address).
+Optional argument NAME-SERVER says which server to use for
+DNS resolution.
+Interactively, prompt for NAME-SERVER if invoked with prefix argument.
+
+This command uses `nslookup-program' for looking up the DNS information.
+
+See also: `nslookup-host-ipv4', `nslookup-host-ipv6' for
+non-interactive versions of this function more suitable for use
+in Lisp code."
   (interactive
-   (list (read-from-minibuffer "Lookup host: " (net-utils-machine-at-point))))
+   (list (read-from-minibuffer "Lookup host: " (net-utils-machine-at-point))
+         (if current-prefix-arg (read-from-minibuffer "Name server: "))))
   (let ((options
-	 (if nslookup-program-options
-	     (append nslookup-program-options (list host))
-	   (list host))))
+         (append nslookup-program-options (list host)
+                 (if name-server (list name-server)))))
     (net-utils-run-program
      "Nslookup"
      (concat "** "
@@ -525,8 +539,73 @@ If your system's ping continues until interrupted, you can try setting
      options)))
 
 ;;;###autoload
+(defun nslookup-host-ipv4 (host &optional name-server format)
+  "Return the IPv4 address for HOST (name or IP address).
+Optional argument NAME-SERVER says which server to use for DNS
+resolution.
+
+If FORMAT is `string', returns the IP address as a
+string (default).  If FORMAT is `vector', returns a 4-integer
+vector of octets.
+
+This command uses `nslookup-program' to look up DNS records."
+  (let* ((args `(,nslookup-program "-type=A" ,host ,name-server))
+         (output (shell-command-to-string
+                  (string-join (cl-remove nil args) " ")))
+         (ip (or (and (string-match
+                       "Name:.*\nAddress: *\\(\\([0-9]\\{1,3\\}\\.?\\)\\{4\\}\\)"
+                       output)
+                      (match-string 1 output))
+                 host)))
+    (cond ((memq format '(string nil))
+           ip)
+          ((eq format 'vector)
+           (apply #'vector (mapcar #'string-to-number (split-string ip "\\."))))
+          (t (error "Invalid format: %s" format)))))
+
+(defun ipv6-expand (ipv6-vector)
+  (let ((len (length ipv6-vector)))
+    (if (< len 8)
+        (let* ((pivot (cl-position 0 ipv6-vector))
+               (head (cl-subseq ipv6-vector 0 pivot))
+               (tail (cl-subseq ipv6-vector (1+ pivot) len)))
+          (vconcat head (make-vector (- 8 (1- len)) 0) tail))
+      ipv6-vector)))
+
+;;;###autoload
+(defun nslookup-host-ipv6 (host &optional name-server format)
+  "Return the IPv6 address for HOST (name or IP address).
+Optional argument NAME-SERVER says which server to use for DNS
+resolution.
+
+If FORMAT is `string', returns the IP address as a
+string (default).  If FORMAT is `vector', returns a 8-integer
+vector of hextets.
+
+This command uses `nslookup-program' to look up DNS records."
+  (let* ((args `(,nslookup-program "-type=AAAA" ,host ,name-server))
+         (output (shell-command-to-string
+                  (string-join (cl-remove nil args) " ")))
+         (hextet "[0-9a-fA-F]\\{1,4\\}")
+         (ip-regex (concat "\\(\\(" hextet "[:]\\)\\{1,6\\}\\([:]?\\(" hextet "\\)\\{1,6\\}\\)\\)"))
+         (ip (or (and (string-match
+                       (if (eq system-type 'windows-nt)
+                           (concat "Name:.*\nAddress: *" ip-regex)
+                         (concat "has AAAA address " ip-regex))
+                       output)
+                      (match-string 1 output))
+                 host)))
+    (cond ((memq format '(string nil))
+           ip)
+          ((eq format 'vector)
+           (ipv6-expand (apply #'vector
+                               (cl-loop for hextet in (split-string ip "[:]")
+                                        collect (string-to-number hextet 16)))))
+          (t (error "Invalid format: %s" format)))))
+
+;;;###autoload
 (defun nslookup ()
-  "Run nslookup program."
+  "Run `nslookup-program'."
   (interactive)
   (switch-to-buffer (make-comint "nslookup" nslookup-program))
   (nslookup-mode))
@@ -551,14 +630,19 @@ If your system's ping continues until interrupted, you can try setting
   (setq comint-input-autoexpand t))
 
 ;;;###autoload
-(defun dns-lookup-host (host)
-  "Lookup the DNS information for HOST (name or IP address)."
+(defun dns-lookup-host (host &optional name-server)
+  "Look up the DNS information for HOST (name or IP address).
+Optional argument NAME-SERVER says which server to use for
+DNS resolution.
+Interactively, prompt for NAME-SERVER if invoked with prefix argument.
+
+This command uses `dns-lookup-program' for looking up the DNS information."
   (interactive
-   (list (read-from-minibuffer "Lookup host: " (net-utils-machine-at-point))))
+   (list (read-from-minibuffer "Lookup host: " (net-utils-machine-at-point))
+         (if current-prefix-arg (read-from-minibuffer "Name server: "))))
   (let ((options
-	 (if dns-lookup-program-options
-	     (append dns-lookup-program-options (list host))
-	   (list host))))
+         (append dns-lookup-program-options (list host)
+                 (if name-server (list name-server)))))
     (net-utils-run-program
      (concat "DNS Lookup [" host "]")
      (concat "** "
@@ -568,15 +652,20 @@ If your system's ping continues until interrupted, you can try setting
      dns-lookup-program
      options)))
 
-(autoload 'ffap-string-at-point "ffap")
-
 ;;;###autoload
-(defun run-dig (host)
-  "Run dig program."
+(defun run-dig (host &optional name-server)
+  "Look up DNS information for HOST (name or IP address).
+Optional argument NAME-SERVER says which server to use for
+DNS resolution.
+Interactively, prompt for NAME-SERVER if invoked with prefix argument.
+
+This command uses `dig-program' for looking up the DNS information."
   (interactive
-   (list
-    (read-from-minibuffer "Lookup host: "
-                          (or (ffap-string-at-point 'machine) ""))))
+   (list (read-from-minibuffer "Lookup host: " (net-utils-machine-at-point))
+         (if current-prefix-arg (read-from-minibuffer "Name server: "))))
+  (let ((options
+         (append dig-program-options (list host)
+                 (if name-server (list (concat "@" name-server))))))
   (net-utils-run-program
    "Dig"
    (concat "** "
@@ -584,14 +673,14 @@ If your system's ping continues until interrupted, you can try setting
 		      (list "Dig" host dig-program)
 		      " ** "))
    dig-program
-   (list host)))
+   options)))
 
 (autoload 'comint-exec "comint")
 
 ;; This is a lot less than ange-ftp, but much simpler.
 ;;;###autoload
 (defun ftp (host)
-  "Run ftp program."
+  "Run `ftp-program' to connect to HOST."
   (interactive
    (list
     (read-from-minibuffer
@@ -627,7 +716,9 @@ If your system's ping continues until interrupted, you can try setting
 	      nil t)))
 
 (defun smbclient (host service)
-  "Connect to SERVICE on HOST via SMB."
+  "Connect to SERVICE on HOST via SMB.
+
+This command uses `smbclient-program' to connect to HOST."
   (interactive
    (list
     (read-from-minibuffer
@@ -645,7 +736,8 @@ If your system's ping continues until interrupted, you can try setting
     (pop-to-buffer buf)))
 
 (defun smbclient-list-shares (host)
-  "List services on HOST."
+  "List services on HOST.
+This command uses `smbclient-program' to connect to HOST."
   (interactive
    (list
     (read-from-minibuffer
@@ -740,7 +832,9 @@ queries of the form USER@HOST, and wants a query containing USER only."
 ;; Finger protocol
 ;;;###autoload
 (defun finger (user host)
-  "Finger USER on HOST."
+  "Finger USER on HOST.
+This command uses `finger-X.500-host-regexps'
+and `network-connection-service-alist', which see."
   ;; One of those great interactive statements that's actually
   ;; longer than the function call! The idea is that if the user
   ;; uses a string like "pbreton@cs.umb.edu", we won't ask for the
@@ -834,7 +928,8 @@ then the server named by `whois-server-name' is used."
 (defun whois (arg search-string)
   "Send SEARCH-STRING to server defined by the `whois-server-name' variable.
 If `whois-guess-server' is non-nil, then try to deduce the correct server
-from SEARCH-STRING.  With argument, prompt for whois server."
+from SEARCH-STRING.  With argument, prompt for whois server.
+The port is deduced from `network-connection-service-alist'."
   (interactive "P\nsWhois: ")
   (let* ((whois-apropos-host (if whois-guess-server
 				 (rassoc (whois-get-tld search-string)
@@ -882,7 +977,8 @@ from SEARCH-STRING.  With argument, prompt for whois server."
 
 ;;;###autoload
 (defun network-connection-to-service (host service)
-  "Open a network connection to SERVICE on HOST."
+  "Open a network connection to SERVICE on HOST.
+This command uses `network-connection-service-alist', which see."
   (interactive
    (list
     (read-from-minibuffer "Host: " (net-utils-machine-at-point))
@@ -903,7 +999,8 @@ from SEARCH-STRING.  With argument, prompt for whois server."
   (network-service-connection host (number-to-string port)))
 
 (defun network-service-connection (host service)
-  "Open a network connection to SERVICE on HOST."
+  "Open a network connection to SERVICE on HOST.
+The port to use is determined from `network-connection-service-alist'."
   (let* ((process-name (concat "Network Connection [" host " " service "]"))
 	 (portnum (string-to-number service))
 	 (buf (get-buffer-create (concat "*" process-name "*"))))
@@ -919,7 +1016,8 @@ from SEARCH-STRING.  With argument, prompt for whois server."
 (defvar comint-input-ring)
 
 (defun network-connection-reconnect  ()
-  "Reconnect a network connection, preserving the old input ring."
+  "Reconnect a network connection, preserving the old input ring.
+This command uses `network-connection-service-alist', which see."
   (interactive)
   (let ((proc (get-buffer-process (current-buffer)))
 	(old-comint-input-ring comint-input-ring)

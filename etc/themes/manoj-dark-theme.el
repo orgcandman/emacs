@@ -1,6 +1,6 @@
 ;;; manoj-dark.el --- A dark theme from Manoj
 
-;; Copyright (C) 2011-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2011-2019 Free Software Foundation, Inc.
 
 ;; Author: Manoj Srivastava <srivasta@ieee.org>
 ;; Keywords: lisp, faces
@@ -16,7 +16,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with this program.  If not, see <http://www.gnu.org/licenses/>.
+;; along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -83,7 +83,7 @@ jarring angry fruit salad look to reduce eye fatigue.")
  '(font-lock-regexp-grouping-construct ((t (:bold t :weight bold))))
  '(font-lock-variable-name-face ((t (:foreground "Aquamarine"))))
  '(font-lock-function-name-face ((t (:foreground "mediumspringgreen"
-				     :weight bold :height 1.1))))
+				     :weight bold))))
  '(font-lock-string-face        ((t (:foreground "RosyBrown1"))))
  '(font-lock-comment-face       ((t (:italic t :slant oblique :foreground "chocolate1"))))
  '(font-lock-comment-delimiter-face ((t (:foreground "Salmon"))))
@@ -602,6 +602,16 @@ jarring angry fruit salad look to reduce eye fatigue.")
  '(paren-no-match-face ((t (:bold t :background "white" :foreground "red"))))
  '(query-replace ((t (:foreground "brown4" :background "palevioletred2"))))
  '(region ((t (:background "blue3"))))
+ '(realgud-overlay-arrow1        ((t (:foreground "medium sea green"))))
+ '(realgud-overlay-arrow2        ((t (:foreground "white"))))
+ '(realgud-overlay-arrow3        ((t (:foreground "indian red"))))
+ '(realgud-bp-enabled-face       ((t (:inherit error))))
+ '(realgud-bp-disabled-face      ((t (:underline t))))
+ '(realgud-bp-line-enabled-face  ((t (:foreground "orange"))))
+ '(realgud-bp-line-disabled-face ((t (:underline t))))
+ '(realgud-file-name             ((t (:foreground "cyan"))))
+ '(realgud-line-number           ((t (:foreground "yellow"))))
+ '(realgud-backtrace-number      ((t (:foreground "yellow" :weight bold))))
  '(scroll-bar ((t (:background "grey75" :foreground "WhiteSmoke"))))
  '(secondary-selection ((t (:background "SkyBlue4"))))
  '(semantic-dirty-token-face ((t (:background "lightyellow"))))
@@ -689,9 +699,5 @@ jarring angry fruit salad look to reduce eye fatigue.")
  '(woman-unknown-face ((t (:foreground "LightSalmon")))))
 
 (provide-theme 'manoj-dark)
-
-;; Local Variables:
-;; no-byte-compile: t
-;; End:
 
 ;;; manoj-dark.el ends here

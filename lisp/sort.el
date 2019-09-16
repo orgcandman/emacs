@@ -1,6 +1,6 @@
 ;;; sort.el --- commands to sort text in an Emacs buffer -*- lexical-binding: t -*-
 
-;; Copyright (C) 1986-1987, 1994-1995, 2001-2017 Free Software
+;; Copyright (C) 1986-1987, 1994-1995, 2001-2019 Free Software
 ;; Foundation, Inc.
 
 ;; Author: Howie Kaye
@@ -20,7 +20,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary:
 
@@ -225,11 +225,17 @@ the sort order."
       (narrow-to-region beg end)
       (goto-char (point-min))
       (sort-subr reverse
-		 (function
-		  (lambda ()
-		    (while (and (not (eobp)) (looking-at paragraph-separate))
-		      (forward-line 1))))
-		 'forward-paragraph))))
+		 (lambda ()
+		   (while (and (not (eobp)) (looking-at paragraph-separate))
+		     (forward-line 1)))
+		 (lambda ()
+                   (forward-paragraph)
+                   ;; If the buffer doesn't end with a newline, add a
+                   ;; newline to avoid having paragraphs being
+                   ;; concatenated after sorting.
+                   (when (and (eobp)
+                              (not (bolp)))
+                     (insert "\n")))))))
 
 ;;;###autoload
 (defun sort-pages (reverse beg end)
@@ -406,7 +412,7 @@ the sort order."
 
 ;;;###autoload
 (defun sort-regexp-fields (reverse record-regexp key-regexp beg end)
-  "Sort the text in the region region lexicographically.
+  "Sort the text in the region lexicographically.
 If called interactively, prompt for two regular expressions,
 RECORD-REGEXP and KEY-REGEXP.
 

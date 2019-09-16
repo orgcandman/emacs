@@ -1,6 +1,6 @@
 ;;; tango-dark-theme.el --- Tango-based custom theme for faces
 
-;; Copyright (C) 2010-2017 Free Software Foundation, Inc.
+;; Copyright (C) 2010-2019 Free Software Foundation, Inc.
 
 ;; Authors: Chong Yidong <cyd@stupidchicken>
 ;;          Jan Moringen <jan.moringen@uni-bielefeld.de>
@@ -18,7 +18,7 @@
 ;; GNU General Public License for more details.
 
 ;; You should have received a copy of the GNU General Public License
-;; along with GNU Emacs.  If not, see <http://www.gnu.org/licenses/>.
+;; along with GNU Emacs.  If not, see <https://www.gnu.org/licenses/>.
 
 ;;; Commentary
 
@@ -57,9 +57,10 @@ Semantic, and Ansi-Color faces are included.")
 	      (,class
 	       (:foreground ,alum-1 :background "black"))))
    `(cursor ((,class (:background ,butter-1))))
+   `(header-line ((,class (:background "#666"))))
    ;; Highlighting faces
    `(fringe ((,class (:background ,alum-7))))
-   `(highlight ((,class (:foreground ,alum-6 :background ,butter-2))))
+   `(highlight ((,class (:foreground ,alum-6 :background "#c0c000"))))
    `(region ((,class (:background ,alum-5))))
    `(secondary-selection ((,class (:background ,blue-3))))
    `(isearch ((,class (:foreground ,alum-1 :background ,orange-3))))
@@ -140,6 +141,16 @@ Semantic, and Ansi-Color faces are included.")
    ;; Flyspell faces
    `(flyspell-duplicate ((,class (:underline ,orange-1))))
    `(flyspell-incorrect ((,class (:underline ,red-1))))
+   ;; Realgud
+   `(realgud-overlay-arrow1  ((,class (:foreground "green"))))
+   `(realgud-overlay-arrow2  ((,class (:foreground ,orange-1))))
+   `(realgud-overlay-arrow3  ((,class (:foreground ,plum-0))))
+   `(realgud-bp-disabled-face      ((,class (:foreground ,blue-3))))
+   `(realgud-bp-line-enabled-face  ((,class (:underline "red"))))
+   `(realgud-bp-line-disabled-face ((,class (:underline ,blue-3))))
+   `(realgud-file-name             ((,class :foreground ,blue-1)))
+   `(realgud-line-number           ((,class :foreground ,plum-0)))
+   `(realgud-backtrace-number      ((,class :foreground ,plum-0 :weight bold)))
    ;; Semantic faces
    `(semantic-decoration-on-includes ((,class (:underline ,alum-4))))
    `(semantic-decoration-on-private-members-face
@@ -159,9 +170,5 @@ Semantic, and Ansi-Color faces are included.")
 			      ,blue-1 ,plum-1 ,blue-0 ,alum-1])))
 
 (provide-theme 'tango-dark)
-
-;; Local Variables:
-;; no-byte-compile: t
-;; End:
 
 ;;; tango-dark-theme.el ends here
